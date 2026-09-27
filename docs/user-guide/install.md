@@ -116,3 +116,34 @@ It then takes back what only KyprX used and gives you the command that removes i
 
 The five programs are not removed by KyprX: they are programs of their own. The package manager
 removes the ones it installed only for KyprX, and asks first; the ones you installed yourself stay.
+
+### Arch, installed from the release's PKGBUILD
+
+pacman leaves a program you installed by a command of your own, and KyprX's own command names only
+KyprX. Installed as [above](#arch-and-systems-built-on-it) with `paru`, Krohnkite came in that way;
+name it too, when you installed it only for KyprX:
+
+```sh
+sudo pacman -Rs kyprx kwin-scripts-krohnkite-git
+```
+
+With `yay` and `makepkg -si`, all five came in that way, so name the five:
+
+```sh
+sudo pacman -Rs kyprx klassy kwin-effects-better-blur-dx kwin-scripts-krohnkite-git \
+  kwin-effects-geometry-change plasma6-wallpapers-smart-video-wallpaper-reborn
+```
+
+pacman lists everything it will remove, and asks before it removes anything: read the list. It
+takes what you named and whatever was installed only for it, and never a package something else
+still needs, so on a Plasma desktop Plasma itself stays. Tried on a clean Arch installed with
+`paru`: afterwards KyprX, the five and their files were gone.
+
+Three things stay behind, and each is yours to delete or keep:
+
+- the folder you downloaded the PKGBUILD into;
+- the copies of what the AUR helper built, in `~/.cache/paru/clone/` or `~/.cache/yay/` --
+  `paru -Sc` or `yay -Sc` offers to clear them;
+- tools installed only to build the five, such as `extra-cmake-modules`, `rust` and `typescript`,
+  which nothing needs once they are built. `pacman -Qdt` lists every package nothing needs -- the
+  whole system's, not only KyprX's -- so read it before removing any of them.

@@ -668,7 +668,9 @@ this computer and its caches.
 
 Klassy, Better Blur DX, Krohnkite, Geometry Change and Smart Video Wallpaper Reborn stay: they are
 programs of their own. When you remove the KyprX package, your package manager also removes the
-ones it installed only for KyprX, and asks first; the ones you installed yourself stay.
+ones it installed only for KyprX, and asks first; the ones you installed yourself stay. On Arch,
+installed from the release's PKGBUILD, one or all five came in that way: [Removing, on
+Arch](install.md#arch-installed-from-the-releases-pkgbuild) has the command that names them.
 
 When it is done, a message lists what was done and what was kept, and gives the command that
 removes KyprX's files, with **Copy the command**: `sudo dnf remove kyprx` on Fedora,
