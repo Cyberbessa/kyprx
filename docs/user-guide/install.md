@@ -55,8 +55,7 @@ With another AUR helper, such as `yay`, install the five with it first -- `klass
 `kwin-effects-better-blur-dx`, `kwin-scripts-krohnkite-git`, `kwin-effects-geometry-change` and
 `plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run `makepkg -si` in the folder that
 holds the PKGBUILD. Klassy and Better Blur DX are built on your computer, which takes a few
-minutes. The release also carries the package itself, `kyprx-<version>-1-any.pkg.tar.zst`, for
-`sudo pacman -U` on a system that already has the five.
+minutes.
 
 ## Any other system
 

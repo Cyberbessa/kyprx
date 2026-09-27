@@ -47,12 +47,19 @@ copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a 
    table above. Measured: the repository file COPR serves carries both as sections of their own,
    enabled, and `dnf copr enable` enables them together with KyprX's.
 3. Four packages, each with the source type *SCM*: the clone URL
-   `https://github.com/cyberbessa/kyprx`, the spec file `packaging/fedora/<package>.spec`, and the
-   SRPM build method *make srpm*, which runs `.copr/Makefile`.
+   `https://github.com/Cyberbessa/kyprx` -- spelled the way GitHub spells the account, capital C
+   included -- the spec file `packaging/fedora/<package>.spec`, and the SRPM build method *make
+   srpm*, which runs `.copr/Makefile`.
 4. For `kyprx`, *Auto-rebuild* on, with the GitHub webhook COPR's *Integrations* page gives,
-   registered on the public repository for its *push* and *create* events: each release is a push
-   there. `copr-cli new-webhook-secret kyprx` makes a new one, and the webhook on GitHub has to be
-   given it. The three others are rebuilt by hand, when their spec changes.
+   registered on the public repository for its *push* and *create* events. What COPR does with them
+   was read in its code (`webhooks_general.py`, `packages_logic.py`) and then seen: it rebuilds a
+   package when a push brings a commit, and only when the package's clone URL is the one in the
+   push **letter for letter** -- with `cyberbessa` in lower case the push was accepted and nothing
+   was built. A tag alone rebuilds nothing, because COPR takes a tag as `kyprx-0.1.0`, not `v0.1.0`;
+   each release reaches the public repository as a commit, so the push is what builds it.
+   `copr-cli new-webhook-secret kyprx` makes a new secret -- it asks for a yes first, and prints
+   `Generated new token:` -- and the webhook on GitHub has to be given it. The three others are
+   rebuilt by hand, when their spec changes.
 
 ## Once: the AUR package
 
@@ -81,14 +88,14 @@ Every AUR dependency of KyprX's -- `klassy`, `kwin-effects-better-blur-dx`,
 3. In the AUR clone: the new `PKGBUILD`, its checksum filled in (`updpkgsums`), and a new
    `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`), committed and pushed. Both commands need an
    Arch system; a container is enough.
-4. On the GitHub release, two files: that `PKGBUILD`, checksum filled in, and the package
-   `makepkg` built from it, `kyprx-<version>-1-any.pkg.tar.zst`. Until KyprX is in the AUR they
-   are how Arch installs it -- `paru -Ui` in a folder holding the `PKGBUILD` builds it and brings
-   the five from the AUR, `kwin-scripts-krohnkite-git` installed first while Krohnkite's own
-   package fails its checksum -- and the install guide points at
-   `releases/latest/download/PKGBUILD`, so a release without it breaks that line. Measured on a
-   clean Arch: `paru -Ui`, `makepkg -si` with the five present, and `pacman -U` of the package
-   all installed it.
+4. On the GitHub release, that `PKGBUILD`, checksum filled in. Until KyprX is in the AUR it is
+   how Arch installs it -- `paru -Ui` in a folder holding it builds KyprX and brings the five from
+   the AUR, `kwin-scripts-krohnkite-git` installed first while Krohnkite's own package fails its
+   checksum -- and the install guide points at `releases/latest/download/PKGBUILD`, so a release
+   without it breaks that line. Measured on a clean Arch: `paru -Ui` installed it with all five,
+   and `makepkg -si` did with the five present. No built package goes beside it: it would carry
+   KyprX's files and none of the five -- Klassy and Better Blur DX are built against one KWin and
+   cannot travel prebuilt -- so it would install only where they already are.
 
 A new version of one of the three projects built here is a new `Version` in its spec, a
 `%changelog` entry, and a rebuild of that package in COPR.
