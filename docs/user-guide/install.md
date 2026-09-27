@@ -10,8 +10,9 @@ from the application menu.
 
 ## Fedora
 
-KyprX's repository is in COPR, Fedora's service for community packages. Enabling it offers to
-enable the two repositories it depends on as well, for Klassy and Better Blur DX; answer yes.
+KyprX's repository is in COPR, Fedora's service for community packages, for Fedora 43 and 44.
+Enabling it offers to enable the two repositories it depends on as well, for Klassy and Better
+Blur DX; answer yes.
 
 ```sh
 sudo dnf copr enable cyberbessa/kyprx
@@ -32,20 +33,30 @@ rpm-ostree install kyprx
 systemctl reboot
 ```
 
-The repository file names the repositories KyprX depends on. If `rpm-ostree` says that
-`klassy` or `kwin-effects-better-blur-dx` cannot be found, their repositories have to be added the
-same way; the [packaging notes](../../packaging/README.md#the-repositories-kyprx-depends-on) list
-them.
+The repository file carries the two repositories KyprX depends on as well. If `rpm-ostree`
+still says that `klassy` or `kwin-effects-better-blur-dx` cannot be found, their repositories have
+to be added the same way; the
+[packaging notes](../../packaging/README.md#the-repositories-kyprx-depends-on) list them.
 
 ## Arch, and systems built on it
 
-KyprX and the five programs are in the AUR. An AUR helper installs them together:
+The five programs are in the AUR, and KyprX is on its way there. Until it is, each release on
+GitHub carries KyprX's PKGBUILD, and `paru` builds it and installs the five with it. Krohnkite's
+own AUR package fails its checksum at the moment, so its `-git` package goes first:
 
 ```sh
-paru -S kyprx      # or: yay -S kyprx
+paru -S kwin-scripts-krohnkite-git
+mkdir kyprx && cd kyprx
+curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
+paru -Ui
 ```
 
-Klassy and Better Blur DX are built on your computer, which takes a few minutes.
+With another AUR helper, such as `yay`, install the five with it first -- `klassy`,
+`kwin-effects-better-blur-dx`, `kwin-scripts-krohnkite-git`, `kwin-effects-geometry-change` and
+`plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run `makepkg -si` in the folder that
+holds the PKGBUILD. Klassy and Better Blur DX are built on your computer, which takes a few
+minutes. The release also carries the package itself, `kyprx-<version>-1-any.pkg.tar.zst`, for
+`sudo pacman -U` on a system that already has the five.
 
 ## Any other system
 

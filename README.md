@@ -120,8 +120,15 @@ sudo dnf install kyprx
 
 **Arch** and friends — EndeavourOS, CachyOS, Manjaro…
 
+KyprX is on its way to the AUR. Until it is there, each release carries its PKGBUILD, and an AUR
+helper builds it and brings in everything it needs from the AUR. Krohnkite's own AUR package fails
+its checksum at the moment, so its `-git` package goes first:
+
 ```sh
-paru -S kyprx      # or: yay -S kyprx
+paru -S kwin-scripts-krohnkite-git
+mkdir kyprx && cd kyprx
+curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
+paru -Ui
 ```
 
 Everything KyprX is built on comes with it. For Fedora Kinoite and the systems built on it, for
