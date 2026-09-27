@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.cyberbessa.KyprX
+Exec=@BIN@/kyprd
+SystemdService=kyprd.service

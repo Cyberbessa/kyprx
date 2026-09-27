@@ -1,0 +1,16 @@
+[Unit]
+Description=KyprX window daemon
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.cyberbessa.KyprX
+ExecStart=@BIN@/kyprd
+Restart=no
+Slice=session.slice
+# Half the default share of the processor under contention, and it reaches every process this
+# daemon starts -- ffmpeg pulling frames out of a video, the desktop's own colour tools. None of
+# that is worth a frame of the compositor's or the shell's, which sit in the same slice at the
+# default weight; measured, a runtime override the other way (10000) had the daemon's ffmpeg
+# outranking the compositor a hundred to one. Idle, this changes nothing at all.
+CPUWeight=50

@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "grdz441yj@mozmail.com",
+                "Name": "cyberbessa"
+            }
+        ],
+        "Description": "Tells the KyprX daemon about windows, and owns the cheatsheet key",
+        "Icon": "kyprx",
+        "Id": "kyprx",
+        "License": "GPL-3.0-or-later",
+        "Name": "KyprX",
+        "Version": "0.2"
+    },
+    "X-Plasma-API": "javascript"
+}

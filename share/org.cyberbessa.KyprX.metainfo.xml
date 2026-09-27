@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What software centres such as Discover show for KyprX. Installed by packaging/stage.sh. -->
+<component type="desktop-application">
+  <id>org.cyberbessa.KyprX</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>KyprX</name>
+  <summary>KDE-Native Hyprland Experience</summary>
+  <description>
+    <p>
+      KyprX gives KDE Plasma 6 on Wayland the look of a tiling window manager: windows side by
+      side, with no title bars, an outline, a see-through background and blur behind them.
+    </p>
+    <p>
+      It gathers in one window what five other programs keep in separate settings: Klassy for the
+      window decoration, Better Blur DX for the blur, Krohnkite for tiling, Geometry Change for the
+      animation of windows moving, and Smart Video Wallpaper Reborn for video wallpapers. On top of
+      them it adds colour presets for the whole desktop, profiles, a wallpaper picker and a
+      cheatsheet of the keyboard shortcuts.
+    </p>
+  </description>
+  <launchable type="desktop-id">kyprx.desktop</launchable>
+  <url type="homepage">https://github.com/cyberbessa/kyprx</url>
+  <url type="bugtracker">https://github.com/cyberbessa/kyprx/issues</url>
+  <url type="donation">https://ko-fi.com/cyberbessa</url>
+  <developer id="io.github.cyberbessa">
+    <name>cyberbessa</name>
+  </developer>
+  <categories>
+    <category>Settings</category>
+    <category>DesktopSettings</category>
+  </categories>
+  <requires>
+    <display_length compare="ge">820</display_length>
+  </requires>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-27"/>
+  </releases>
+</component>

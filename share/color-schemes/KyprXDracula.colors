@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
+#
+# Derived from Klassy's KlassyDark.colors, whose sections, keys and colour effects it keeps, and so
+# under that file's licence and with its authors above. The palette's own credit is in CREDITS.md.
+#
+# Dracula (KyprX), for KyprX.
+# Palette: draculatheme.com -- the official specification
+# Built against /usr/share/color-schemes/KlassyDark.colors: same sections, same keys,
+# no [Colors:Header] (so the header follows the window, as Klassy does), and an explicit
+# [WM] with an alpha on the active bar.
+
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,111,110
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=111,90,146
+BackgroundNormal=68,71,90
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=189,147,249
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=248,248,242
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[Colors:Complementary]
+BackgroundAlternate=111,90,146
+BackgroundNormal=40,42,54
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=189,147,249
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=248,248,242
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[Colors:Selection]
+BackgroundAlternate=111,90,146
+BackgroundNormal=189,147,249
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=40,42,54
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=40,42,54
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[Colors:Tooltip]
+BackgroundAlternate=40,42,54
+BackgroundNormal=68,71,90
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=189,147,249
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=248,248,242
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[Colors:View]
+BackgroundAlternate=40,42,54
+BackgroundNormal=33,34,44
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=189,147,249
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=248,248,242
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[Colors:Window]
+BackgroundAlternate=68,71,90
+BackgroundNormal=40,42,54
+DecorationFocus=189,147,249
+DecorationHover=189,147,249
+ForegroundActive=189,147,249
+ForegroundInactive=167,168,174
+ForegroundLink=139,233,253
+ForegroundNegative=255,85,85
+ForegroundNeutral=255,184,108
+ForegroundNormal=248,248,242
+ForegroundPositive=80,250,123
+ForegroundVisited=255,121,198
+
+[General]
+ColorScheme=KyprXDracula
+Name=Dracula (KyprX)
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+[WM]
+activeBackground=68,71,90,191
+activeBlend=248,248,242
+activeForeground=248,248,242
+inactiveBackground=40,42,54
+inactiveBlend=167,168,174
+inactiveForeground=167,168,174

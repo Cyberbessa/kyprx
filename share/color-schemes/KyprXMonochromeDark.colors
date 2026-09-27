@@ -1,0 +1,177 @@
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
+#
+# Derived from Klassy's KlassyDark.colors, whose sections, keys and colour effects it keeps, and so
+# under that file's licence and with its authors above. The palette's own credit is in CREDITS.md.
+#
+# Monochrome Dark (KyprX), for KyprX.
+# Palette: black, and one step above it for a button. Nothing else has a tone of its own.
+# Built against /usr/share/color-schemes/KlassyDark.colors: same sections, same keys,
+# no [Colors:Header] (so the header follows the window, as Klassy does).
+#
+# **One background for the whole window, and that is the shape of Carl's scheme rather than a
+# simplification of this one.** It began as a grey ladder -- a window tone, a lighter content
+# tone, a lighter button tone -- and on screen that reads as a window built out of panels. Measured
+# in Dolphin, on a full-screen capture, against Carl in the same four places:
+#
+#     sidebar (Places)   18,18,18   Carl 17,18,22
+#     file area           0,0,0     Carl 17,18,22
+#     toolbar strip      18,18,18   Carl 17,18,22
+#     title bar           0,0,0     Carl 17,18,22
+#
+# Three tones in one window against Carl's one, and three separate causes: `Colors:Window` against
+# `Colors:View` for the first two lines, and the title bar for the third -- see [WM] below. So
+# every `BackgroundNormal` and every `BackgroundAlternate` here is the same black, and a ladder put
+# back would put the panels back with it.
+#
+# `Colors:Button` is the one exception, and it is Carl's exception too -- 17,18,22 against a window
+# of 22,24,29, five units. A button resting at exactly the window's colour stops reading as a
+# button at all. Five units over black is the edge of a button, not a second tone of background.
+#
+# Two things about it are deliberate and are not oversights.
+#
+# The five foregrounds that carry meaning stay coloured -- negative, neutral, positive, link and
+# visited -- because grey text saying "failed" and grey text saying "done" are the same text.
+# Every other foreground is greyscale; those five are not.
+#
+# [Colors:Selection] is the one group whose foregrounds go the other way, and its DecorationFocus
+# with them. Every other scheme here repeats the accent in that key, which is harmless when the
+# accent and the selection background differ; here they are the same white, and a focus ring the
+# colour of what it sits on is no ring at all.
+#
+# `BackgroundNormal` under [Colors:Selection] is also the colour this preset hands to the window
+# outline when it is chosen -- see `theme.selection_colour`. White, which is the point of it.
+
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,112,112
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=0,0,0
+BackgroundNormal=8,8,8
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=150,150,150
+ForegroundLink=110,160,255
+ForegroundNegative=235,90,90
+ForegroundNeutral=225,170,80
+ForegroundNormal=235,235,235
+ForegroundPositive=110,190,110
+ForegroundVisited=190,150,225
+
+[Colors:Complementary]
+BackgroundAlternate=0,0,0
+BackgroundNormal=0,0,0
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=150,150,150
+ForegroundLink=110,160,255
+ForegroundNegative=235,90,90
+ForegroundNeutral=225,170,80
+ForegroundNormal=235,235,235
+ForegroundPositive=110,190,110
+ForegroundVisited=190,150,225
+
+[Colors:Selection]
+BackgroundAlternate=255,255,255
+BackgroundNormal=255,255,255
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=90,90,90
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=0,0,0
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[Colors:Tooltip]
+BackgroundAlternate=0,0,0
+BackgroundNormal=0,0,0
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=150,150,150
+ForegroundLink=110,160,255
+ForegroundNegative=235,90,90
+ForegroundNeutral=225,170,80
+ForegroundNormal=235,235,235
+ForegroundPositive=110,190,110
+ForegroundVisited=190,150,225
+
+[Colors:View]
+BackgroundAlternate=0,0,0
+BackgroundNormal=0,0,0
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=150,150,150
+ForegroundLink=110,160,255
+ForegroundNegative=235,90,90
+ForegroundNeutral=225,170,80
+ForegroundNormal=235,235,235
+ForegroundPositive=110,190,110
+ForegroundVisited=190,150,225
+
+[Colors:Window]
+BackgroundAlternate=0,0,0
+BackgroundNormal=0,0,0
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=150,150,150
+ForegroundLink=110,160,255
+ForegroundNegative=235,90,90
+ForegroundNeutral=225,170,80
+ForegroundNormal=235,235,235
+ForegroundPositive=110,190,110
+ForegroundVisited=190,150,225
+
+[General]
+ColorScheme=KyprXMonochromeDark
+Name=Monochrome Dark (KyprX)
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+# **No alpha on the active bar, and that is the third of the three tones this file used to have.**
+# Every other scheme here carries `activeBackground=r,g,b,191`, three quarters opaque, and the
+# decoration honours it unless its own override flag is on -- KyprX sets that flag, so on a desk
+# running KyprX the bar is opaque either way. This pair does not rely on that: written translucent,
+# the bar measured 0,0,0 against a window of 18,18,18 in the capture above, a third tone in a
+# scheme whose whole point is one. Carl's scheme is opaque for the same reason, and this follows it.
+[WM]
+activeBackground=0,0,0
+activeBlend=0,0,0
+activeForeground=235,235,235
+inactiveBackground=0,0,0
+inactiveBlend=0,0,0
+inactiveForeground=150,150,150

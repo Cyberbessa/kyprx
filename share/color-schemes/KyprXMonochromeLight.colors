@@ -1,0 +1,150 @@
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
+#
+# Derived from Klassy's KlassyDark.colors, whose sections, keys and colour effects it keeps, and so
+# under that file's licence and with its authors above. The palette's own credit is in CREDITS.md.
+#
+# Monochrome Light (KyprX), for KyprX.
+# Palette: white, and one step below it for a button. Nothing else has a tone of its own.
+# Built against /usr/share/color-schemes/KlassyDark.colors: same sections, same keys,
+# no [Colors:Header] (so the header follows the window, as Klassy does).
+#
+# The notes on KyprXMonochromeDark.colors apply here and are not repeated: one background for the
+# whole window with the measurement behind it, a button one step away because a button resting at
+# the window's own colour stops reading as one, the five foregrounds that carry meaning kept
+# coloured, and no alpha on the active bar. Only the direction is mirrored -- the step is *below*
+# white here, and [Colors:Selection] is the group whose foregrounds go light because its background
+# is black.
+#
+# `BackgroundNormal` under [Colors:Selection] is also the colour this preset hands to the window
+# outline when it is chosen -- see `theme.selection_colour`. Black, which is the point of it.
+
+[ColorEffects:Disabled]
+Color=200,200,200
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,112,112
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=255,255,255
+BackgroundNormal=247,247,247
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=110,110,110
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=26,26,26
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[Colors:Complementary]
+BackgroundAlternate=255,255,255
+BackgroundNormal=255,255,255
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=110,110,110
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=26,26,26
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[Colors:Selection]
+BackgroundAlternate=0,0,0
+BackgroundNormal=0,0,0
+DecorationFocus=255,255,255
+DecorationHover=255,255,255
+ForegroundActive=255,255,255
+ForegroundInactive=170,170,170
+ForegroundLink=130,175,255
+ForegroundNegative=240,120,120
+ForegroundNeutral=235,180,90
+ForegroundNormal=255,255,255
+ForegroundPositive=130,200,130
+ForegroundVisited=195,160,230
+
+[Colors:Tooltip]
+BackgroundAlternate=255,255,255
+BackgroundNormal=255,255,255
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=110,110,110
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=26,26,26
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[Colors:View]
+BackgroundAlternate=255,255,255
+BackgroundNormal=255,255,255
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=110,110,110
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=26,26,26
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[Colors:Window]
+BackgroundAlternate=255,255,255
+BackgroundNormal=255,255,255
+DecorationFocus=0,0,0
+DecorationHover=0,0,0
+ForegroundActive=0,0,0
+ForegroundInactive=110,110,110
+ForegroundLink=20,80,200
+ForegroundNegative=170,30,30
+ForegroundNeutral=150,90,0
+ForegroundNormal=26,26,26
+ForegroundPositive=30,120,30
+ForegroundVisited=100,60,160
+
+[General]
+ColorScheme=KyprXMonochromeLight
+Name=Monochrome Light (KyprX)
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+# No alpha on the active bar, for the reason written out in the dark one: written translucent it
+# becomes a third tone in a scheme whose whole point is one.
+[WM]
+activeBackground=255,255,255
+activeBlend=255,255,255
+activeForeground=26,26,26
+inactiveBackground=255,255,255
+inactiveBlend=255,255,255
+inactiveForeground=110,110,110

@@ -1,0 +1,31 @@
+# Maintainer: cyberbessa <grdz441yj@mozmail.com>
+#
+# KyprX for Arch and everything built on it. The five projects KyprX is built on are required, and
+# all five are in the AUR, so an AUR helper installs them with it. Two of them are compiled against
+# one version of KWin: after a Plasma update they are built again by installing them again.
+# packaging/README.md says how a release reaches the AUR.
+
+pkgname=kyprx
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="KDE-Native Hyprland Experience"
+arch=('any')
+url="https://github.com/cyberbessa/kyprx"
+license=('GPL-3.0-or-later AND LGPL-2.0-or-later AND CC0-1.0')
+depends=(
+  'python' 'pyside6' 'python-dbus' 'python-gobject' 'glib2' 'gdk-pixbuf2'
+  'kwin' 'plasma-workspace' 'kconfig' 'hicolor-icon-theme'
+  'klassy' 'kwin-effects-better-blur-dx' 'kwin-scripts-krohnkite' 'kwin-effects-geometry-change'
+  'plasma6-wallpapers-smart-video-wallpaper-reborn>=2.15.0'
+)
+optdepends=('ffmpeg: thumbnails of video wallpapers, and a colour taken from a video')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "$pkgname-$pkgver"
+  bash packaging/stage.sh "$pkgdir" /usr
+  python -m compileall -q -d /usr/share/kyprx "$pkgdir/usr/share/kyprx"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 LICENSES/* -t "$pkgdir/usr/share/licenses/$pkgname/"
+}

@@ -1,0 +1,21 @@
+# Deliberately empty: a colours file that carries no palette.
+#
+# KConfig layers `kdeglobals` under every file it opens, so with nothing in here the style takes
+# the active colour scheme -- the same colours it took with no file at all. Measured with
+# scripts/probe.py: the window, text, highlight and header colours seen through this style
+# are the scheme's with and without this file, and `klassy-dark`, which ships a palette, prints a
+# different set, which is the control.
+#
+# It exists because KSvg asks every theme directory for `colors` on every item it creates and never
+# remembers that there was none: with no file, ten to twelve file probes per item on a stock
+# session (more with more data directories), and KRunner creates every row again on every
+# keystroke; with the file, one. Nothing below this line, on purpose: a [Colors:*] group here would
+# be a palette, and the panel would stop following the scheme.
+#
+# And it must be found by a path with no symbolic link in it, which is why install.sh puts this
+# one file in a directory of its own, spelled with every link resolved, and tells the session to
+# search there: found through a link, the shell holds two objects for this one file (KConfig
+# canonicalises the name on open, the shared lookup compares the name as asked for) and only one
+# of them is reparsed when the scheme changes -- measured, the panel's text followed the wallpaper
+# and its background did not. On this desktop the home directory is itself reached through a
+# link, so the package's own directory, however it is installed, cannot be that path.

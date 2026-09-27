@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KyprX"
+            }
+        ],
+        "Category": "",
+        "Description": "Plasma's own panel artwork, coloured by whichever colour scheme is active",
+        "EnabledByDefault": true,
+        "Id": "kyprx",
+        "License": "GPL-3.0-or-later",
+        "Name": "KyprX",
+        "Version": "1.0"
+    },
+    "X-Plasma-API": "5.0"
+}

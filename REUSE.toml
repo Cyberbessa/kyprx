@@ -1,0 +1,19 @@
+# Who holds the copyright on what, and under which licence, in one place rather than in a header on
+# every file. A file that carries its own SPDX lines wins over this ("closest"): the eleven colour
+# schemes and the Plasma style's plasmarc do, because they copy blocks out of Klassy's files and
+# keep Klassy's licence and authors with them. See CREDITS.md.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 cyberbessa"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# What software centres show about KyprX is metadata, and AppStream asks for it under a licence that
+# lets any of them copy it: CC0, which the file itself names in <metadata_license>.
+[[annotations]]
+path = "share/org.cyberbessa.KyprX.metainfo.xml"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 cyberbessa"
+SPDX-License-Identifier = "CC0-1.0"

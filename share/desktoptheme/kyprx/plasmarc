@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
+#
+# The [ContrastEffect] and [AdaptiveTransparency] blocks below are Klassy's, from its klassy-dark
+# style, whose package declares LGPL; this file keeps that licence and its author. See CREDITS.md.
+#
+# An empty `colors` file beside this one, and Plasma's own artwork: that is the whole package.
+#
+# Measured, on Plasma 6.7.5: a Plasma style whose `colors` file carries a palette paints the panel
+# from it and never reads `kdeglobals`, which is why changing the colour scheme under `klassy-dark`
+# leaves the panel exactly where it was. A `colors` file that carries *no* palette -- comments
+# only -- follows the scheme instead: KConfig layers `kdeglobals` under every file it opens, so a
+# colours file with nothing in it *is* the active scheme, and the colours read through this style
+# are byte for byte the ones read with no file at all (scripts/probe.py prints them, with
+# `klassy-dark` as the control).
+#
+# Why the file is there rather than absent: KSvg asks for `colors` on every item it creates and
+# never remembers a miss, walking every XDG data directory for this style and then for `default`.
+# With no file that is ten to twelve file probes per item, and KRunner creates every row again on
+# every keystroke -- measured, 550 probes per fifty items without the file, 50 with it. See
+# docs/integrations/kde-plasma.md.
+#
+# `FallbackTheme` reaches wallpaper defaults and nothing else. Plasma 6 reads it for the
+# `[Wallpaper]` settings only; KSvg's own artwork lookup falls back to `default` and to nothing
+# else, so what is on screen is Plasma's own panel artwork, recoloured from the scheme as it is
+# drawn. Measured with scripts/probe.py: with this style in force, not one file under
+# `klassy-dark` is ever asked for. The key is kept because it is harmless and is what any future
+# borrowing of Klassy's artwork would build on; it is not why the panel looks the way it does.
+[Settings]
+FallbackTheme=klassy-dark
+
+# Both blocks are Klassy's own, copied so the panel keeps the contrast and the adaptive
+# transparency it has today. They are settings, not artwork, and the only thing of Klassy's that
+# reaches the screen through this package.
+[ContrastEffect]
+enabled=true
+contrast=0.2
+intensity=0.6
+saturation=10
+
+[AdaptiveTransparency]
+enabled=true

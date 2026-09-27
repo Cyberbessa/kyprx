@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Name=KyprX
+GenericName=Windows, decoration, blur and tiling
+Comment=Takes the title bar off your windows without losing the theme's styling
+Exec=@BIN@/kyprx
+Icon=kyprx
+Terminal=false
+Categories=Qt;KDE;Settings;DesktopSettings;
+Keywords=window;titlebar;decoration;blur;tiling;shortcuts;
+StartupNotify=true
+Actions=Cheatsheet;Wallpaper;
+
+[Desktop Action Cheatsheet]
+Name=Show the shortcut cheatsheet
+Exec=@BIN@/kyprx --cheatsheet
+Icon=preferences-desktop-keyboard
+
+[Desktop Action Wallpaper]
+Name=Pick a wallpaper
+Exec=@BIN@/kyprx --wallpaper
+Icon=preferences-desktop-wallpaper

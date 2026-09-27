@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
+#
+# Derived from Klassy's KlassyDark.colors, whose sections, keys and colour effects it keeps, and so
+# under that file's licence and with its authors above. The palette's own credit is in CREDITS.md.
+#
+# Rosé Pine Dawn (KyprX), for KyprX.
+# Palette: rosepinetheme.com -- Dawn
+# Built against /usr/share/color-schemes/KlassyDark.colors: same sections, same keys,
+# no [Colors:Header] (so the header follows the window, as Klassy does), and an explicit
+# [WM] with an alpha on the active bar.
+
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,111,110
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=200,186,206
+BackgroundNormal=242,233,225
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=144,122,169
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=87,82,121
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[Colors:Complementary]
+BackgroundAlternate=200,186,206
+BackgroundNormal=250,244,237
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=144,122,169
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=87,82,121
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[Colors:Selection]
+BackgroundAlternate=200,186,206
+BackgroundNormal=144,122,169
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=250,244,237
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=250,244,237
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[Colors:Tooltip]
+BackgroundAlternate=250,244,237
+BackgroundNormal=242,233,225
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=144,122,169
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=87,82,121
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[Colors:View]
+BackgroundAlternate=250,244,237
+BackgroundNormal=255,250,243
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=144,122,169
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=87,82,121
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[Colors:Window]
+BackgroundAlternate=242,233,225
+BackgroundNormal=250,244,237
+DecorationFocus=144,122,169
+DecorationHover=144,122,169
+ForegroundActive=144,122,169
+ForegroundInactive=121,117,147
+ForegroundLink=40,105,131
+ForegroundNegative=180,99,122
+ForegroundNeutral=234,157,52
+ForegroundNormal=87,82,121
+ForegroundPositive=86,148,159
+ForegroundVisited=215,130,126
+
+[General]
+ColorScheme=KyprXRosePineDawn
+Name=Rosé Pine Dawn (KyprX)
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+[WM]
+activeBackground=242,233,225,191
+activeBlend=87,82,121
+activeForeground=87,82,121
+inactiveBackground=250,244,237
+inactiveBlend=121,117,147
+inactiveForeground=121,117,147

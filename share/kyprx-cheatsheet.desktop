@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KyprX shortcut overlay
+Comment=The shortcut list, shown over everything
+Exec=@BIN@/kyprx --cheatsheet
+Icon=preferences-desktop-keyboard
+Terminal=false
+NoDisplay=true
+Categories=Qt;KDE;Utility;

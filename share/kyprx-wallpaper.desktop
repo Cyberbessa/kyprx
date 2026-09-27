@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KyprX wallpaper picker
+Comment=Pick a wallpaper, shown over everything
+Exec=@BIN@/kyprx --wallpaper
+Icon=preferences-desktop-wallpaper
+Terminal=false
+NoDisplay=true
+Categories=Qt;KDE;Utility;
