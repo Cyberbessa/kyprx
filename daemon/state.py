@@ -57,12 +57,13 @@ LEGACY_CONFIG_PATH = os.path.expanduser("~/.config/kyprx/config.json")
 #: 4 is the tiling script's layout order moving to KyprX's own, once, where nobody had chosen one
 #: -- see `migrate.new_layout_order`. 5 is the title bar's opacity keys moving to the names the
 #: decoration reads -- see `migrate.rename_title_bar_keys`. 6 is this app's own two files moving
-#: out of what became the KyprX folder -- see `migrate.move_working_copies`.
+#: out of what became the KyprX folder -- see `migrate.move_working_copies`. 7 is Longive as default
+#: theme, corner radius 7.5, and image wallpaper directory support.
 #:
 #: Only `migrate._stamp_version` ever raises the number. `State.save` writes back the one it read,
 #: which is what lets a pass that failed run again at the next start: saving used to stamp this
 #: constant, so the first window seen after a failed pass marked it done.
-STATE_VERSION = 6
+STATE_VERSION = 7
 
 #: What the wallpaper picker's two choices may be. Neither is stored any more -- which one is on
 #: is read from the shell, by `wallpaper.mode_of` -- so this is now what a *request* is checked
@@ -285,6 +286,8 @@ class Config:
                                     if (keys := key_sequence(v)) is not None},
                    wallpaper={"video_dir": str(paper.get("video_dir",
                                                           _DEFAULT_WALLPAPER["video_dir"])),
+                              "image_dir": str(paper.get("image_dir",
+                                                          _DEFAULT_WALLPAPER.get("image_dir", ""))),
                               "layout": (layout if layout in WALLPAPER_LAYOUTS
                                          else _DEFAULT_WALLPAPER["layout"])})
 

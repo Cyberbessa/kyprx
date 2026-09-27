@@ -42,16 +42,20 @@ class ShortcutsPart:
             # not anything was left to release was a dry run saying something untrue.
             try:
                 held = shortcuts.legacy_claims_held()
+                spectacle = shortcuts.spectacle_conflict_held()
             except dbus.DBusException:
-                held = []
+                held, spectacle = [], []
             if held:
                 writer.report("would release the old claims on the cheatsheet key: "
                               + ", ".join(f"{c}/{a}" for c, a in held))
+            if spectacle:
+                writer.report("would release Meta+R from Spectacle RecordRegion for the wallpaper picker")
             return
         try:
             shortcuts.release_legacy_claims()
+            shortcuts.release_spectacle_conflict()
         except dbus.DBusException as e:
-            self.log(f"could not release the legacy cheatsheet claims: "
+            self.log(f"could not release legacy shortcut claims: "
                      f"{logs.what(e)}", trouble=True)
 
     def rebind_shortcut(self, component: str, action: str, old: list[int], new: list[int],

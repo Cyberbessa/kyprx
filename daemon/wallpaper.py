@@ -241,15 +241,16 @@ def wallpaper_dirs() -> list[str]:
     for base in [home] + rest.split(":"):
         if not base:
             continue
-        path = os.path.join(base, "wallpapers")
-        # Kept as the session spells it, and only compared as what it really points at. On a
-        # layout where `/home` is a link to `/var/home`, resolving the path outright writes a URL
-        # nobody else on this desktop writes -- it works, and it stops matching the one already in
-        # the config, which turns "it is already that" into a change written every single time.
-        real = os.path.realpath(path)
-        if os.path.isdir(path) and real not in seen:
-            seen.add(real)
-            out.append(path)
+        for sub in ("wallpapers", "backgrounds"):
+            path = os.path.join(base, sub)
+            # Kept as the session spells it, and only compared as what it really points at. On a
+            # layout where `/home` is a link to `/var/home`, resolving the path outright writes a URL
+            # nobody else on this desktop writes -- it works, and it stops matching the one already in
+            # the config, which turns "it is already that" into a change written every single time.
+            real = os.path.realpath(path)
+            if os.path.isdir(path) and real not in seen:
+                seen.add(real)
+                out.append(path)
     return out
 
 
@@ -379,8 +380,8 @@ def _package_entry(package: str) -> dict | None:
     return _entry("image", package, name, to_url(package) + "/", _preview_of(package))
 
 
-def scan_images() -> list[dict]:
-    """Every wallpaper the desktop's own chooser would offer, in three shapes.
+def scan_images(image_dir: str = "") -> list[dict]:
+    """Every wallpaper the desktop's own chooser would offer, in three shapes, plus image_dir.
 
     A package; a loose image file sitting in the wallpapers directory, which distributions really
     do ship; and a directory of packages, which is one level deeper than the format says and which
@@ -388,7 +389,12 @@ def scan_images() -> list[dict]:
     the whole data directory.
     """
     out: dict[str, dict] = {}
-    for folder in wallpaper_dirs():
+    folders = list(wallpaper_dirs())
+    if image_dir and os.path.isdir(image_dir):
+        real_img = os.path.realpath(image_dir)
+        if real_img not in [os.path.realpath(d) for d in folders]:
+            folders.insert(0, image_dir)
+    for folder in folders:
         try:
             names = sorted(os.listdir(folder))
         except OSError:
@@ -416,6 +422,9 @@ def scan_images() -> list[dict]:
                     entry = _package_entry(deeper)
                     if entry is not None:
                         out.setdefault(deeper, entry)
+                elif os.path.isfile(deeper) and inner.lower().endswith(IMAGE_SUFFIXES):
+                    out.setdefault(deeper, _entry("image", deeper, os.path.splitext(inner)[0],
+                                                  to_url(deeper), deeper))
     return sorted(out.values(), key=lambda e: e["name"].lower())
 
 
@@ -484,10 +493,34 @@ def _xdg_videos_dir() -> str:
     return ""
 
 
-def catalogue(mode: str, video_dir: str, state: dict) -> list[dict]:
+def default_image_dir(state: dict | None = None) -> str:
+    """Where to look for pictures when nobody has said.
+
+    Taken from user-dirs.dirs (XDG_PICTURES_DIR), or ~/Pictures if it exists.
+    """
+    path = os.path.join(os.environ.get("XDG_CONFIG_HOME")
+                        or os.path.expanduser("~/.config"), "user-dirs.dirs")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                key, sep, value = line.strip().partition("=")
+                if sep and key.strip() == "XDG_PICTURES_DIR":
+                    d = os.path.expandvars(value.strip().strip('"')).replace(
+                        "$HOME", os.path.expanduser("~"))
+                    if os.path.isdir(d):
+                        return d
+    except OSError:
+        pass
+    pictures = os.path.expanduser("~/Pictures")
+    if os.path.isdir(pictures):
+        return pictures
+    return ""
+
+
+def catalogue(mode: str, video_dir: str, image_dir: str = "", state: dict | None = None) -> list[dict]:
     if mode == "video":
         return scan_videos(video_dir)
-    return scan_images()
+    return scan_images(image_dir)
 
 
 def rotates(state: dict) -> bool:

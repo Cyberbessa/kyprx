@@ -1,8 +1,9 @@
 """The one-off passes that bring an install up to date, each run once, gated on the version
 stamped in `state.json`: bringing an install made under this app's previous name across (below
 version 3), putting KyprX's layout order in place where nobody had chosen one (below 4),
-moving the title bar's opacity keys to the names the decoration reads (below 5), and moving this
-app's own two files out of what became the KyprX folder (below 6).
+moving the title bar's opacity keys to the names the decoration reads (below 5), moving this
+app's own two files out of what became the KyprX folder (below 6), and applying default settings
+including Longive theme and 7.5 corner radius (below 7).
 
 The first of them is most of this file.
 
@@ -41,15 +42,18 @@ import json
 import os
 import shutil
 
+import declared
 import defaults
 import effects
 import klassy
 import logs
 import rules
 import shortcuts
+import theme
 import writer
 import profiles
 import snapshot
+from kyprd_names import SCRIPT_PLUGIN
 from state import CONFIG_PATH, LEGACY_CONFIG_PATH, STATE_PATH, STATE_VERSION
 
 CONFIG_DIR = os.path.expanduser("~/.config/kyprx")
@@ -467,6 +471,40 @@ def keep_before_passes(log, version: int) -> bool:
     return True
 
 
+def _bootstrap_pass(tx) -> None:
+    """Apply KyprX declared defaults and Longive theme on a fresh install."""
+    declared.note_reloads(tx, declared.write_declared(tx, defaults.SETTINGS))
+    declared.write_declared_colours(tx, defaults.BUTTON_COLOURS)
+    if tx.kwin.get(effects.PLUGINS_GROUP, f"{SCRIPT_PLUGIN}Enabled") is None:
+        effects.set_plugin_enabled(tx.kwin, SCRIPT_PLUGIN, True)
+        tx.reload_kwin = True
+    now = theme.current()
+    wanted = dict(defaults.COLOURS)
+    p = theme.preset(wanted.get("preset", "")) or theme.default_preset(wanted.get("mode", "dark"))
+    if p:
+        steps = list(theme.plan(now, wanted, scheme_written=False))
+        klassy.settle_look_and_feel(tx.klassy, theme.package_after(now, wanted))
+        for description, action, plain in steps:
+            tx.session_write(description, action, plain)
+    shortcuts.release_spectacle_conflict()
+
+
+def _v7_upgrade_pass(tx) -> None:
+    """Migrate settings for existing installs updating to version 7."""
+    for plugin in (SCRIPT_PLUGIN, effects.BLUR_PLUGIN, effects.TILING_PLUGIN, effects.GEOMETRY_PLUGIN):
+        key = f"{plugin}Enabled"
+        if tx.kwin.get(effects.PLUGINS_GROUP, key) is None:
+            effects.set_plugin_enabled(tx.kwin, plugin, True)
+            tx.reload_kwin = True
+    if tx.klassy.get("Windeco", "WindowCornerRadius") == "2.5":
+        tx.klassy.set("Windeco", "WindowCornerRadius", "7.5")
+        tx.reload_kwin = True
+    if tx.kwin.get(effects.BLUR_GROUP, "CornerRadius") == "2.5":
+        tx.kwin.set(effects.BLUR_GROUP, "CornerRadius", "7.5")
+        tx.reload_blur = True
+    shortcuts.release_spectacle_conflict()
+
+
 def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
     """Do whatever this install still needs. False means do not touch any window this start.
 
@@ -534,6 +572,24 @@ def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
 
     if version < 6 and not move_working_copies(log):
         return True
+
+    if version < 7:
+        try:
+            if version == 0:
+                diff = writer.run(_bootstrap_pass)
+                if diff and writer.dry_run():
+                    log(f"would have applied KyprX defaults on fresh install:\n{diff}")
+                elif diff:
+                    log("applied KyprX defaults on fresh install")
+            else:
+                diff = writer.run(_v7_upgrade_pass)
+                if diff and writer.dry_run():
+                    log(f"would have brought settings up to date for version 7:\n{diff}")
+                elif diff:
+                    log("brought settings up to date for version 7")
+        except Exception as e:  # noqa: BLE001
+            log(f"could not bring settings up to date for version 7: {logs.what(e)}", trouble=True)
+            return True
 
     _stamp_version(log)
     return True

@@ -133,6 +133,7 @@ class Manager(dbus.service.Object):
             layout = str(paper.get("layout", held.get("layout", "pages")))
             self.d.config.wallpaper = {
                 "video_dir": str(paper.get("video_dir", held.get("video_dir", ""))),
+                "image_dir": str(paper.get("image_dir", held.get("image_dir", ""))),
                 "layout": layout if layout in WALLPAPER_LAYOUTS else WALLPAPER_LAYOUTS[0],
             }
             # A `mode` sent here is not stored and not silently dropped either: it is a change to

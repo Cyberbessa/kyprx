@@ -637,7 +637,7 @@ def _config_changes(before: dict, after: dict) -> list[str]:
                            f"{shortcuts.key_text(keys_b.get(action) or [])} → "
                            f"{shortcuts.key_text(keys_a.get(action) or [])}")
     paper_b, paper_a = before.get("wallpaper") or {}, after.get("wallpaper") or {}
-    for key, label in (("video_dir", "video folder"), ("layout", "wallpaper picker layout")):
+    for key, label in (("video_dir", "video folder"), ("image_dir", "pictures folder"), ("layout", "wallpaper picker layout")):
         if paper_b.get(key) != paper_a.get(key):
             out.append(_change(label, paper_b.get(key) or "none", paper_a.get(key) or "none"))
     return out

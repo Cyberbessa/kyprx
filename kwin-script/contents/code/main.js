@@ -107,8 +107,8 @@ registerShortcut("KyprXCheatsheet", "KyprX: shortcut cheatsheet", "Meta+/", func
              "ShowCheatsheet");
 });
 
-// The wallpaper picker, by the same route. Meta+R was free on the desktop this was written for,
-// and is what end-4/dots-hyprland binds its own wallpaper selector to.
+// The wallpaper picker, by the same route. Meta+R is the default shortcut;
+// any conflict with Spectacle's RecordRegion on a fresh install is released by KyprX.
 registerShortcut("KyprXWallpaper", "KyprX: wallpaper picker", "Meta+R", function () {
     callDBus("org.cyberbessa.KyprX", "/Windows", "org.cyberbessa.KyprX.Windows",
              "ShowWallpaper");

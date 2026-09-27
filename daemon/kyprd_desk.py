@@ -233,9 +233,11 @@ class DeskPart:
                 key, n = f"{name} #{n}", n + 1
             activities[key] = {"on_screen": screens}
         video_dir = str(self.config.wallpaper.get("video_dir") or "")
+        image_dir = str(self.config.wallpaper.get("image_dir") or "")
         return {"activities": activities,
                 "picker": {"layout": self.config.wallpaper.get("layout", "pages"),
-                           "video_folder": explain.home(video_dir) if video_dir else ""}}
+                           "video_folder": explain.home(video_dir) if video_dir else "",
+                           "image_folder": explain.home(image_dir) if image_dir else ""}}
 
     # -- what is wrong with a folder, before anything is applied
 
@@ -400,9 +402,11 @@ class DeskPart:
             picker = paper["picker"]
             layout = str(picker.get("layout") or "pages")
             folder_path = str(picker.get("video_folder") or "")
+            image_folder_path = str(picker.get("image_folder") or "")
             wanted_config.wallpaper = {
                 "layout": layout if layout in WALLPAPER_LAYOUTS else "pages",
-                "video_dir": os.path.expanduser(folder_path) if folder_path else ""}
+                "video_dir": os.path.expanduser(folder_path) if folder_path else "",
+                "image_dir": os.path.expanduser(image_folder_path) if image_folder_path else ""}
 
         if preview:
             import explain

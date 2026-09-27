@@ -64,6 +64,13 @@ showed last. If the desktop does not take the change, the tick goes back to what
 **Videos** is greyed, with the tooltip *Smart Video Wallpaper Reborn is not installed.*, when that
 plugin is missing. There is no KyprX default here: the tab always shows what the desktop has.
 
+**Pictures folder** is the folder the picker lists pictures from, in addition to the wallpapers KDE
+ships. Type a folder and press Enter, or press **Choose…**, which opens a folder chooser titled
+*Where the pictures are*. The field and the button are greyed unless **Pictures** is ticked; the
+folder is kept either way. While no folder is set, KyprX looks in your Pictures folder
+(`XDG_PICTURES_DIR` in `~/.config/user-dirs.dirs`, or `~/Pictures`). Empty the field to go back to
+the default.
+
 **Video folder** is the folder the picker lists videos from. Only the videos directly in it are
 listed, not the ones in folders inside it. Type a folder and press Enter, or press **Choose…**,
 which opens a folder chooser titled *Where the videos are*. The field and the button are greyed

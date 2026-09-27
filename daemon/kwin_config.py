@@ -7,12 +7,14 @@ in `daemon/effects.py`. What the compositor reads when a key is absent comes fro
 from __future__ import annotations
 
 
+import about
+
 #: The compositor's window-behaviour settings — the Focus half of them is on the Tiling page,
 #: because focus is what decides whether a tiled screen feels like one.
 WINDOWS_GROUP = "Windows"
 
 #: The compositor's decoration schema, for the settings the Appearance page borrows from it.
-DECORATION_SCHEMA = "/usr/share/config.kcfg/kwindecorationsettings.kcfg"
+DECORATION_SCHEMA = about.data_path("config.kcfg/kwindecorationsettings.kcfg") or "/usr/share/config.kcfg/kwindecorationsettings.kcfg"
 DECORATION_GROUP = "org.kde.kdecoration2"
 
 #: What the compositor uses when the file is silent, from its own schema. `SeparateScreenFocus`

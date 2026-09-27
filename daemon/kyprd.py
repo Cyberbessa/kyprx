@@ -271,6 +271,11 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
             if tx.kwin.get(effects.PLUGINS_GROUP, key) is None:
                 effects.set_plugin_enabled(tx.kwin, SCRIPT_PLUGIN, True)
                 tx.reload_kwin = True
+            for plugin in (effects.BLUR_PLUGIN, effects.TILING_PLUGIN, effects.GEOMETRY_PLUGIN):
+                pkey = f"{plugin}Enabled"
+                if tx.kwin.get(effects.PLUGINS_GROUP, pkey) is None:
+                    effects.set_plugin_enabled(tx.kwin, plugin, True)
+                    tx.reload_kwin = True
 
         try:
             diff = writer.run(build)
@@ -279,10 +284,10 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
                      trouble=True)
             return
         if diff and writer.dry_run():
-            self.log("would switch KyprX's compositor script on, the first start on this "
+            self.log("would switch KyprX's compositor script and required plugins on, the first start on this "
                      "desk:\n" + diff)
         elif diff:
-            self.log("switched KyprX's compositor script on: the first start on this desk")
+            self.log("switched KyprX's compositor script and required plugins on: the first start on this desk")
 
     # ------------------------------------------ the overlays and the settings window
 

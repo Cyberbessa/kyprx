@@ -80,8 +80,13 @@ preflight() {
   python3 -c 'import PySide6, dbus, gi' >/dev/null 2>&1 ||
     missing+=("PySide6, dbus-python and PyGObject for Python 3 — the daemon and the interface — your distribution's packages")
   command -v kwriteconfig6 >/dev/null || missing+=("kwriteconfig6 — switching the script on — KDE Frameworks' kconfig")
+  command -v kreadconfig6 >/dev/null || missing+=("kreadconfig6 — reading desktop configuration — KDE Frameworks' kconfig")
   command -v plasma-apply-colorscheme >/dev/null ||
     missing+=("plasma-apply-colorscheme — the colour presets on the Appearance tab — plasma-workspace")
+  command -v plasma-apply-lookandfeel >/dev/null ||
+    missing+=("plasma-apply-lookandfeel — light and dark global themes — plasma-workspace")
+  command -v plasma-apply-desktoptheme >/dev/null ||
+    missing+=("plasma-apply-desktoptheme — the panel's style — plasma-workspace")
   if (( ${#missing[@]} == 0 )); then
     out=$(python3 "$HERE/daemon/requirements.py" 2>&1) && return 0
   fi
@@ -255,8 +260,8 @@ install_all() {
   # the flip reloaded nothing. `unloadScript` is the part it only does when asked; one
   # `reconfigure` afterwards loads every enabled script back, this one included.
   do_it "kwriteconfig6 --file kwinrc --group Plugins --key ${PLUGIN_ID}Enabled true"
-  do_it "qdbus org.kde.KWin /Scripting unloadScript ${PLUGIN_ID} >/dev/null 2>&1 || true"
-  do_it "qdbus org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true"
+  do_it "busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting unloadScript s '${PLUGIN_ID}' >/dev/null 2>&1 || true"
+  do_it "busctl --user call org.kde.KWin /KWin org.kde.KWin reconfigure >/dev/null 2>&1 || true"
   say "  kwinrc [Plugins] ${PLUGIN_ID}Enabled=true, and the script re-read so its shortcuts exist"
 
   (( DRY )) && return 0
@@ -281,8 +286,8 @@ uninstall_all() {
   # rather than set to false: with no key the script is off, and nothing of this app's is left in
   # kwinrc -- the same as the daemon does when KyprX is removed from the Settings tab.
   do_it "kwriteconfig6 --file kwinrc --group Plugins --key ${PLUGIN_ID}Enabled --delete"
-  do_it "qdbus org.kde.KWin /Scripting unloadScript ${PLUGIN_ID} >/dev/null 2>&1 || true"
-  do_it "qdbus org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true"
+  do_it "busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting unloadScript s '${PLUGIN_ID}' >/dev/null 2>&1 || true"
+  do_it "busctl --user call org.kde.KWin /KWin org.kde.KWin reconfigure >/dev/null 2>&1 || true"
 
   step "removing the links and files"
   do_it "systemctl --user stop kyprd 2>/dev/null || true"

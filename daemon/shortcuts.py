@@ -618,3 +618,37 @@ def release_legacy_claims() -> None:
             iface.unregister(component, action)
         except dbus.DBusException:
             pass
+
+
+SPECTACLE_COMPONENT = "org.kde.spectacle.desktop"
+SPECTACLE_RECORD_REGION = "RecordRegion"
+
+
+def spectacle_conflict_held() -> list[dict]:
+    """Is Spectacle's RecordRegion action holding Meta+R? A read."""
+    meta_r = from_words("Meta+R")
+    if not meta_r:
+        return []
+    try:
+        return [
+            h for h in holders(meta_r)
+            if h.get("component") == SPECTACLE_COMPONENT and h.get("id") == SPECTACLE_RECORD_REGION
+        ]
+    except dbus.DBusException:
+        return []
+
+
+def release_spectacle_conflict() -> bool:
+    """Give back Meta+R if Spectacle's RecordRegion is holding it. True if it was held and released."""
+    meta_r = from_words("Meta+R")
+    if not meta_r:
+        return False
+    released = False
+    for holder in spectacle_conflict_held():
+        try:
+            take_from(holder, meta_r)
+            released = True
+        except (Refused, KeyError, dbus.DBusException):
+            pass
+    return released
+

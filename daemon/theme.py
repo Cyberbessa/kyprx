@@ -140,17 +140,13 @@ class Preset:
     note: str = ""
 
 
-#: Two of these name things this app does not ship. `Klassy {Dark,Light}` is the scheme the global
-#: theme applies by itself and is the state to return to -- for the colours: the panel stays on
-#: `STYLE` and follows them, where the global theme would put Klassy's own style there. `Carl` is
-#: somebody's own, offered where it is installed; where it is not, it is still listed, with the
-#: reason from `available`, and its swatch is drawn dimmed and cannot be chosen. Every preset
-#: wears `STYLE`, which is why no row says so.
+#: Klassy {Dark,Light} is the scheme the global theme applies by itself and is the state to
+#: return to -- for the colours: the panel stays on `STYLE` and follows them, where the global theme
+#: would put Klassy's own style there. Every preset wears `STYLE`, which is why no row says so.
 PRESETS = [
     Preset("klassy-dark", "Klassy Dark", "dark", "KlassyDark",
            "what the global theme applies by itself"),
-    Preset("carl", "Carl", "dark", "Carl",
-           "installed separately, and left exactly as it was found"),
+    Preset("longive", "Longive", "dark", "KyprXLongive"),
     Preset("catppuccin-mocha", "Catppuccin Mocha", "dark", "KyprXCatppuccinMocha"),
     Preset("nord", "Nord", "dark", "KyprXNord"),
     Preset("gruvbox-dark", "Gruvbox Dark", "dark", "KyprXGruvboxDark"),
@@ -170,11 +166,17 @@ MODES = ("dark", "light")
 
 
 def preset(preset_id: str) -> Preset | None:
+    if preset_id == "carl":
+        preset_id = "longive"
     return next((p for p in PRESETS if p.id == preset_id), None)
 
 
 def default_preset(mode: str) -> Preset:
-    """The preset a mode falls back to: the one the global theme applies by itself."""
+    """The preset a mode falls back to: Longive for dark, and Klassy Light for light."""
+    if mode == "dark":
+        found = preset("longive")
+        if found:
+            return found
     return next(p for p in PRESETS if p.mode == mode and p.scheme == BASE_SCHEME[mode])
 
 
@@ -335,7 +337,10 @@ def current() -> dict:
         # The derived scheme says which preset it came from, so nothing has to be remembered in a
         # settings file that could disagree with the desktop.
         cfg = kconfig.KConfig(scheme_path(CUSTOM) or os.path.join(SCHEMES_HOME, CUSTOM + ".colors"))
-        now["preset"] = str(cfg.get("General", FROM_PRESET, "") or "")
+        from_preset = str(cfg.get("General", FROM_PRESET, "") or "")
+        if from_preset == "carl":
+            from_preset = "longive"
+        now["preset"] = from_preset
         now["tint"] = _float(cfg.get("General", "TintFactor", 0))
     else:
         now["preset"] = next((p.id for p in PRESETS if p.scheme == scheme), "")

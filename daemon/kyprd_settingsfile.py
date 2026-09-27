@@ -325,6 +325,7 @@ class SettingsFilePart:
             layout = str(paper.get("layout", WALLPAPER_LAYOUTS[0]))
             self.config.wallpaper = {
                 "video_dir": str(paper.get("video_dir", "")),
+                "image_dir": str(paper.get("image_dir", "")),
                 "layout": layout if layout in WALLPAPER_LAYOUTS else WALLPAPER_LAYOUTS[0],
             }
             self.config.save()

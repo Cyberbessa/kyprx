@@ -93,6 +93,8 @@ class WallpaperPart:
             "pause_modes": dict(wallpaper.PAUSE_MODES),
             "video_dir": paper.get("video_dir", ""),
             "video_dir_present": False,
+            "image_dir": paper.get("image_dir", ""),
+            "image_dir_present": False,
             "rotates": False,
             "activity": "",
             "desktops": 0,
@@ -108,15 +110,18 @@ class WallpaperPart:
         mode = wallpaper.mode_of(state) or mode
         out["mode"] = mode
         video_dir = out["video_dir"] or wallpaper.default_video_dir(state)
+        image_dir = out["image_dir"] or wallpaper.default_image_dir(state)
         out.update(
             activity=state.get("activity", ""),
             desktops=len(state.get("desktops") or []),
             pause=wallpaper.pause_mode(state) if out["video_plugin"] else "",
             video_dir=video_dir,
             video_dir_present=bool(video_dir) and os.path.isdir(video_dir),
+            image_dir=image_dir,
+            image_dir_present=bool(image_dir) and os.path.isdir(image_dir),
             rotates=wallpaper.rotates(state),
             current=wallpaper.current_target(mode, state),
-            entries=wallpaper.catalogue(mode, video_dir, state),
+            entries=wallpaper.catalogue(mode, video_dir, image_dir, state),
         )
         if mode == "video" and not out["video_plugin"]:
             out["trouble"] = ("the Smart Video Wallpaper Reborn plugin is not installed, "

@@ -11,4 +11,4 @@
 # when the scheme changes, so the panel's background froze on the palette it had. On this desktop
 # the home directory itself is reached through a link, so nothing under it can be that file's
 # home. This directory can. See MAP.md in the repository, and scripts/probe.py --follow.
-export XDG_DATA_DIRS="@DATA@:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_DATA_DIRS="@DATA@:${XDG_DATA_DIRS:-/usr/local/share:/usr/share:/var/lib/flatpak/exports/share}"

@@ -70,6 +70,17 @@ class WallpaperTab(QWidget):
         self.pages.toggled.connect(lambda on: on and self._set_layout("pages"))
         self.strip.toggled.connect(lambda on: on and self._set_layout("strip"))
 
+        self.image_folder = QLineEdit()
+        self.image_folder.setPlaceholderText("where the pictures are")
+        self.image_folder.editingFinished.connect(self._image_folder_typed)
+        self.image_choose = QPushButton("Choose…")
+        self.image_choose.setToolTip("Pick the folder the pictures are in.")
+        self.image_choose.clicked.connect(self._choose_image)
+        image_folder_row = QHBoxLayout()
+        image_folder_row.addWidget(QLabel("Pictures folder"))
+        image_folder_row.addWidget(self.image_folder, 1)
+        image_folder_row.addWidget(self.image_choose)
+
         self.folder = QLineEdit()
         self.folder.setPlaceholderText("where the videos are")
         self.folder.editingFinished.connect(self._folder_typed)
@@ -99,6 +110,7 @@ class WallpaperTab(QWidget):
                       "every screen of the activity you are in, and no other.")
         form = QVBoxLayout(box)
         form.addWidget(self.images)
+        form.addLayout(image_folder_row)
         form.addWidget(self.videos)
         form.addLayout(folder_row)
         form.addLayout(pause_row)
@@ -136,6 +148,10 @@ class WallpaperTab(QWidget):
         self.videos.setEnabled(videos)
         if not videos:
             self.videos.setToolTip("Smart Video Wallpaper Reborn is not installed.")
+        if not self.image_folder.hasFocus():
+            self.image_folder.setText(data.get("image_dir", ""))
+        self.image_folder.setEnabled(mode == "image")
+        self.image_choose.setEnabled(mode == "image")
         # Not while somebody is typing in it: this runs on every change the daemon reports, and any
         # window opening used to wipe a folder half typed.
         if not self.folder.hasFocus():
@@ -232,6 +248,21 @@ class WallpaperTab(QWidget):
             return
         self.c.set_video_pause(str(self.pause.currentData()))
         self.reload()
+
+    def _image_folder_typed(self) -> None:
+        typed = self.image_folder.text().strip()
+        if self._loading or typed == (self.c.settings().get("wallpaper") or {}).get("image_dir"):
+            return
+        self._send(image_dir=typed)
+        self.reload()
+
+    def _choose_image(self) -> None:
+        start = self.image_folder.text().strip() or os.path.expanduser("~")
+        chosen = QFileDialog.getExistingDirectory(self, "Where the pictures are", start)
+        if chosen:
+            self.image_folder.setText(chosen)
+            self._send(image_dir=chosen)
+            self.reload()
 
     def _folder_typed(self) -> None:
         """`editingFinished` fires when the focus leaves as well as on Enter, so a folder nobody

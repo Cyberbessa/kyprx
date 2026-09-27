@@ -42,7 +42,8 @@ from __future__ import annotations
 #:
 #: 5: the title bar's four opacity keys under the names the decoration actually reads -- see
 #: `TitleBarOpacity` below. The values are the ones version 4 meant; only now do they arrive.
-VERSION = 5
+#: 6: Longive as default theme, corner radius 7.5, and image wallpaper directory support.
+VERSION = 6
 
 #: What a window gets the first time it is seen. `state.Defaults` and `policy.Switches` both take
 #: their field values from here, so there is one place to change and no pair to keep in step.
@@ -86,24 +87,17 @@ TRANSPARENCY = 92
 #: reading that promise the other way round from the person who read it.
 OWN = {"paused": False, "notify": True, "auto_colour": False}
 
-#: The wallpaper picker's two choices. Declared here rather than spelled out in `state.py` so that
+#: The wallpaper picker's choices. Declared here rather than spelled out in `state.py` so that
 #: there is one place to read them from: `state.Config.load` takes the layout from here, and
 #: `state.WALLPAPER_LAYOUTS` stays what a *request* is checked against.
 #:
-#: The folder is emptied rather than remembered, and that loses nothing: the Wallpaper tab works
-#: one out from the machine when there is none -- from where the videos the plugin already knows
-#: about live -- so restoring it to nothing is restoring it to "ask the machine again".
-WALLPAPER = {"video_dir": "", "layout": "pages"}
+#: The folders are emptied rather than remembered, and that loses nothing: the Wallpaper tab works
+#: one out from the machine when there is none -- so restoring it to nothing is restoring it to
+#: "ask the machine again".
+WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages"}
 
-#: The colours. Dark, and the preset the global theme applies by itself -- which is the way back
-#: for the colours, and the one place it is always safe to land -- with no colour of your own and
-#: nothing soaking in.
-#:
-#: **An empty preset means the mode's own default**, which `set_theme` already resolves through
-#: `theme.default_preset` -- the preset whose scheme is the one that mode's package applies by
-#: itself. Spelled as nothing rather than as `klassy-dark` on purpose: naming it here would be a
-#: second place to change the day it moves, able to disagree with `theme.BASE_SCHEME`.
-COLOURS = {"mode": "dark", "preset": "", "accent": "", "tint": 0.0}
+#: The colours. Longive for dark, and no colour of your own and nothing soaking in.
+COLOURS = {"mode": "dark", "preset": "longive", "accent": "", "tint": 0.0}
 
 
 #: The decoration keeps every button-behaviour setting twice, once for the active window and once
@@ -186,7 +180,7 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
             "ButtonShape": "ShapeFullHeightRectangle",
             #: Mirrored into the blur effect's own radius by the Appearance tab, which is the one
             #: place it is set. The two are declared equal so a restore leaves them agreeing.
-            "WindowCornerRadius": "2.5",
+            "WindowCornerRadius": "7.5",
             #: The title bar wears the theme's colour, not the application's. An application that
             #: paints its own header colour makes every window a different colour, which is the
             #: opposite of what a tiled screen wants.
@@ -335,7 +329,7 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
         "NoiseStrength": "5",
         #: Mirrored from the decoration's window corner radius by the Appearance tab, which is the
         #: single origin for it. The two are declared equal here so a restore leaves them agreeing.
-        "CornerRadius": "2.5",
+        "CornerRadius": "7.5",
         "Brightness": "100",
         "Saturation": "150",
         "Contrast": "100",

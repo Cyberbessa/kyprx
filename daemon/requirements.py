@@ -133,7 +133,14 @@ class Machine:
 def qt_plugin_dirs() -> list[str]:
     """The folders Qt looks for plugins in: `QT_PLUGIN_PATH`, then each system layout's own."""
     found = [p for p in os.environ.get("QT_PLUGIN_PATH", "").split(":") if p]
-    found += sorted(glob.glob("/usr/lib*/qt6/plugins")) + sorted(glob.glob("/usr/lib/*/qt6/plugins"))
+    home = os.path.expanduser("~/.local")
+    found += (
+        sorted(glob.glob("/usr/lib*/qt6/plugins"))
+        + sorted(glob.glob("/usr/lib/*/qt6/plugins"))
+        + sorted(glob.glob("/usr/local/lib*/qt6/plugins"))
+        + sorted(glob.glob("/usr/local/lib/*/qt6/plugins"))
+        + sorted(glob.glob(f"{home}/lib*/qt6/plugins"))
+    )
     out: list[str] = []
     for path in found:
         if path not in out and os.path.isdir(path):
@@ -144,10 +151,11 @@ def qt_plugin_dirs() -> list[str]:
 def package_version(name: str) -> str:
     """The version the package manager records for `name`, or "" when it records none.
 
-    `rpm` first and then `pacman`, whichever is installed and knows the package: an Arch system may
-    carry `rpm` with nothing in its database, and then it simply knows nothing.
+    `rpm` first, then `pacman`, then `dpkg-query`, whichever is installed and knows the package.
     """
-    for argv in (["rpm", "-q", "--qf", "%{VERSION}", name], ["pacman", "-Q", name]):
+    for argv in (["rpm", "-q", "--qf", "%{VERSION}", name],
+                 ["pacman", "-Q", name],
+                 ["dpkg-query", "-W", "-f=${Version}", name]):
         if not shutil.which(argv[0]):
             continue
         try:
@@ -160,6 +168,8 @@ def package_version(name: str) -> str:
         if argv[0] == "pacman":
             # `klassy 1:6.7.3-1`: the version, without the epoch and without the release.
             text = text.split()[-1].split(":")[-1].rsplit("-", 1)[0]
+        elif argv[0] == "dpkg-query":
+            text = text.split(":")[-1].rsplit("-", 1)[0]
         return text
     return ""
 
@@ -249,7 +259,7 @@ def _detail(project: Project, state: str, version: str) -> str:
 
 def _fix(project: Project, state: str, system: str) -> str:
     """What to do on this system, said as the command to run where there is one."""
-    package = project.packages[about.ARCH if system == about.ARCH else about.FEDORA]
+    package = project.packages.get(about.ARCH if system == about.ARCH else about.FEDORA, "")
     if state == NOT_RUNNING:
         if system == about.ARCH:
             return (f"It was built for another version of KWin. Build it again for this one: "
@@ -261,14 +271,14 @@ def _fix(project: Project, state: str, system: str) -> str:
                     f"for each Plasma release; once it has, update: {again}")
         return f"It was built for another version of KWin: build it again ({project.url})."
     if state in (MISSING, TOO_OLD):
-        if system == about.FEDORA:
+        if system == about.FEDORA and package:
             verb = "install" if state == MISSING else "upgrade"
             return f"sudo dnf {verb} {package}"
-        if system == about.FEDORA_ATOMIC:
+        if system == about.FEDORA_ATOMIC and package:
             if state == MISSING:
                 return f"rpm-ostree install {package}, then restart the computer"
             return "rpm-ostree upgrade, then restart the computer"
-        if system == about.ARCH:
+        if system == about.ARCH and package:
             return f"paru -S {package}"
         return f"Install it from {project.url}"
     return ""

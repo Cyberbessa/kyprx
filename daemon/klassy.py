@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+import about
 import kconfig
 
 #: Klassy's window decoration as the compositor names it -- the `library` key of `kwinrc
@@ -74,7 +75,7 @@ OUTLINE_OFF_KEYS = {
 #: The decoration's own schema, installed with it. It is the authority on what every setting is
 #: when the file says nothing, and reading it is the difference between a checkbox that tells the
 #: truth and one that does not. The parsing itself lives in `kconfig`, next to the file format.
-SCHEMA = "/usr/share/config.kcfg/klassy-decoration.kcfg"
+SCHEMA = about.data_path("config.kcfg/klassy-decoration.kcfg") or "/usr/share/config.kcfg/klassy-decoration.kcfg"
 
 #: The decoration's groups this app reads and writes. One place reads this list: `Manager.Groups`
 #: in `daemon/kyprd_api.py`, which sends each group to the interface. `explain.KLASSY_GROUPS` names
