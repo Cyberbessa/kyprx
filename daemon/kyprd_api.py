@@ -33,7 +33,7 @@ from declared import note_reloads, shipped_defaults, write_declared
 from klassy import KLASSY_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import LIST_SWITCHES, MANAGER_IFACE, SCRIPT_PLUGIN
-from state import WALLPAPER_LAYOUTS, Defaults
+from state import Defaults, kde_wallpapers, wallpaper_layout
 
 if TYPE_CHECKING:
     # The daemon's class, for the annotation only. Never imported for real: kyprd.py runs as the
@@ -92,9 +92,15 @@ class Manager(dbus.service.Object):
                            #: `SetSettings`: a number reaches a window the moment it is set, and
                            #: the interface sends `Settings` back to that one whole.
                            "own_transparency": dict(self.d.config.own_transparency),
+                           #: Read-only, and for showing rather than choosing: which windows'
+                           #: ticks are being remembered while the strength stands at 100 %, where
+                           #: a tick cannot be deduced from the rules. It is written by the
+                           #: writes that make it true -- ticking, the strength's moves -- and
+                           #: there is nothing for a caller to ask for here.
+                           "ticked_at_100": list(self.d.config.ticked_at_100),
                            "defaults": asdict(self.d.config.defaults),
-                           #: The picker's two choices, and nothing derived from them. Working
-                           #: out which folder that means, and what is in it, is `Wallpapers`'
+                           #: The picker's choices, and nothing derived from them. Working
+                           #: out which folder that means, and what is in it, is `Wallpapers'`
                            #: job — this one is called to draw a header several times a second.
                            "wallpaper": dict(self.d.config.wallpaper),
                            "waiting": [w.window_class for w in self.d.pending()]})
@@ -127,14 +133,16 @@ class Manager(dbus.service.Object):
         if "wallpaper" in d:
             # Read key by key rather than taken whole, so a caller sending back everything
             # `Settings` gave it — which is what the interface does — cannot store a field this
-            # app does not own, and an unknown mode cannot make the picker list nothing.
+            # app does not own, and an unknown layout cannot make the picker open nothing.
             paper = d["wallpaper"] or {}
             held = self.d.config.wallpaper or {}
-            layout = str(paper.get("layout", held.get("layout", "pages")))
             self.d.config.wallpaper = {
                 "video_dir": str(paper.get("video_dir", held.get("video_dir", ""))),
                 "image_dir": str(paper.get("image_dir", held.get("image_dir", ""))),
-                "layout": layout if layout in WALLPAPER_LAYOUTS else WALLPAPER_LAYOUTS[0],
+                "layout": wallpaper_layout(paper.get("layout", held.get("layout"))),
+                # A block without the switch is one written before it existed, or the interface
+                # sending back the keys it read: either way the value held now stands.
+                "kde_wallpapers": kde_wallpapers(paper, held.get("kde_wallpapers")),
             }
             # A `mode` sent here is not stored and not silently dropped either: it is a change to
             # the desktop rather than a setting of this app's, and `SetWallpaperMode` is the door

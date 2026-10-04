@@ -1,16 +1,41 @@
-# Deliberately empty: a colours file that carries no palette.
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-FileCopyrightText: Paul A McAuley <kde@paulmcauley.com>
+# SPDX-FileCopyrightText: 2026 cyberbessa
+# SPDX-License-Identifier: LGPL-2.0-or-later
 #
-# KConfig layers `kdeglobals` under every file it opens, so with nothing in here the style takes
-# the active colour scheme -- the same colours it took with no file at all. Measured with
-# scripts/probe.py: the window, text, highlight and header colours seen through this style
-# are the scheme's with and without this file, and `klassy-dark`, which ships a palette, prints a
-# different set, which is the control.
+# One palette, and one set of it only: the `[Colors:Complementary]` block at the bottom, which is
+# the set the lock screen and the log-out screen draw in. It is read key by key -- KConfig layers
+# `kdeglobals` under this file, and every key the block does not name is answered by the colour
+# scheme in force -- which is why nothing else is fixed here. A `[Colors:Window]`, `[Colors:View]`
+# or `[Colors:Button]` group would be the panel painting from its own file and never reading the
+# scheme again, and the colour presets would stop at the windows and never reach the bar. So the
+# panel keeps following the scheme, a colour of your own included, exactly as it did when this
+# file carried no palette at all.
 #
-# It exists because KSvg asks every theme directory for `colors` on every item it creates and never
-# remembers that there was none: with no file, ten to twelve file probes per item on a stock
-# session (more with more data directories), and KRunner creates every row again on every
-# keystroke; with the file, one. Nothing below this line, on purpose: a [Colors:*] group here would
-# be a palette, and the panel would stop following the scheme.
+# The Complementary block is pinned -- copied from Klassy's own `KlassyDark.colors` -- because
+# the two screens that draw in it should be dark on every preset, "dark even on light themes":
+# the light presets carry a light Complementary set of their own, and left to the scheme the lock
+# screen went light with them. Dark it is, on every preset this app ships -- with the two
+# decoration keys left out, so the focus and hover colours of the lock screen's flat buttons
+# follow the colour scheme instead of Klassy Dark's blue. The password box is not in this set: a
+# Plasma text field puts itself in the View set while its background shows, so its ring and its
+# own colours follow the scheme whatever this block says. The block is
+# `theme.COMPLEMENTARY` in `daemon/theme.py`, and `tests/test_colour_schemes.py` holds the file
+# and the constant to each other. Measured with `scripts/probe.py --follow --style-dir`: the
+# text colour the screens read is still this block's, the panel's own colours follow the scheme,
+# the password box's ring follows the scheme's View focus, and the flat buttons follow its
+# Complementary focus.
+#
+# Why this file exists at all, rather than being absent: KSvg asks every theme directory for
+# `colors` on every item it creates and never remembers that there was none -- with no file, ten
+# to twelve file probes per item on a stock session (more with more data directories), and
+# KRunner creates every row again on every keystroke; with the file, one.
 #
 # And it must be found by a path with no symbolic link in it, which is why install.sh puts this
 # one file in a directory of its own, spelled with every link resolved, and tells the session to
@@ -19,3 +44,15 @@
 # of them is reparsed when the scheme changes -- measured, the panel's text followed the wallpaper
 # and its background did not. On this desktop the home directory is itself reached through a
 # link, so the package's own directory, however it is installed, cannot be that path.
+
+[Colors:Complementary]
+BackgroundAlternate=30,87,116
+BackgroundNormal=42,46,50
+ForegroundActive=61,174,233
+ForegroundInactive=161,169,177
+ForegroundLink=29,153,243
+ForegroundNegative=218,68,83
+ForegroundNeutral=246,116,0
+ForegroundNormal=252,252,252
+ForegroundPositive=39,174,96
+ForegroundVisited=155,89,182

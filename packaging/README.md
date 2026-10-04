@@ -124,13 +124,15 @@ ffmpeg -i recording.webm -vf "fps=60,scale=2560:-2:flags=lanczos" \
 ## Building locally
 
 Both recipes can be built from a tarball of the tree, in throwaway containers, without touching
-the machine they run on:
+the machine they run on. The tarball carries the version in `VERSION` in its name and its folder,
+as the spec's `Source0` and `%autosetup` expect:
 
 ```sh
-git archive --prefix=kyprx-0.1.0/ -o kyprx-0.1.0.tar.gz HEAD
-podman run --rm -v "$PWD":/src:ro,z registry.fedoraproject.org/fedora:44 bash -c '
+V=$(cat VERSION)
+git archive --prefix=kyprx-$V/ -o kyprx-$V.tar.gz HEAD
+podman run --rm -e V="$V" -v "$PWD":/src:ro,z registry.fedoraproject.org/fedora:44 bash -c '
   dnf -y install rpm-build rpmdevtools python3-devel systemd-rpm-macros desktop-file-utils appstream
-  mkdir -p ~/rpmbuild/SOURCES && cp /src/kyprx-0.1.0.tar.gz ~/rpmbuild/SOURCES/
+  mkdir -p ~/rpmbuild/SOURCES && cp /src/kyprx-$V.tar.gz ~/rpmbuild/SOURCES/
   rpmbuild -ba /src/packaging/fedora/kyprx.spec'
 ```
 

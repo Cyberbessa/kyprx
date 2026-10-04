@@ -6,7 +6,7 @@
 # packaging/README.md says how a release reaches the AUR.
 
 pkgname=kyprx
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc="KDE-Native Hyprland Experience"
 arch=('any')

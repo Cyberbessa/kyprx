@@ -135,6 +135,15 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
                      f"windows KyprX leaves alone")
             self.config.own_transparency = {c: n for c, n in self.config.own_transparency.items()
                                             if c not in refused}
+        #: The same for the held ticks, and for the same reason: a window this app leaves alone
+        #: cannot be ticked by it, so one on the list can only have come from a file edited by
+        #: hand -- and a tick held for it would put it back on the desk the next time the strength
+        #: came down. Kept in memory only, like the numbers above: the next save writes the
+        #: pruned list.
+        stray = [c for c in self.config.ticked_at_100 if not self.own_allowed(c)]
+        if stray:
+            self.log(f"ignoring a held tick for {', '.join(stray)}: windows KyprX leaves alone")
+            self.config.ticked_at_100 = [c for c in self.config.ticked_at_100 if c not in stray]
         self.state = State()
         #: The looks kept under a name. Read once like the two above, written through the same
         #: door, and held to the same promise in dry run -- see `daemon/profiles.py`.

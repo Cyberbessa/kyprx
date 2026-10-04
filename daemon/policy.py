@@ -116,19 +116,27 @@ def pattern_class(pattern: str) -> str | None:
 
 # ---------------------------------------------------------------- reading
 
-def read_switches(tx, window_class: str, resource_name: str = "") -> tuple[Switches, str | None]:
+def read_switches(tx, window_class: str, resource_name: str = "",
+                  held: bool = False) -> tuple[Switches, str | None]:
     """The four switches as the config files have them, plus the pattern that governs the
-    title bar, if any."""
+    title bar, if any.
+
+    `held` says the window's Transparency tick is being **remembered** rather than deduced --
+    `TransparencyPart.held` in `daemon/kyprd_transparency.py` knows when. It exists for the one
+    strength where deduction fails: at 100 %, the rule a tick writes (opacity 100, forced) is
+    byte for byte what an unticked window reads, so the file cannot tell them apart and the
+    reader has to be told.
+    """
     overrides = klassy.read(tx.klassy)
     i = klassy.effective(overrides, window_class, resource_name)
     override = overrides[i] if i is not None else None
     return Switches(
         titlebar=not (override is not None and override.hides_titlebar()),
         outline=override.outline() if override is not None else True,
-        #: Ticked means something is actually making this window see-through — whichever rule
-        #: that is. Nothing forcing an opacity reads as opaque, which is what an undecorated
-        #: desktop does.
-        transparency=opacity_of(tx, window_class, resource_name) < rules.FULLY_OPAQUE,
+        #: Ticked means something is actually making this window see-through -- whichever rule
+        #: that is, or the memory of a tick made while the strength stood at 100. Nothing forcing
+        #: an opacity reads as opaque, which is what an undecorated desktop does.
+        transparency=held or opacity_of(tx, window_class, resource_name) < rules.FULLY_OPAQUE,
         blur=effects.has_blur(tx.kwin, window_class),
     ), (override.pattern if override else None)
 

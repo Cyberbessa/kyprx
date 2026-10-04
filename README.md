@@ -68,8 +68,9 @@ every one of their settings into a single window, where each change lands the mo
 
 ## See it move
 
-**The wallpaper picker.** Meta+R opens it over the desktop: the chosen wallpaper in the middle,
-the rest leaning away on either side, and Enter puts it on. Pictures or videos.
+**The wallpaper picker.** Meta+R opens it over the desktop: the chosen wallpaper large in the
+middle, the rest leaning away behind it like pages of an open book, and Enter puts it on. A strip
+of thumbnails beside one big picture is one setting away. Pictures or videos.
 
 <p align="center">
   <img src="screenshots/wallpaper-picker.avif" width="100%" alt="The wallpaper picker opening over the desktop, moving through video wallpapers, and putting one on">

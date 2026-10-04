@@ -9,7 +9,7 @@
 # its author's repository.
 
 Name:           kyprx
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -86,6 +86,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Sun Oct 04 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.2-1
+- Fixes for transparency at full opacity, the lock and log-out screens, and the wallpaper picker
+
 * Sun Sep 27 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.1-1
 - Post-release fixes for shortcuts, defaults, wallpaper discovery and portability
 

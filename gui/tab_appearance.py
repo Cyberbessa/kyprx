@@ -61,7 +61,8 @@ class TransparencyRow(QWidget):
         self.strength.setToolTip("How solid a see-through window is, 100 % being opaque. It "
                                  "reaches every window whose Transparency is ticked on the "
                                  "Windows tab and that has no opacity of its own there, and no "
-                                 "other.")
+                                 "other. Ticks made while it stands at 100 % are kept, and come "
+                                 "back on their own when it moves below again.")
         # Connected after the range is set, and that was measured: `setRange(1, 100)` on a fresh
         # spinbox emits `valueChanged(1)` when a slot is already listening, and this box would
         # then have written 1 % half a second after the window opened.

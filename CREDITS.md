@@ -64,15 +64,18 @@ All of these are used as the system installs them; none is copied into this repo
   `KlassyDark.colors` (all but its French name) and its colour effects, except that the two
   Monochrome schemes grey the `Color` value of their `[ColorEffects]` groups. `KlassyDark.colors`
   is LGPL-2.0-or-later.
-- The Plasma style's `share/desktoptheme/kyprx/plasmarc` carries two blocks of settings,
+- The Plasma style's `share/desktoptheme/kyprx/colors` carries its `[Colors:Complementary]` block
+  from Klassy's `KlassyDark.colors`, and its `plasmarc` carries two blocks of settings,
   `[ContrastEffect]` and `[AdaptiveTransparency]`, from Klassy's `klassy-dark` style, whose
   metadata declares LGPL.
 
-So those twelve files are under LGPL-2.0-or-later rather than under KyprX's own licence. Each one's
+So those thirteen files are under LGPL-2.0-or-later rather than under KyprX's own licence. Each
+one's
 header names its original authors and says what it is derived from, and the licence's text is in
 [`LICENSES/LGPL-2.0-or-later.txt`](LICENSES/LGPL-2.0-or-later.txt). `REUSE.toml` declares
-GPL-3.0-or-later for every file and lets a file's own licence lines win, which is how these twelve
-keep theirs. They sit beside KyprX's own files rather than inside them, and the LGPL version 2
+GPL-3.0-or-later for every file and lets a file's own licence lines win, which is how these
+thirteen keep theirs. They sit beside KyprX's own files rather than inside them, and the LGPL
+version 2
 itself allows any copy to be put under the ordinary GPL, version 2 or a later one (its section 3).
 
 **Nothing else here carries another project's licence.** Klassy, Better Blur DX, Krohnkite,
@@ -113,6 +116,6 @@ The MIT licence, as it applies to each of these:
 > OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 The authors of Klassy's `KlassyDark.colors`, as its header names them and as the eleven colour
-schemes repeat: Andrew Lake, Marco Martin, Nate Graham, Noah Davis, Neal Gompa, David Redondo,
-Thomas Duckworth and Paul A McAuley. The style's `plasmarc` names Paul A McAuley, the author of
-`klassy-dark`.
+schemes and the style's `colors` file repeat: Andrew Lake, Marco Martin, Nate Graham, Noah Davis,
+Neal Gompa, David Redondo, Thomas Duckworth and Paul A McAuley. The style's `plasmarc` names
+Paul A McAuley, the author of `klassy-dark`.

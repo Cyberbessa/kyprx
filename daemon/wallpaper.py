@@ -37,6 +37,8 @@ from urllib.parse import unquote
 
 import dbus
 
+import about
+
 SERVICE = "org.kde.plasmashell"
 PATH = "/PlasmaShell"
 IFACE = "org.kde.PlasmaShell"
@@ -62,6 +64,22 @@ PLUGINS = {"image": IMAGE_PLUGIN, "video": VIDEO_PLUGIN}
 #: *Show desktop*. Anything older is reported on the Settings tab. Read from the plugin's own
 #: `metadata.json`; the fixes are in its 2.15.0 release notes.
 VIDEO_PLUGIN_FIXED = "2.15.0"
+
+#: The subdirectory of a data folder the desktop's own wallpaper chooser reads. The Plasma shell
+#: lists its system wallpapers with `locateAll(QStandardPaths.GenericDataLocation, "wallpapers/")`
+#: -- the folder rules behind that call are `about.data_dirs`'s, which is why that function
+#: follows the Qt rules and this one does not re-derive them.
+PLASMA_SUBDIR = "wallpapers"
+
+#: The data-folder subdirectories beside `wallpapers/` that also carry wallpapers, and the reason
+#: each is read. `backgrounds/` is where distributions ship wallpapers -- on a Fedora-based desk
+#: measured here, the distribution's own wallpapers (`default.jxl`, `f44/`, `fedora-workstation/`)
+#: are in `/usr/share/backgrounds`, beside KDE's in `/usr/share/wallpapers` -- so a picker that
+#: read only the chooser's folder would leave the distribution's wallpapers out. They are searched
+#: beside the chooser's folders, and the `kde_wallpapers` switch decides about them together with
+#: the rest (they are not the user's pictures folder, which is chosen on the Wallpaper tab and
+#: always read).
+SYSTEM_SUBDIRS = ("backgrounds",)
 
 #: What a script of ours prints in front of its answer. A reply that does not begin with it is a
 #: failure however healthy the bus call looked -- the same two-sided test `gui/client.py` makes.
@@ -232,16 +250,19 @@ def picture_for(target: str) -> str:
     return path if os.path.exists(path) else ""
 
 
-def wallpaper_dirs() -> list[str]:
-    """Every directory the desktop's own wallpaper chooser looks in, in its order."""
-    home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    rest = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+def wallpaper_dirs(env=None) -> list[str]:
+    """Every directory the desktop's own wallpaper chooser looks in, in its order, with the
+    system `backgrounds/` folders beside them (`SYSTEM_SUBDIRS`), and `env` naming the variables
+    so a test can hand in its own.
+
+    The bases are `about.data_dirs`'s -- the user's first, the Qt rules for the variables -- and
+    each base's `wallpapers/` and `backgrounds/` are the folders. A folder is listed only when it
+    exists: the list is walked, not shown, so an absent folder is simply not scanned.
+    """
     out: list[str] = []
     seen: set[str] = set()
-    for base in [home] + rest.split(":"):
-        if not base:
-            continue
-        for sub in ("wallpapers", "backgrounds"):
+    for base in about.data_dirs(env):
+        for sub in (PLASMA_SUBDIR, *SYSTEM_SUBDIRS):
             path = os.path.join(base, sub)
             # Kept as the session spells it, and only compared as what it really points at. On a
             # layout where `/home` is a link to `/var/home`, resolving the path outright writes a URL
@@ -254,17 +275,32 @@ def wallpaper_dirs() -> list[str]:
     return out
 
 
+def picture_folders(image_dir: str, include_kde: bool = True, env=None) -> list[str]:
+    """The folders a picture list is scanned from, the chosen one first, and `env` naming the
+    variables for `wallpaper_dirs`.
+
+    A chosen folder that is really one of the desktop's own is not scanned twice -- and where
+    that leaves a choice of spellings, the session's is the one kept, for the same reason
+    `wallpaper_dirs` keeps its paths as they are spelled. A chosen folder that is not there right
+    now is skipped, as it always was: `Wallpapers` answers `image_dir_present` separately, and
+    `missing_note` is what says it, in the tab's band and in the picker.
+    """
+    folders = wallpaper_dirs(env) if include_kde else []
+    if image_dir and os.path.isdir(image_dir):
+        if os.path.realpath(image_dir) not in [os.path.realpath(d) for d in folders]:
+            folders.insert(0, image_dir)
+    return folders
+
+
 def plugin_dir(plugin: str) -> str:
     """Where this wallpaper plugin is installed, the user's copy first, or "" when it is not.
 
     Looked for as a directory rather than asked of `kpackagetool6`, because this is called to draw
     a settings page and starting a process to draw a page is a page that stutters.
     """
-    home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    rest = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-    for base in [home] + rest.split(":"):
-        path = os.path.join(base, "plasma", "wallpapers", plugin) if base else ""
-        if path and os.path.isdir(path):
+    for base in about.data_dirs():
+        path = os.path.join(base, "plasma", "wallpapers", plugin)
+        if os.path.isdir(path):
             return path
     return ""
 
@@ -380,20 +416,21 @@ def _package_entry(package: str) -> dict | None:
     return _entry("image", package, name, to_url(package) + "/", _preview_of(package))
 
 
-def scan_images(image_dir: str = "") -> list[dict]:
-    """Every wallpaper the desktop's own chooser would offer, in three shapes, plus image_dir.
+def scan_images(image_dir: str = "", include_kde: bool = True, env=None) -> list[dict]:
+    """Every wallpaper in the folders `picture_folders` names: KDE's own beside the chosen
+    folder, or the chosen folder alone, and `env` naming the variables.
 
-    A package; a loose image file sitting in the wallpapers directory, which distributions really
-    do ship; and a directory of packages, which is one level deeper than the format says and which
-    this machine has. Descending exactly one level covers it without turning this into a walk of
-    the whole data directory.
+    Three shapes are found in a folder: a package; a loose image file sitting in the wallpapers
+    directory, which distributions really do ship; and a directory of packages, which is one
+    level deeper than the format says and which this machine has. Descending exactly one level
+    covers it without turning this into a walk of the whole data directory.
     """
+    return _scan(picture_folders(image_dir, include_kde, env))
+
+
+def _scan(folders: list[str]) -> list[dict]:
+    """Every package and loose image in these folders, one level of packages down."""
     out: dict[str, dict] = {}
-    folders = list(wallpaper_dirs())
-    if image_dir and os.path.isdir(image_dir):
-        real_img = os.path.realpath(image_dir)
-        if real_img not in [os.path.realpath(d) for d in folders]:
-            folders.insert(0, image_dir)
     for folder in folders:
         try:
             names = sorted(os.listdir(folder))
@@ -426,6 +463,64 @@ def scan_images(image_dir: str = "") -> list[dict]:
                     out.setdefault(deeper, _entry("image", deeper, os.path.splitext(inner)[0],
                                                   to_url(deeper), deeper))
     return sorted(out.values(), key=lambda e: e["name"].lower())
+
+
+def picture_catalogue(image_dir: str = "", include_kde: bool = True,
+                      env=None) -> tuple[list[dict], bool]:
+    """`(entries, fell_back)`: the pictures the picker lists, and whether KDE's own are carrying
+    the list because the chosen folder rendered nothing.
+
+    The chosen folder is scanned first and KDE's own beside it while the switch keeps them; when
+    the folder has nothing of its own -- or, with KDE's wallpapers left out, when it was all
+    there was -- an empty picker would say nothing to anybody, so KDE's own wallpapers are listed
+    anyway and `fell_back` is True, for the caller to say in words. A folder that is unset, not
+    there, or really one of KDE's own is not a fallback: there the list is KDE's because that is
+    what the switch says, or because there is nothing else, and nothing failed.
+    """
+    kde_dirs = wallpaper_dirs(env)
+    chosen = bool(image_dir) and os.path.isdir(image_dir)
+    if chosen and os.path.realpath(image_dir) in [os.path.realpath(d) for d in kde_dirs]:
+        # The folder the picker was pointed at is one of KDE's own, spelled its own way. It is
+        # scanned once, whichever way the switch points: what was chosen is what is listed.
+        return _scan(kde_dirs), False
+    if not chosen:
+        # Nothing of the user's own is in the picture: no folder chosen, or one that is not there
+        # right now. KDE's own are listed as the switch says -- that is the switch doing its work,
+        # and no folder failed, so this is not a fallback either.
+        return (_scan(kde_dirs) if include_kde else []), False
+    mine = _scan([image_dir])
+    if include_kde:
+        # One scan over every folder, so a picture reached from the chosen folder and from a
+        # system folder it sits inside is one entry, as it was before the switch existed:
+        # `_scan` keys its entries by path, and two scans concatenated listed it twice.
+        both = _scan([image_dir] + kde_dirs)
+        return both, not mine and bool(both)
+    if mine:
+        return mine, False
+    theirs = _scan(kde_dirs)
+    return theirs, bool(theirs)
+
+
+def fallback_note(image_dir: str) -> str:
+    """Why KDE's own wallpapers are in the list, said so it can be shown wherever it is needed.
+
+    A note and never trouble: trouble is how `Wallpapers` says the wallpaper could not be read at
+    all, and the simulation reads it as "not exercised" -- where nothing has failed here, and the
+    list is a good one.
+    """
+    import explain
+    return (f"the pictures folder {explain.home(image_dir)} has no wallpaper in it, "
+            f"so KDE's own wallpapers are listed")
+
+
+def missing_note(image_dir: str, include_kde: bool) -> str:
+    """Why the picker's list has nothing of the pictures folder's: the folder is not there
+    right now -- a drive not plugged in -- said like the video folder's line. A note, for
+    the reason `fallback_note` gives."""
+    import explain
+    rest = ("KDE's own wallpapers are listed" if include_kde
+            else "the picker has nothing to list until it is back")
+    return f"the pictures folder is not there right now: {explain.home(image_dir)}, so {rest}"
 
 
 def scan_videos(folder: str) -> list[dict]:
@@ -517,10 +612,17 @@ def default_image_dir(state: dict | None = None) -> str:
     return ""
 
 
-def catalogue(mode: str, video_dir: str, image_dir: str = "", state: dict | None = None) -> list[dict]:
+def catalogue(mode: str, video_dir: str, image_dir: str = "",
+              include_kde: bool = True) -> tuple[list[dict], bool]:
+    """What the picker lists for one mode: `(entries, fell_back)` either way.
+
+    A video list is one folder's files and never falls back -- an empty video folder says
+    "the video folder is not there right now" through `trouble` already. A picture list is
+    `picture_catalogue`'s, KDE's own in it as the switch decides.
+    """
     if mode == "video":
-        return scan_videos(video_dir)
-    return scan_images(image_dir)
+        return scan_videos(video_dir), False
+    return picture_catalogue(image_dir, include_kde)
 
 
 def rotates(state: dict) -> bool:

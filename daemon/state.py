@@ -11,7 +11,10 @@ Only what cannot be read back out of a file is stored. About windows, three thin
   afterwards. Turn a window's title bar back on and it stays on;
 * **which apps refuse a server-side decoration**, which is knowable only by trying and looking;
 * **which windows are see-through at a number of their own** (`Config.own_transparency`): the rule
-  that carries the number looks exactly like the rule of a window at the shared strength.
+  that carries the number looks exactly like the rule of a window at the shared strength;
+* **which windows were ticked while the strength stood at 100 %** (`Config.ticked_at_100`): there
+  the rule a tick writes — opacity 100, forced — reads exactly like the nothing an unticked window
+  reads, so the tick exists only here until the strength comes back down.
 
 Beside those, this app's own settings (`Config`: paused, notifications, the colour from the
 wallpaper, the shared strength, what a new window gets, the cheatsheet's chosen keys, the
@@ -65,15 +68,16 @@ LEGACY_CONFIG_PATH = os.path.expanduser("~/.config/kyprx/config.json")
 #: constant, so the first window seen after a failed pass marked it done.
 STATE_VERSION = 7
 
-#: What the wallpaper picker's two choices may be. Neither is stored any more -- which one is on
-#: is read from the shell, by `wallpaper.mode_of` -- so this is now what a *request* is checked
-#: against rather than a stored value. Still declared once, for the same reason: spelled out at
-#: each site, they were already in five places and one of them was about to disagree.
+#: What the wallpaper picker's choices may be. Neither the mode nor the layout is stored anywhere
+#: else -- which one is on is read from the shell, by `wallpaper.mode_of`, and the layout is
+#: checked by `wallpaper_layout` below -- so this is what a *request* is checked against rather
+#: than a list of stored values. Still declared once, for the same reason: spelled out at each
+#: site, they were already in five places and one of them was about to disagree.
 #:
-#: Which of the two a fresh install gets is not here but in `defaults.WALLPAPER`, beside every
+#: Which of the three a fresh install gets is not here but in `defaults.WALLPAPER`, beside every
 #: other opinion this app has, because that is what *Restore defaults* puts back.
 WALLPAPER_MODES = ("image", "video")
-WALLPAPER_LAYOUTS = ("pages", "strip")
+WALLPAPER_LAYOUTS = ("pages", "strip", "strip-names")
 
 
 #: The range a window's own number may take. See `Config.own_transparency` for why it stops short of
@@ -107,6 +111,38 @@ def own_strengths(listed) -> dict:
         if str(window_class).strip() and number is not None:
             out[str(window_class).strip()] = number
     return out
+
+
+def wallpaper_layout(value) -> str:
+    """A picker layout as this app holds it: the name when it is one, the default otherwise.
+
+    The one normaliser every layout handed in from outside goes through -- a settings file, a
+    settings file being imported, the KyprX folder, a call over the bus. An unknown name reaching
+    the picker would open nothing, and a fallback spelled again at each site is how a renamed
+    default leaves the sites disagreeing; the guard in `tests/test_picker_layouts.py` keeps the
+    names out of every daemon module but this one and `defaults`.
+    """
+    text = str(value) if value is not None else ""
+    return text if text in WALLPAPER_LAYOUTS else _DEFAULT_WALLPAPER["layout"]
+
+
+def kde_wallpapers(paper, fallback=None) -> bool:
+    """Whether the picker also lists KDE's own wallpapers, as a block of picker settings carries
+    it: the key when it is there, `fallback` when it is not, and the declared default when
+    neither is. A value that is not true or false counts as absent, the way a spelled-out
+    `"no"` would read as true were it taken at face value.
+
+    The one normaliser the switch is read through, for the reason `wallpaper_layout` above is the
+    one normaliser of layouts. Who hands in what decides what a missing key means: the settings
+    file being loaded or imported and the KyprX folder being applied pass the value held now, so
+    a block written before the switch existed leaves it alone; a config being loaded passes
+    nothing, and reads as the declared default -- which is what the switch meant before it
+    existed.
+    """
+    value = (paper or {}).get("kde_wallpapers")
+    if not isinstance(value, bool):
+        value = fallback if isinstance(fallback, bool) else None
+    return bool(_DEFAULT_WALLPAPER["kde_wallpapers"] if value is None else value)
 
 
 def read_json(path: str, default: dict) -> dict:
@@ -217,6 +253,19 @@ class Config:
     #: 1 to 99 and never 100. A hundred is opaque, and opaque is the tick's answer, not a number:
     #: a class kept at 100 here would read as unticked, and ticking it would put it straight back.
     own_transparency: dict = field(default_factory=dict)
+    #: The window classes whose Transparency tick is being **remembered** while the strength stands
+    #: at 100 %, where the rule a tick writes (opacity 100, forced) is byte for byte what an
+    #: unticked window reads -- so there the tick cannot be deduced from the config files like
+    #: every other fact about a window, and has to be kept here. It is held only while it has to
+    #: be: below 100 the rule is deducible again and the list reads empty, whoever saved it --
+    #: `from_dict` sees to that -- and while it lasts, every reader that would otherwise deduce the
+    #: tick away asks `TransparencyPart.held` first. A class with a number of its own never
+    #: belongs here (its own number is how see-through it is, which is deducible), and neither
+    #: does one of the windows KyprX leaves alone -- `Daemon.__init__` drops both kinds.
+    #:
+    #: Like `own_transparency` above, this cannot be read back out of another program's config: a
+    #: forced 100 and no rule at all look the same, so "this tick was chosen" exists only here.
+    ticked_at_100: list = field(default_factory=list)
     defaults: Defaults = field(default_factory=Defaults)
     #: Which key combination the cheatsheet shows, for the actions that carry more than one.
     #: Keyed by `shortcuts.qualified`, and the value is the whole sequence rather than a position
@@ -227,8 +276,9 @@ class Config:
     #: here: the compositor serves the registry and rewrites it at logout, so a copy kept here
     #: would be a second truth that goes stale on its own.
     cheatsheet_keys: dict = field(default_factory=dict)
-    #: The wallpaper picker's settings: which folder the videos are in, and which of its two
-    #: layouts the key opens. `{"video_dir": "...", "layout": "pages" | "strip"}`.
+    #: The wallpaper picker's settings: which folder the videos are in, and which of its layouts
+    #: the key opens. `{"video_dir": "...", "image_dir": "...",
+    #: "layout": "pages" | "strip" | "strip-names", "kde_wallpapers": bool}`.
     #:
     #: **Which kind of wallpaper it lists is deliberately not here.** That is the wallpaper plugin
     #: the activity in use is wearing, which lives in the shell's config and is a choice made per
@@ -236,6 +286,11 @@ class Config:
     #: desk wore different plugins while this said one thing about both. It is read from the shell
     #: every time instead, by `wallpaper.mode_of`. A `mode` in a file written before this is
     #: ignored rather than migrated: nothing is lost, because the desktop knows.
+    #:
+    #: `kde_wallpapers` is the one stored opinion about *what* the picker lists when it lists
+    #: pictures: whether the wallpapers the desktop itself ships stand in the list beside the
+    #: chosen folder (`defaults.WALLPAPER` says on). Read through `kde_wallpapers` above, never
+    #: off the dict bare, so every road in agrees on what a missing key means.
     #:
     #: Deliberately not in `Defaults` above, which is what a *window* gets. It is nonetheless one
     #: of the things *Restore defaults* puts back, from `defaults.WALLPAPER`, and that is a
@@ -271,16 +326,25 @@ class Config:
         chosen = chosen if isinstance(chosen, dict) else {}
         paper = d.get("wallpaper")
         paper = paper if isinstance(paper, dict) else {}
-        layout = str(paper.get("layout", _DEFAULT_WALLPAPER["layout"]))
         try:
             strength = int(d.get("transparency", _DEFAULT_TRANSPARENCY))
         except (TypeError, ValueError):
             strength = _DEFAULT_TRANSPARENCY
+        strength = min(max(strength, 1), 100)
+        #: The held ticks mean something only at 100 %, where the tick cannot be deduced. Below
+        #: that every tick is readable off the window rules again, so a list carried in from a
+        #: file reads as empty rather than as ticks waiting to come back -- which is also what
+        #: keeps an old list from resurfacing when the strength returns to 100 later: the ticks
+        #: that matter then are the ones made while it stood there.
+        ticks = d.get("ticked_at_100")
+        ticks = (sorted({str(c).strip() for c in ticks if str(c).strip()})
+                 if isinstance(ticks, list) else [])
         return cls(paused=bool(d.get("paused", False)),
                    notify=bool(d.get("notify", True)),
                    auto_colour=bool(d.get("auto_colour", False)),
-                   transparency=min(max(strength, 1), 100),
+                   transparency=strength,
                    own_transparency=own_strengths(d.get("own_transparency")),
+                   ticked_at_100=ticks if strength >= 100 else [],
                    defaults=defaults,
                    cheatsheet_keys={str(k): keys for k, v in chosen.items()
                                     if (keys := key_sequence(v)) is not None},
@@ -288,8 +352,8 @@ class Config:
                                                           _DEFAULT_WALLPAPER["video_dir"])),
                               "image_dir": str(paper.get("image_dir",
                                                           _DEFAULT_WALLPAPER.get("image_dir", ""))),
-                              "layout": (layout if layout in WALLPAPER_LAYOUTS
-                                         else _DEFAULT_WALLPAPER["layout"])})
+                              "layout": wallpaper_layout(paper.get("layout")),
+                              "kde_wallpapers": kde_wallpapers(paper)})
 
     def save(self) -> None:
         write_json(CONFIG_PATH, asdict(self))

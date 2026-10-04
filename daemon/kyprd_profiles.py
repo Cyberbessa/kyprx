@@ -104,12 +104,23 @@ class ProfilesPart:
             # it back.
             self.config.transparency = strength
             self.config.save()
-            wanted = self.transparency_targets()
+            wanted = self.transparency_targets(previous)
+        held = None
 
         def build(tx):
             note_reloads(tx, write_declared(tx, profiles.tree(look)))
             # `set_transparency` asks for the reconfigure itself when it writes a rule.
             self.strike_transparency(tx, wanted, strength, previous)
+            nonlocal held
+            if self.at_full(strength):
+                # At 100 the ticks the strike leaves behind read exactly like unticked windows;
+                # the list is what remembers them -- and what empties as the strength comes off
+                # 100, since those ticks are deducible again the moment they are struck below it.
+                held = self.ticks_at_100(
+                    tx, {w.window_class: (True, w.resource_name) for w in wanted},
+                    self.config.ticked_at_100)
+            else:
+                held = []
 
         try:
             diff = writer.run(build)
@@ -121,6 +132,8 @@ class ProfilesPart:
                      f"transparency={strength}% on up to {len(wanted)} window(s)")
         if writer.dry_run() and diff:
             self.log("would have written:\n" + diff)
+        if held is not None:
+            self.keep_ticks(held)
         if self.config.auto_colour:
             # Before the colours, so that a failure among the tools below still leaves the switch
             # where a loaded profile wants it. In dry run this is in memory and stays there.

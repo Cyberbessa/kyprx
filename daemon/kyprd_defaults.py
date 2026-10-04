@@ -61,7 +61,7 @@ class DefaultsPart:
         # Read before anything is written, for the reason `transparency_targets` gives: a read
         # inside the transaction that writes would have each row see the half-finished work of the
         # row before it.
-        wanted = self.transparency_targets() if strength != previous else []
+        wanted = self.transparency_targets(previous) if strength != previous else []
         was_paused = self.config.paused
         restored = Config.from_dict(asdict(self.config))
         restored.defaults = Defaults()
@@ -70,16 +70,30 @@ class DefaultsPart:
         restored.notify = defaults.OWN["notify"]
         restored.auto_colour = defaults.OWN["auto_colour"]
         restored.wallpaper = dict(defaults.WALLPAPER)
+        held = None
 
         def build(tx):
+            nonlocal held
             note_reloads(tx, write_declared(tx, defaults.SETTINGS))
             write_declared_colours(tx, defaults.BUTTON_COLOURS)
             self.strike_transparency(tx, wanted, strength, previous)
+            # The ticks the restore leaves behind. At the declared strength -- below 100, where
+            # every tick is deducible from the rule it was just written into -- that is an empty
+            # list, which is the restore putting the held ticks back where deduction can find
+            # them; were the declared strength ever 100, the windows the restore struck would be
+            # the ones the list has to hold. Worked out in the build and never before it, for the
+            # reason `ticks_at_100` gives.
+            held = (self.ticks_at_100(
+                        tx, {w.window_class: (True, w.resource_name) for w in wanted},
+                        self.config.ticked_at_100)
+                    if self.at_full(strength) else [])
 
         if preview:
             import explain
             tx = writer.Transaction()
             build(tx)
+            if held is not None:
+                restored.ticked_at_100 = held
             lines = [explain.preview(tx),
                      explain.own_preview(state.CONFIG_PATH, asdict(self.config),
                                          asdict(restored))]
@@ -103,6 +117,9 @@ class DefaultsPart:
                      f"transparency={strength}% on up to {len(wanted)} window(s)")
         if writer.dry_run() and diff:
             self.log("would have written:\n" + diff)
+        if held is not None:
+            restored.ticked_at_100 = held
+            self.keep_ticks(held)
         self.config = restored
         self.config.save()
         if was_paused:

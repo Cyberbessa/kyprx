@@ -26,12 +26,13 @@ import dbus
 from gi.repository import Gio, GLib
 
 import clock
+import explain
 import logs
 import theme
 import wallcolour
 import wallpaper
 import writer
-from state import WALLPAPER_MODES
+from state import WALLPAPER_MODES, kde_wallpapers, wallpaper_layout
 from wallpaper import VIDEO_PLUGIN_FIXED
 
 
@@ -81,9 +82,19 @@ class WallpaperPart:
         #: on the bus to ask.
         mode = WALLPAPER_MODES[0]
         version = wallpaper.plugin_version(wallpaper.VIDEO_PLUGIN)
+        kde = kde_wallpapers(paper)
         out = {
             "mode": mode,
-            "layout": paper.get("layout", "pages"),
+            "layout": wallpaper_layout(paper.get("layout")),
+            #: Whether the picker also lists the wallpapers the desktop itself ships, the switch
+            #: on the Wallpaper tab, and the folders they come from -- spelled the way the
+            #: interface shows a path, with the home directory written as `~`.
+            "kde_wallpapers": kde,
+            "kde_dirs": [explain.home(d) for d in wallpaper.wallpaper_dirs()],
+            #: Why the list is what it is, when that needs saying -- KDE's own alone, or the
+            #: pictures folder not there right now (`missing_note`): a note and never
+            #: `trouble`, which is how this answer says the wallpaper could not be read at all.
+            "note": "",
             "video_plugin": wallpaper.plugin_installed(wallpaper.VIDEO_PLUGIN),
             "video_plugin_version": version,
             "video_plugin_outdated": wallpaper.version_below(version, VIDEO_PLUGIN_FIXED),
@@ -111,6 +122,7 @@ class WallpaperPart:
         out["mode"] = mode
         video_dir = out["video_dir"] or wallpaper.default_video_dir(state)
         image_dir = out["image_dir"] or wallpaper.default_image_dir(state)
+        entries, fell_back = wallpaper.catalogue(mode, video_dir, image_dir, kde)
         out.update(
             activity=state.get("activity", ""),
             desktops=len(state.get("desktops") or []),
@@ -121,8 +133,11 @@ class WallpaperPart:
             image_dir_present=bool(image_dir) and os.path.isdir(image_dir),
             rotates=wallpaper.rotates(state),
             current=wallpaper.current_target(mode, state),
-            entries=wallpaper.catalogue(mode, video_dir, image_dir, state),
+            entries=entries,
+            note=wallpaper.fallback_note(image_dir) if fell_back else "",
         )
+        if mode == "image" and not out["note"] and image_dir and not out["image_dir_present"]:
+            out["note"] = wallpaper.missing_note(image_dir, kde)
         if mode == "video" and not out["video_plugin"]:
             out["trouble"] = ("the Smart Video Wallpaper Reborn plugin is not installed, "
                               "so there is nothing to play a video with")

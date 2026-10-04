@@ -120,6 +120,12 @@ Unticking it also writes: a rule that makes the window fully opaque, 100 %. Kypr
 take its own rule away, because a rule of yours that makes every window see-through would then
 still reach this one, and the window would stay as see-through as before.
 
+**At an Opacity of 100 % on the Appearance tab**, a ticked window and an unticked one are drawn the
+same way, and no rule can tell them apart. So KyprX keeps the ticks made while the number stands
+there: the column shows them ticked, and moving the number below 100 % puts every kept tick back on
+the desk on its own, at the new number. Below 100 % nothing needs keeping, and every tick is read
+off the rules again.
+
 ### Opacity
 
 How solid the window is while it is see-through: 100 % would be opaque, and the numbers run from 1
@@ -206,8 +212,8 @@ in this order wins:
 | Status | Meaning |
 |---|---|
 | **app refuses** (in bold) | The application draws its own title bar and refuses the desktop's, so **Hide title bar** cannot help. See [Good to know](#good-to-know). |
+| **system window** | One of the classes KyprX never adjusts by itself, open or not. Shown only while **System windows** is ticked. |
 | **not open** | No window of this class is open right now. Shown only while **Only open windows** is unticked. |
-| **system window** | One of the classes KyprX never adjusts by itself. Shown only while **System windows** is ticked. |
 | **shared pattern** | The Klassy entry that governs this window is written for other windows too. Changing it here gives this window an entry of its own, placed ahead of the shared one and copied from it, so nothing else changes. The other windows keep the shared entry. |
 
 ### Title

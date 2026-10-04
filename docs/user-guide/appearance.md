@@ -175,6 +175,15 @@ colour of your own stay greyed until you do.
 
 Choosing the preset that is already on changes nothing.
 
+**The lock screen and the log-out screen.** These two screens are KDE's, and they draw in a colour
+set of their own. Their dark background and light text stay the same on every preset, even the
+light ones, and neither a colour of your own nor a preset's light colours change them. Two things
+on the lock screen do follow the preset. The box you type your password in is drawn like any other
+text box, so it wears the preset's colours — light under a light preset — and so does the ring
+around it. The small buttons (the virtual keyboard, the keyboard layout, the music controls) light
+up in the preset's highlight when you point at them or reach them with Tab. The window ring and the
+highlights keep following the preset too, as they do on KDE's own Colours page.
+
 ### The wallpaper's colour
 
 While **Colour from the wallpaper** is ticked in the strip above the tabs
@@ -204,7 +213,9 @@ With the tick off, the row is hidden.
 ### Your own colour
 
 **Your own colour** opens a colour picker. The colour goes on top of the preset: on its own it
-reaches highlights, links and the selection. It is greyed until a preset has the ring.
+reaches highlights, links and the selection. On the lock screen it reaches what follows the preset
+there (the password box and the small buttons); the dark background and light text of the lock
+screen and the log-out screen stay as they are. It is greyed until a preset has the ring.
 
 **Clear**, beside it, goes back to the colours the preset came with, without changing preset. It
 is greyed while there is no colour of your own.
@@ -276,6 +287,11 @@ called the outline.
 **Opacity** reaches every window whose **Transparency** is ticked on the [Windows](windows.md) tab
 and that has no opacity of its own there, and no other window. Which windows are see-through is
 chosen on that tab; how see-through they are is chosen once, here.
+
+**100 % is the one number KyprX has to remember things at.** There, a ticked window and an unticked
+one look the same -- both are drawn fully opaque -- so KyprX keeps the ticks made while the number
+stands at 100 %, and the [Windows](windows.md) tab shows them ticked. Moving the number below 100 %
+puts every kept tick back on the desk on its own, at the new number.
 
 **Corner radius** is the one place the corner is set. The blur behind a window keeps a corner of
 its own, and this row writes both, so that the blur never shows past the rounded corner; the

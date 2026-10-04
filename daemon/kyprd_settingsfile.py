@@ -26,7 +26,7 @@ import writer
 from declared import COLOUR_CACHED_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import OVERLAY_PATTERNS, SWITCHES
-from state import WALLPAPER_LAYOUTS, Defaults, key_sequence, own_strengths
+from state import Defaults, kde_wallpapers, key_sequence, own_strengths, wallpaper_layout
 
 
 #: What the settings file calls the compositor's `[Windows]` group. **Not** the same word the
@@ -150,8 +150,8 @@ class SettingsFilePart:
     #: adds is the compositor's window-behaviour group under a name of its own; a version 2 file
     #: simply has none, and everything else about it is unchanged. Version 4 adds the wallpaper
     #: picker's settings, and is the same shape of addition: an older file simply has none, and
-    #: a version 4 file written before the picker had two layouts has no layout in it, which
-    #: reads as the default. That is why this is not bumped every time that block grows a key.
+    #: a version 4 file written before the picker had its present layouts has no layout in it,
+    #: which reads as the default. That is why this is not bumped every time that block grows a key.
     SETTINGS_VERSIONS = (2, 3, 4, 5, 6)
 
     def import_settings(self, settings: dict) -> str:
@@ -322,11 +322,14 @@ class SettingsFilePart:
             # ignored on purpose, and so is one written after: which kind of wallpaper the desktop
             # shows is not this app's to restore from a backup, any more than the wallpaper itself
             # is -- see the note beside this block in `export_settings`.
-            layout = str(paper.get("layout", WALLPAPER_LAYOUTS[0]))
+            # A switch the file does not carry is one written before it existed: the value held
+            # now stands, as `state.kde_wallpapers` reads it.
+            held = self.config.wallpaper or {}
             self.config.wallpaper = {
                 "video_dir": str(paper.get("video_dir", "")),
                 "image_dir": str(paper.get("image_dir", "")),
-                "layout": layout if layout in WALLPAPER_LAYOUTS else WALLPAPER_LAYOUTS[0],
+                "layout": wallpaper_layout(paper.get("layout")),
+                "kde_wallpapers": kde_wallpapers(paper, held.get("kde_wallpapers")),
             }
             self.config.save()
         colours = settings.get("theme")

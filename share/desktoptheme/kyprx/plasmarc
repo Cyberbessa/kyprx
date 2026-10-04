@@ -5,15 +5,16 @@
 # The [ContrastEffect] and [AdaptiveTransparency] blocks below are Klassy's, from its klassy-dark
 # style, whose package declares LGPL; this file keeps that licence and its author. See CREDITS.md.
 #
-# An empty `colors` file beside this one, and Plasma's own artwork: that is the whole package.
+# The style's `colors` file beside Plasma's own artwork: that is the whole package.
 #
-# Measured, on Plasma 6.7.5: a Plasma style whose `colors` file carries a palette paints the panel
-# from it and never reads `kdeglobals`, which is why changing the colour scheme under `klassy-dark`
-# leaves the panel exactly where it was. A `colors` file that carries *no* palette -- comments
-# only -- follows the scheme instead: KConfig layers `kdeglobals` under every file it opens, so a
-# colours file with nothing in it *is* the active scheme, and the colours read through this style
-# are byte for byte the ones read with no file at all (scripts/probe.py prints them, with
-# `klassy-dark` as the control).
+# Measured, on Plasma 6.7.5: a Plasma style whose `colors` file carries a palette for a set the
+# panel draws in paints the panel from it and never reads `kdeglobals`, which is why changing the
+# colour scheme under `klassy-dark` leaves the panel exactly where it was. What decides it is
+# whether the file names one of the panel's sets: KConfig layers `kdeglobals` under every file it
+# opens, so a file that names none of them -- this one fixes only the lock and log-out screens'
+# set, `Colors:Complementary` -- leaves every colour the panel asks for to the scheme in force,
+# and the colours read through this style are byte for byte the ones read with no file at all
+# (scripts/probe.py prints them, with `klassy-dark` as the control).
 #
 # Why the file is there rather than absent: KSvg asks for `colors` on every item it creates and
 # never remembers a miss, walking every XDG data directory for this style and then for `default`.

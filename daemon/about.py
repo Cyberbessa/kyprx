@@ -18,9 +18,12 @@ of KyprX: Fedora, the Fedora images that update as a whole and install a package
 derivative count as its family.
 
 **The data folders** are the ones the desktop searches, the user's first: a file this app installs
-may be in either, and the user's copy is the one the desktop uses. The same walk `daemon/theme.py`
-and `daemon/wallpaper.py` make, kept as the session spells it and deduplicated by what it points
-at, for the reason given there.
+may be in either, and the user's copy is the one the desktop uses. The walk follows the same rules
+the desktop itself applies to the variables (`QStandardPaths` on which: doc.qt.io/qt-6/
+qstandardpaths.html) -- `XDG_DATA_HOME` only when it is an absolute path, relative entries of
+`XDG_DATA_DIRS` ignored, the defaults standing whenever nothing that counts is set -- and is kept
+as the session spells it and deduplicated by what it points at, for the reason given at
+`daemon/wallpaper.py`. The same walk `daemon/theme.py` and `daemon/wallpaper.py` make.
 """
 
 from __future__ import annotations
@@ -56,15 +59,28 @@ def from_package() -> bool:
     return TOP.startswith(("/usr/", "/opt/"))
 
 
-def data_dirs() -> list[str]:
-    """Every folder the desktop searches for data, the user's own first."""
-    home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    rest = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+def data_dirs(env=None) -> list[str]:
+    """Every folder the desktop searches for data, the user's own first, and `env` naming the
+    variables rather than this process's own -- so the same walk can be read against an
+    environment a test built.
+
+    The rules are the desktop's, not ours: `XDG_DATA_HOME` counts only when it is **absolute**
+    (`QStandardPaths` passes a relative one over, and so do we), an entry of `XDG_DATA_DIRS` that
+    is not absolute is ignored, and the defaults stand whenever nothing that counts is set.
+    Duplicates are dropped by what a path points at, and the spelling the session used is the one
+    kept -- the reason is the one `wallpaper_dirs` in `daemon/wallpaper.py` holds, and it matters
+    for the same reason: a spelling nobody else on this desktop writes stops matching the one
+    already in a config.
+    """
+    e = os.environ if env is None else env
+    home = e.get("XDG_DATA_HOME") or ""
+    home = home if home.startswith("/") else os.path.expanduser("~/.local/share")
+    rest = [d for d in (e.get("XDG_DATA_DIRS") or "").split(":") if d.startswith("/")]
+    if not rest:
+        rest = ["/usr/local/share", "/usr/share"]
     out: list[str] = []
     seen: set[str] = set()
-    for base in [home] + rest.split(":"):
-        if not base:
-            continue
+    for base in [home] + rest:
         key = os.path.realpath(base)
         if key not in seen:
             seen.add(key)

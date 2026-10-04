@@ -1,13 +1,16 @@
-"""The wallpaper picker, in two layouts.
+"""The wallpaper picker, in three layouts.
 
 Kept apart from the settings window for the reason the cheatsheet is: it shares almost nothing with
 a settings form. One read, a window, and drawing code.
 
-**Strip** is a column of narrow cards beside one big picture, inside a panel wearing the
-decoration's own background, corner and outline. **Pages** has no panel at all: the window is
-transparent, the chosen wallpaper sits large in the middle of the screen, and the rest lean away
-behind it -- the ones before it to the left, the ones after it to the right -- like pages of a book
-held open. Which one the key opens is a setting.
+**Pages** has no panel at all: the window is transparent, the chosen wallpaper sits large in
+the middle of the screen, and the rest lean away behind it -- the ones before it to the left, the
+ones after it to the right -- like pages of a book held open. It is the default. **Strip** is a
+column of narrow cards beside one big picture, inside a panel wearing the decoration's own
+background, corner and outline -- and no file name under the picture: the strip says where you are
+in the list, and the picture is what you are choosing from; the name said it a third time.
+**Strip with names** is the same column and the same big picture in the same panel, with the name
+written under the picture after all. Which one the key opens is a setting.
 
 The window is the cheatsheet's window in every respect that was measured -- frameless, fixed size
 so the tiler leaves it alone, placed by a rule because a Wayland client cannot place itself -- with
@@ -38,8 +41,8 @@ from cheatsheet import card_look, card_style
 
 #: The picker's title. The compositor is told where to put this window by matching on the class,
 #: and the daemon holds the same title string -- the two must not drift. See
-#: `daemon/kyprd_names.py:WALLPAPER_TITLE`. **Both layouts use it**: they are one window with two ways of
-#: drawing, not two windows, so the placement rule covers both without knowing either.
+#: `daemon/kyprd_names.py:WALLPAPER_TITLE`. **All three layouts use it**: they are one window with three ways of
+#: drawing, so the placement rule covers all three without knowing any.
 TITLE = "KyprX wallpapers"
 
 #: How long a selection has to stand still before the full-size picture is decoded. Holding an
@@ -77,7 +80,7 @@ class _Bridge(QObject):
 
 
 class Picker(QWidget):
-    """What both layouts are, which is everything except the drawing.
+    """What every layout is, which is everything except the drawing.
 
     The list, where in it you are, the queue that builds thumbnails one per turn of the event loop,
     the keys, the applying, the fixed size, the closing. A layout adds a body and a way to paint;
@@ -175,9 +178,15 @@ class Picker(QWidget):
 
         A dry run is always something to say. The picker closes on Enter exactly as it does for
         real, and with no band of its own a wallpaper that was only written down looked chosen.
+
+        The daemon's `note` -- why the list is KDE's own alone, or that the pictures folder
+        is not there right now -- is said here for the same reason: an open picker is where
+        somebody is looking at exactly the list the note explains.
         """
         if data.get("trouble"):
             said = str(data["trouble"])
+        elif data.get("note"):
+            said = str(data["note"])
         elif not self.entries:
             said = "nothing to choose from"
         elif data.get("rotates"):
@@ -509,7 +518,18 @@ class Tile(QWidget):
 
 
 class StripPicker(Picker):
-    """A column of narrow cards, and the one selected shown large beside them."""
+    """A column of narrow cards, the one selected shown large beside them, and its name under it.
+
+    The name standing under the picture is what `NAMES` decides and what the bare strip takes out.
+    The class is older than the names the settings use, and keeps the name it was born with: the
+    id that builds it is `strip-names`, because the word *Strip* on its own is the owner's word
+    for the one without the names -- that is `BareStripPicker` below.
+    """
+
+    #: Whether the name of the selected wallpaper is written under the big picture. A class
+    #: constant rather than a constructor argument because a layout *is* its drawing: the choice
+    #: lives beside `_window_size` and `_build`, and nothing else needs to know it.
+    NAMES = True
 
     def _window_size(self) -> QSize:
         screen = QGuiApplication.primaryScreen()
@@ -552,11 +572,15 @@ class StripPicker(Picker):
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumSize(1, 1)
 
-        self.caption = QLabel()
-        caption_font = QFont()
-        caption_font.setBold(True)
-        caption_font.setPointSizeF(caption_font.pointSizeF() + 1)
-        self.caption.setFont(caption_font)
+        # The name under the picture, when this layout writes one. `None` rather than an empty
+        # label: an empty label still takes a row of the layout, and a layout without names would
+        # be reserving space for a word it never shows. Every use of it is guarded.
+        self.caption = QLabel() if self.NAMES else None
+        if self.caption is not None:
+            caption_font = QFont()
+            caption_font.setBold(True)
+            caption_font.setPointSizeF(caption_font.pointSizeF() + 1)
+            self.caption.setFont(caption_font)
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.setText("\n".join(t for t in (self.trouble, self.hint) if t))
@@ -564,7 +588,8 @@ class StripPicker(Picker):
         right = QVBoxLayout()
         right.setSpacing(8)
         right.addWidget(self.preview, 1)
-        right.addWidget(self.caption)
+        if self.caption is not None:
+            right.addWidget(self.caption)
         right.addWidget(self.status)
 
         inner = QHBoxLayout(card)
@@ -592,7 +617,8 @@ class StripPicker(Picker):
         self._selected = self.index
         tile = self.tiles[self.index]
         tile.set_selected(True)
-        self.caption.setText(self.entries[self.index].get("name", ""))
+        if self.caption is not None:
+            self.caption.setText(self.entries[self.index].get("name", ""))
         self.strip.ensureWidgetVisible(tile, TILE_WIDTH, 0)
         self._paint_preview()
 
@@ -626,6 +652,22 @@ class StripPicker(Picker):
     def _apply_at(self, position: int) -> None:
         self._select(position)
         self._apply()
+
+
+class BareStripPicker(StripPicker):
+    """The strip without the file names: the same thumbnails, the same big picture, no caption.
+
+    This is the layout the id `strip` builds and the one the word *Strip* means on the tab. Three
+    pieces of writing stay, on purpose. A card still carries its name as a **tooltip**,
+    because a tooltip is what tells you which card you are pointing at without spending any of the
+    strip's narrow width on it. A card with **no picture yet** still writes its name sideways,
+    because there the name is not decoration -- it is the only thing on the card that says what it
+    is. And a **failure** still says `could not set {name}`, because a refusal that did not say
+    which wallpaper was refused is no answer at all. The caption under the picture was the one
+    place the name was a fixture rather than a need, and that is the one that goes.
+    """
+
+    NAMES = False
 
 
 # ---------------------------------------------------------------------- the pages
@@ -994,7 +1036,17 @@ class PagesPicker(Picker):
 
 # ---------------------------------------------------------------------- picking the layout
 
-LAYOUTS = {"pages": PagesPicker, "strip": StripPicker}
+#: Which id builds which class. The map looks inside out, and that is the owner's decision rather
+#: than an accident to tidy: the strip was meant to be the one **without** the file names, so
+#: `strip` builds `BareStripPicker` and the variant that writes the name under the picture lives
+#: under an id of its own, `strip-names`. The class names are older than that decision and stay --
+#: renaming them would touch every drawing method for no drawing at all; it is the map that
+#: changed, and `StripPicker`'s docstring says which id reaches it.
+LAYOUTS = {"pages": PagesPicker, "strip": BareStripPicker, "strip-names": StripPicker}
+
+#: What opens when the settings name no layout the map knows: Pages, which is also what a fresh
+#: install and *Restore defaults* get (`defaults.WALLPAPER["layout"]`, held equal to this by a
+#: test).
 DEFAULT_LAYOUT = "pages"
 
 

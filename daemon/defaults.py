@@ -43,7 +43,12 @@ from __future__ import annotations
 #: 5: the title bar's four opacity keys under the names the decoration actually reads -- see
 #: `TitleBarOpacity` below. The values are the ones version 4 meant; only now do they arrive.
 #: 6: Longive as default theme, corner radius 7.5, and image wallpaper directory support.
-VERSION = 6
+#: 7: the strip layout without the file names and the switch that leaves KDE's own wallpapers out
+#: of the picker's list (`kde_wallpapers` below). The id `strip` builds the strip without the
+#: names from this version on -- the owner's word for the strip -- so a settings file from an
+#: earlier version that says `strip` opens it without them; the strip with the names is
+#: `strip-names`. Nothing is migrated. The picker's default layout is `pages`.
+VERSION = 7
 
 #: What a window gets the first time it is seen. `state.Defaults` and `policy.Switches` both take
 #: their field values from here, so there is one place to change and no pair to keep in step.
@@ -89,12 +94,19 @@ OWN = {"paused": False, "notify": True, "auto_colour": False}
 
 #: The wallpaper picker's choices. Declared here rather than spelled out in `state.py` so that
 #: there is one place to read them from: `state.Config.load` takes the layout from here, and
-#: `state.WALLPAPER_LAYOUTS` stays what a *request* is checked against.
+#: `state.wallpaper_layout` falls back on this for any name that is not one of
+#: `state.WALLPAPER_LAYOUTS`.
 #:
 #: The folders are emptied rather than remembered, and that loses nothing: the Wallpaper tab works
 #: one out from the machine when there is none -- so restoring it to nothing is restoring it to
 #: "ask the machine again".
-WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages"}
+#:
+#: `kde_wallpapers` is whether the picker also lists the wallpapers the desktop itself ships -- the
+#: `wallpapers/` and `backgrounds/` folders of the system's data directories. On, which is what
+#: every install had before the switch existed, and so the default; off, the list is the chosen
+#: pictures folder's alone, unless that folder renders nothing, where the system's wallpapers come
+#: back with a note saying why (an empty picker says nothing to anybody).
+WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages", "kde_wallpapers": True}
 
 #: The colours. Longive for dark, and no colour of your own and nothing soaking in.
 COLOURS = {"mode": "dark", "preset": "longive", "accent": "", "tint": 0.0}

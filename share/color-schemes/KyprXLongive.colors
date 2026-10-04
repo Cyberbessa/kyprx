@@ -10,7 +10,8 @@
 # SPDX-License-Identifier: LGPL-2.0-or-later
 #
 # Longive (KyprX), for KyprX.
-# Palette: Carl
+# Palette: Longive -- monochrome surfaces, as in Zed, with one soft orange accent, 245,166,91, on
+# the selection, focus, hover, active and link colours. Text on the orange stays dark (9.35:1).
 
 [ColorEffects:Disabled]
 Color=56,56,56
@@ -21,8 +22,15 @@ ContrastEffect=1
 IntensityAmount=0.1
 IntensityEffect=0
 
+# ChangeSelectionColor must stay true. In a window that is not focused, Dolphin's Places panel
+# draws a selected item in the plain text colour, not the selected-text one (KIO,
+# kfileplacesview.cpp: `selectedAndActive`) -- and the desktop keeps the full selection colour
+# there unless this key is true (kcolorscheme.cpp), so false put white text on the selection: on
+# white, nothing was left of the item at all. True gives an unfocused window the window colour
+# tinted toward the selection, with the window's own light text on it.
+# tests/test_colour_schemes.py holds every shipped scheme to that.
 [ColorEffects:Inactive]
-ChangeSelectionColor=false
+ChangeSelectionColor=true
 Color=112,111,110
 ColorAmount=-0.9500000000000001
 ColorEffect=0
@@ -35,44 +43,58 @@ IntensityEffect=0
 [Colors:Button]
 BackgroundAlternate=17,18,22
 BackgroundNormal=22,24,29
-DecorationFocus=61,174,233
-DecorationHover=61,174,233
-ForegroundActive=61,174,233
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=245,166,91
 ForegroundInactive=242,243,243
-ForegroundLink=41,128,185
+ForegroundLink=245,166,91
 ForegroundNegative=218,68,83
 ForegroundNeutral=246,116,0
 ForegroundNormal=254,254,254
 ForegroundPositive=39,174,96
 ForegroundVisited=127,140,141
 
+# The Complementary set is the one the lock and log-out screens draw in, and it is complete:
+# every key this scheme does not carry would otherwise be answered by the desktop's own fallback
+# -- which Plasma's scheme tool writes back as black when the scheme is applied with a tint on it.
+# Its focus, hover and active colours are Longive's orange, as every other preset's are its own
+# accent: the lock screen's flat buttons light up in them. The rest are KDE's fallback values.
 [Colors:Complementary]
 BackgroundAlternate=17,18,22
 BackgroundNormal=17,18,22
-DecorationFocus=55,67,80
-
-[Colors:Selection]
-BackgroundAlternate=60,120,255
-BackgroundNormal=60,120,255
-DecorationFocus=61,174,233
-DecorationHover=61,174,233
-ForegroundActive=252,252,252
-ForegroundInactive=252,253,253
-ForegroundLink=253,188,75
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=245,166,91
+ForegroundInactive=161,169,177
+ForegroundLink=29,153,243
 ForegroundNegative=218,68,83
 ForegroundNeutral=246,116,0
-ForegroundNormal=254,254,254
+ForegroundNormal=252,252,252
 ForegroundPositive=39,174,96
-ForegroundVisited=189,195,199
+ForegroundVisited=155,89,182
+
+[Colors:Selection]
+BackgroundAlternate=225,145,75
+BackgroundNormal=245,166,91
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=17,18,22
+ForegroundInactive=40,40,40
+ForegroundLink=16,52,120
+ForegroundNegative=120,15,25
+ForegroundNeutral=92,48,0
+ForegroundNormal=17,18,22
+ForegroundPositive=14,82,38
+ForegroundVisited=80,35,100
 
 [Colors:Tooltip]
 BackgroundAlternate=17,18,22
 BackgroundNormal=17,18,22
-DecorationFocus=61,174,233
-DecorationHover=61,174,233
-ForegroundActive=61,174,233
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=245,166,91
 ForegroundInactive=242,243,243
-ForegroundLink=41,128,185
+ForegroundLink=245,166,91
 ForegroundNegative=218,68,83
 ForegroundNeutral=246,116,0
 ForegroundNormal=252,253,253
@@ -82,11 +104,11 @@ ForegroundVisited=127,140,141
 [Colors:View]
 BackgroundAlternate=17,18,22
 BackgroundNormal=17,18,22
-DecorationFocus=61,174,233
-DecorationHover=61,174,233
-ForegroundActive=61,174,233
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=245,166,91
 ForegroundInactive=242,243,243
-ForegroundLink=31,140,236
+ForegroundLink=245,166,91
 ForegroundNegative=218,68,83
 ForegroundNeutral=246,116,0
 ForegroundNormal=254,254,254
@@ -96,11 +118,11 @@ ForegroundVisited=127,140,141
 [Colors:Window]
 BackgroundAlternate=17,18,22
 BackgroundNormal=17,18,22
-DecorationFocus=60,120,255
-DecorationHover=60,120,255
-ForegroundActive=61,174,233
+DecorationFocus=245,166,91
+DecorationHover=245,166,91
+ForegroundActive=245,166,91
 ForegroundInactive=242,243,243
-ForegroundLink=41,128,185
+ForegroundLink=245,166,91
 ForegroundNegative=218,68,83
 ForegroundNeutral=246,116,0
 ForegroundNormal=252,253,253

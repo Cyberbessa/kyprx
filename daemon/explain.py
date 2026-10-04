@@ -623,6 +623,17 @@ def _config_changes(before: dict, after: dict) -> list[str]:
             was = f"{own_b[cls]} %" if cls in own_b else "none of its own"
             now = f"{own_a[cls]} %" if cls in own_a else "none of its own"
             out.append(f"opacity of {cls}: {was} → {now}")
+    # A missing key counts as an empty list: the list only exists while there is something in it
+    # to remember, and a file written before it existed has none.
+    ticks_b, ticks_a = before.get("ticked_at_100") or [], after.get("ticked_at_100") or []
+    if ticks_b != ticks_a:
+        parts = []
+        if [c for c in ticks_a if c not in ticks_b]:
+            parts.append("adds " + ", ".join(c for c in ticks_a if c not in ticks_b))
+        if [c for c in ticks_b if c not in ticks_a]:
+            parts.append("takes out " + ", ".join(c for c in ticks_b if c not in ticks_a))
+        out.append("windows kept ticked at 100 %: " + ("; ".join(parts) if parts
+                                                       else "the same windows, in another order"))
     def_b, def_a = before.get("defaults") or {}, after.get("defaults") or {}
     for key in sorted(set(def_b) | set(def_a)):
         if def_b.get(key) != def_a.get(key):
@@ -640,6 +651,13 @@ def _config_changes(before: dict, after: dict) -> list[str]:
     for key, label in (("video_dir", "video folder"), ("image_dir", "pictures folder"), ("layout", "wallpaper picker layout")):
         if paper_b.get(key) != paper_a.get(key):
             out.append(_change(label, paper_b.get(key) or "none", paper_a.get(key) or "none"))
+    # A key the file does not carry reads as yes: listing KDE's own wallpapers is what the picker
+    # did before the switch existed, so that is what "before" says. A key that is there but not
+    # true -- an explicit false -- reads as no, which is what it means.
+    if paper_b.get("kde_wallpapers", True) != paper_a.get("kde_wallpapers", True):
+        out.append(f"the wallpaper picker lists KDE's own wallpapers: "
+                   f"{_yes(paper_b.get('kde_wallpapers', True))} → "
+                   f"{_yes(paper_a.get('kde_wallpapers', True))}")
     return out
 
 

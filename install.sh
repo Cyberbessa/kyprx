@@ -192,8 +192,9 @@ install_all() {
   step "colour schemes and the Plasma style"
   # The style is installed in two places, and the split is the whole finding. Where Plasma looks
   # for packages it gets a **copy** of `metadata.json` and `plasmarc` -- and deliberately not its
-  # `colors`. That file is empty on purpose (a style whose colours file carries a palette paints
-  # the panel from it and never reads the scheme; an empty one follows the scheme, and it exists
+  # `colors`. That file fixes only the lock and log-out screens' set, and nothing the panel draws
+  # in (a style whose colours file carries a palette for one of those sets paints the panel from
+  # it and never reads the scheme; one that names none of them follows the scheme, and it exists
   # so that the shell, which asks every theme directory for it on every item it draws and never
   # remembers a miss, finds it at once). But it has to be found by a path with no symbolic link in
   # it: KConfig canonicalises a file name on open and the shared-config lookup compares the name

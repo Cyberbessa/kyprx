@@ -15,8 +15,16 @@ documentation suggests.
   desktop only `default` has no palette -- `klassy-dark`, `klassy-light` and every third-party
   style tried here ship one. That is why changing the colour scheme used to leave the panel
   exactly where it was, and it is why this app ships a Plasma style of its own whose `colors`
-  file is deliberately empty, `share/desktoptheme/kyprx`. Empty rather than absent for a
-  measured reason, written in the file itself.
+  file carries no palette but one set, `share/desktoptheme/kyprx`. What the file carries and
+  leaves out is measured, and the reasons are written in the file itself.
+
+- **The lock and log-out screens read their colours through the Plasma style, and both draw in
+  the Complementary set.** Every Plasma QML engine is told to take Kirigami's colours from the
+  style (libplasma sets `_kirigamiTheme=KirigamiPlasmaStyle` on the engine), and the two screens
+  put their contents in the Complementary set -- which the light presets carry as a *light* set,
+  and which a derived scheme with a tint used to carry half-black. So the style's `colors` file
+  pins exactly that one set, dark on every preset (`COMPLEMENTARY`), and leaves out everything
+  the panel draws in, which is what keeps the bullet above true.
 
 - **Applying a global theme does not write the user's config; it rewrites a layer underneath.**
   The package's `defaults` are copied into `~/.config/kdedefaults/` and the matching user keys are
@@ -75,9 +83,10 @@ DATA_HOME = os.path.expanduser(os.environ.get("XDG_DATA_HOME") or "~/.local/shar
 #: Where a scheme this app writes goes. Reading looks wider -- see `_scheme_dirs`.
 SCHEMES_HOME = os.path.join(DATA_HOME, "color-schemes")
 
-#: The one Plasma style, worn by every preset: Plasma's own panel artwork, and an empty `colors`
-#: file, so the panel takes the colour scheme's -- a colour of your own included. One package
-#: serves both modes, because the artwork recolours itself from the scheme as it is drawn. Its
+#: The one Plasma style, worn by every preset: Plasma's own panel artwork, and a `colors` file
+#: that fixes only the lock and log-out screens' set -- dark, on every preset (`COMPLEMENTARY`)
+#: -- so the panel takes the colour scheme's, a colour of your own included. One package serves
+#: both modes, because the artwork recolours itself from the scheme as it is drawn. Its
 #: `FallbackTheme` names klassy-dark, which Plasma 6 reads for wallpaper defaults only -- the
 #: artwork on screen is `default`'s, measured.
 STYLE = "kyprx"
@@ -127,6 +136,111 @@ NO_ACCENT = "0,0,0,0"
 #: default is 0.15, which on a dark scheme moves a background by about three units in each
 #: channel -- true, and not visible. This is the smallest value that reads as a tint.
 DEFAULT_TINT = 0.25
+
+# ---------------------------------------------------------------- what a colour scheme carries
+
+#: The six colour sets a scheme carries, and the twelve keys of each, named as they sit in a
+#: `.colors` file and in the order Plasma's own scheme tool names them when it applies one
+#: (`colorsapplicator.cpp`: `colorSetGroupList` and `colorSetKeyList`).
+COLOUR_SETS = ("Colors:View", "Colors:Window", "Colors:Button", "Colors:Selection",
+               "Colors:Tooltip", "Colors:Complementary")
+SET_KEYS = ("BackgroundNormal", "BackgroundAlternate", "ForegroundNormal", "ForegroundInactive",
+            "ForegroundActive", "ForegroundLink", "ForegroundVisited", "ForegroundNegative",
+            "ForegroundNeutral", "ForegroundPositive", "DecorationFocus", "DecorationHover")
+
+#: The `[Colors:*][Inactive]` subgroup a scheme may carry under a set, as `kconfig` spells it:
+#: KConfig joins a group's components with its own separator.
+INACTIVE_GROUP = kconfig.SEP + "Inactive"
+
+#: The colour set the lock and log-out screens draw in, named as it sits in a scheme file.
+COMPLEMENTARY_SET = "Colors:Complementary"
+
+#: What the desktop answers for a key a scheme file does not carry: KColorScheme's own fallbacks,
+#: transcribed from the "default colors" tables of `kcolorscheme.cpp` (KConfig 6.30.0, which ships
+#: with this desktop's Plasma 6.7.5). A key a scheme leaves out is *not* left out of the desktop:
+#: KColorScheme answers the fallback here, so a scheme that leaves out keys still reads as a
+#: complete one -- unless the scheme carries a `TintFactor`, which every derived scheme does, for
+#: then Plasma's own tool rewrites **every** key from the file, reads a missing one as an invalid
+#: colour and writes it back as black. Filling the derived scheme from this table is what keeps a
+#: missing key from turning into black text.
+KDE_FALLBACK = {
+    "Colors:View": {
+        "BackgroundNormal": "255,255,255", "BackgroundAlternate": "247,247,247",
+        "ForegroundNormal": "35,38,41", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "41,128,185",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Window": {
+        "BackgroundNormal": "239,240,241", "BackgroundAlternate": "227,229,231",
+        "ForegroundNormal": "35,38,41", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "41,128,185",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Button": {
+        "BackgroundNormal": "252,252,252", "BackgroundAlternate": "163,212,250",
+        "ForegroundNormal": "35,38,41", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "41,128,185",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Selection": {
+        "BackgroundNormal": "61,174,233", "BackgroundAlternate": "163,212,250",
+        "ForegroundNormal": "255,255,255", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "255,255,255", "ForegroundLink": "253,188,75",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "176,55,69",
+        "ForegroundNeutral": "198,92,0", "ForegroundPositive": "23,104,57",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Tooltip": {
+        "BackgroundNormal": "247,247,247", "BackgroundAlternate": "239,240,241",
+        "ForegroundNormal": "35,38,41", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "41,128,185",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Complementary": {
+        "BackgroundNormal": "42,46,50", "BackgroundAlternate": "27,30,32",
+        "ForegroundNormal": "252,252,252", "ForegroundInactive": "161,169,177",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "29,153,243",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+    "Colors:Header": {
+        "BackgroundNormal": "222,224,226", "BackgroundAlternate": "239,240,241",
+        "ForegroundNormal": "35,38,41", "ForegroundInactive": "112,125,138",
+        "ForegroundActive": "61,174,233", "ForegroundLink": "41,128,185",
+        "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+        "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+        "DecorationFocus": "61,174,233", "DecorationHover": "147,206,233",
+    },
+}
+
+#: The one block the shipped Plasma style fixes in its own `colors` file, `key -> value`: the set
+#: the lock and log-out screens draw in, pinned to Klassy Dark's Complementary colours so the
+#: screens are dark on every preset -- "dark even on light themes", the light presets' own
+#: Complementary blocks being light. The two decoration keys are deliberately left out, so the
+#: focus and hover colours of what those screens draw in this set -- the lock screen's flat
+#: buttons -- follow the colour scheme instead of Klassy Dark's blue. The password box is not in
+#: this set: a Plasma text field puts itself in the View set while its background shows, so its
+#: ring and its colours follow the scheme whatever this block says (scripts/probe.py --follow
+#: --style-dir measures both). Everything else the desktop draws in is deliberately not in
+#: the file either, and follows the colour scheme (`follows_colours`). The block is the style's
+#: word on what those two screens will be painted with, and `tests/test_colour_schemes.py` holds
+#: the file and this constant to each other so the two cannot quietly drift apart.
+COMPLEMENTARY = {
+    "BackgroundNormal": "42,46,50", "BackgroundAlternate": "30,87,116",
+    "ForegroundNormal": "252,252,252", "ForegroundInactive": "161,169,177",
+    "ForegroundActive": "61,174,233", "ForegroundLink": "29,153,243",
+    "ForegroundVisited": "155,89,182", "ForegroundNegative": "218,68,83",
+    "ForegroundNeutral": "246,116,0", "ForegroundPositive": "39,174,96",
+}
 
 
 @dataclass(frozen=True)
@@ -300,9 +414,10 @@ def follows_colours(style: str) -> bool:
 
     The measured rule, and the whole reason this app ships a style of its own: a style whose
     `colors` file carries a palette paints from that file and never looks at the scheme. A file
-    with no `[Colors:*]` group in it is not a palette -- KConfig layers `kdeglobals` under it, so
-    the style follows the scheme exactly as one with no file does. That is what `kyprx` ships,
-    and the file says why.
+    whose only `[Colors:*]` group is the lock and log-out screens' still follows, though -- the
+    panel draws in the Window, View and Button sets, none of which the file names, so KConfig
+    layers `kdeglobals` under it for everything the panel asks of it. That is what `kyprx` ships:
+    one file, fixing only `COMPLEMENTARY_SET`, and the file says why.
     """
     path = style_path(style)
     if not path:
@@ -310,7 +425,8 @@ def follows_colours(style: str) -> bool:
     palette = os.path.join(path, "colors")
     if not os.path.exists(palette):
         return True
-    return not any(group.startswith("Colors:") for group in kconfig.KConfig(palette).groups)
+    return all(group == COMPLEMENTARY_SET
+               for group in kconfig.KConfig(palette).groups if group.startswith("Colors:"))
 
 
 def current() -> dict:
@@ -417,12 +533,75 @@ def custom_path() -> str:
     return os.path.join(SCHEMES_HOME, CUSTOM + ".colors")
 
 
+def _has(cfg: kconfig.KConfig, group: str, key: str) -> bool:
+    """Does the file carry a value for this key? A key marked `[$d]` -- gone back to its default --
+    is a key with no value, and `NO_VALUE` is truthy, so both halves are compared with `is`."""
+    value = cfg.get(group, key)
+    return value is not None and value is not kconfig.NO_VALUE
+
+
+def _fill_set(cfg: kconfig.KConfig, group: str, fallback: dict[str, str]) -> None:
+    """Complete one colour group out of the file, filling every key it does not carry.
+
+    `fallback` answers for what is missing: the set's own entry in KDE_FALLBACK, or the
+    already-complete group the desktop reads a Header from. Only what is missing is written -- a
+    scheme of somebody's own, tuned by hand, is followed, never second-guessed.
+    """
+    for key in SET_KEYS:
+        if not _has(cfg, group, key):
+            cfg.set(group, key, fallback[key])
+
+
+def _fill_missing(cfg: kconfig.KConfig, source: kconfig.KConfig) -> None:
+    """Give the derived scheme every key the desktop would otherwise answer for itself.
+
+    Three shapes, all read out of `kcolorscheme.cpp`:
+
+    - the six sets, filled from `KDE_FALLBACK` where the preset's file does not carry a key;
+    - an `[Colors:*][Inactive]` subgroup the preset carries is completed from its set's own
+      fallbacks -- the desktop reads the subgroup with the very same defaults behind it;
+    - a `[Colors:Header]`, which few schemes carry and Breeze's own do, reads as its own keys,
+      then the Window set's, then the Header fallback -- so it is filled from the Window group
+      that has just been completed above it, and an `[Inactive]` under it from the now-complete
+      Header.
+
+    Without this, every key the file lacks is answered by Plasma's own scheme tool when the
+    derived scheme is applied under a tint: it rewrites every key from the file, reads a missing
+    one as an invalid colour, and writes it back as black -- which is how a preset's lock and
+    log-out screens came to be drawn with black text.
+    """
+    for group in COLOUR_SETS:
+        _fill_set(cfg, group, KDE_FALLBACK[group])
+        if group + INACTIVE_GROUP in source.groups:
+            _fill_set(cfg, group + INACTIVE_GROUP, KDE_FALLBACK[group])
+    header = "Colors:Header"
+    if header in source.groups:
+        # By this point Colors:Window is complete, so its values are exactly what the desktop
+        # reads a Header key from when the Header does not carry it.
+        window = {key: str(cfg.get("Colors:Window", key)) for key in SET_KEYS}
+        _fill_set(cfg, header, KDE_FALLBACK[header] | window)
+        if header + INACTIVE_GROUP in source.groups:
+            _fill_set(cfg, header + INACTIVE_GROUP,
+                      {key: str(cfg.get(header, key)) for key in SET_KEYS})
+
+
 def ensure_custom(tx, p: Preset, tint: float) -> bool:
     """Write the preset's scheme out again with a tint factor on it. True if the file changed.
 
     Rebuilt from the preset's file every time rather than patched in place, so that a preset whose
     own colours changed -- and one of them is somebody's, tuned by hand -- is followed rather than
-    frozen at whatever it was the first time this ran.
+    frozen at whatever it was the first time this ran. The copy is then completed
+    (`_fill_missing`): a derived scheme always carries a `TintFactor`, and under a tint Plasma's
+    scheme tool fills every key the file lacks with black, which is how a preset's lock and
+    log-out screens came to be unreadable.
+
+    The preset's own `[General] AccentColor` never comes along. The accent is the user's, held in
+    `kdeglobals` and nowhere else: Plasma's scheme tool reads it from there on every apply and
+    bakes it into the palette, and never from the scheme file (`colorsapplicator.cpp`,
+    `applyScheme`) -- so an accent of the preset's own, the white Longive carried, would be a
+    second answer to a question the desktop already answers. It is the same apply pass that
+    rewrites every key of every set from the file under a tint, which is what `_fill_missing`
+    above guards.
     """
     base = scheme_path(p.scheme)
     if not base:
@@ -438,6 +617,8 @@ def ensure_custom(tx, p: Preset, tint: float) -> bool:
     cfg.set("General", "Name", f"{p.name} + your colour (KyprX)")
     cfg.set("General", "TintFactor", f"{tint:g}")
     cfg.set("General", FROM_PRESET, p.id)
+    cfg.delete_key("General", "AccentColor")
+    _fill_missing(cfg, source)
     return cfg.dirty()
 
 
@@ -601,9 +782,10 @@ def plan(now: dict, wanted: dict,
         steps.append(("", partial(_run, ["plasma-apply-colorscheme", target]), ""))
 
     if style_now != STYLE:
-        # The one style every preset wears. Its contents never change under its name -- the package
-        # is a copy install.sh makes, and its colours file is empty on purpose -- so unlike the
-        # scheme above there is nothing to bounce: when the name is right, the panel is.
+        # The one style every preset wears. Its contents never change under its name -- the
+        # package is a copy install.sh makes, and its colours file pins only the lock and log-out
+        # screens' set, never a set the panel draws in -- so unlike the scheme above there is
+        # nothing to bounce: when the name is right, the panel is.
         steps.append((_line("the panel", "plasma-apply-desktoptheme", style_now, STYLE),
                       partial(_run, ["plasma-apply-desktoptheme", STYLE]),
                       # The style being left is not named: `scripts/drive.py` reads the name of

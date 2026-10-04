@@ -102,7 +102,7 @@ anything new.
 | `kwin.json` | The window manager's settings for the window border, focus, the blur, the window animation and the tiling, and whether each of those three is switched on |
 | `shortcuts.json` | Every key of every action on the [Shortcuts](shortcuts.md) tab |
 | `colours.json` | The mode, the colour preset, a colour of your own and how far it soaks in |
-| `wallpaper.json` | The wallpaper of every activity, by the activity's name and by the path of each screen's file, when a video pauses, and the wallpaper picker's layout and video folder |
+| `wallpaper.json` | The wallpaper of every activity, by the activity's name and by the path of each screen's file, when a video pauses, and the wallpaper picker's layout, video folder and whether KDE's own wallpapers are listed |
 | `kyprx.json` | Which shape these files are in. Leave it as KyprX wrote it |
 | `README.md` | A short description of the folder |
 | `.gitignore`, `.stignore` | Keep the copies of the desk and half-written files out of git and out of Syncthing |
@@ -188,8 +188,10 @@ The presets themselves are described on [Appearance](appearance.md#the-presets).
   - `pause`, for a video only: when it pauses, as the video plugin numbers its own choices: `0`
     **Maximized or full-screen windows**, `1` **Active window**, `2` **At least one window is
     visible**, `3` **Never**.
-- `picker` holds `layout`, `pages` or `strip`, and `video_folder`, a path, or empty for the folder
-  the [Wallpaper](wallpaper.md) tab works out by itself.
+- `picker` holds `layout`, `pages`, `strip` or `strip-names`, `video_folder`, a path, or empty
+  for the folder the [Wallpaper](wallpaper.md) tab works out by itself, `image_folder`, the same
+  for pictures, and `kde_wallpapers`, `true` or `false`, for whether KDE's own wallpapers are
+  listed.
 
 **`shortcuts.json`** holds, under `keys`, each action's name and the list of its keys, each written
 like `Meta+Alt+Left`: the modifiers first, in the order Meta, Ctrl, Alt, Shift. A key that takes
@@ -429,8 +431,8 @@ file, and whether the tiling, the blur and the window animation are on; the deco
 added and never removed; the four ticks of each window the file lists (**Hide title bar**,
 **Outline**, **Transparency**, **Blur**); what a new window gets; the shared **Opacity**;
 notifications; the first key of each action, keeping any others the action has; the cheatsheet's
-choices; the wallpaper picker's layout and video folder; the colours and **Colour from the
-wallpaper**. A colour preset this computer does not have leaves the colours as they are, with
+choices; the wallpaper picker's layout, its video folder and whether KDE's own wallpapers are
+listed; the colours and **Colour from the wallpaper**. A colour preset this computer does not have leaves the colours as they are, with
 nothing said.
 
 **What it leaves alone:** the wallpaper on screen, and **Adjust new windows**.
@@ -601,7 +603,7 @@ everything already reads this way.** **Restore the defaults** goes ahead.
 | Focus, the gaps, the layouts and their order and the rest of the Tiling tab, with tiling switched on | [Tiling](tiling.md) |
 | What a new window gets | [Windows](windows.md#what-a-new-window-gets) |
 | KyprX's three settings about itself: **Adjust new windows**, **Colour from the wallpaper** and **Say when something did not work** | [The KyprX window](README.md#above-the-tabs), and [Notifications](#notifications) above |
-| The wallpaper picker's layout, and its video folder, which is emptied so that the Wallpaper tab works one out again | [Wallpaper](wallpaper.md) |
+| The wallpaper picker's layout, its video folder, which is emptied so that the Wallpaper tab works one out again, and **Also list KDE's own wallpapers**, which is ticked | [Wallpaper](wallpaper.md) |
 | The desktop's colours | [Appearance: Colours](appearance.md#colours) |
 
 A setting that already reads KyprX's value is not written, so pressing it twice writes nothing the

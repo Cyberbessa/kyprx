@@ -156,7 +156,7 @@ class WindowsPart:
         wanted = policy.Switches(**asdict(self.config.defaults))
         out = []
         for w in self._candidates():
-            current, _ = policy.read_switches(tx, w.window_class, w.resource_name)
+            current, _ = self.switches_of(tx, w.window_class, w.resource_name)
             if current != wanted:
                 out.append(w)
         return out
@@ -188,7 +188,16 @@ class WindowsPart:
             def build(tx):
                 for w in waiting:
                     policy.apply(tx, w, wanted, self.strength_for(w.window_class))
+                nonlocal held
+                if self.at_full():
+                    # At 100 a new window's tick writes nothing -- the default already reads like
+                    # it -- so the batch is what the held list has to remember.
+                    held = self.ticks_at_100(
+                        tx, {w.window_class: (wanted.transparency, w.resource_name)
+                             for w in waiting},
+                        self.config.ticked_at_100)
 
+            held = None
             try:
                 diff = writer.run(build)
             except Exception as e:  # noqa: BLE001
@@ -198,6 +207,8 @@ class WindowsPart:
                      f"{', '.join(w.window_class for w in waiting)}")
             if writer.dry_run() and diff:
                 self.log("would have written:\n" + diff)
+            if held is not None:
+                self.keep_ticks(held)
             self._look_again_soon()
         for w in candidates:
             self.state.mark_seen(w.window_class)
@@ -205,9 +216,17 @@ class WindowsPart:
 
     def apply_to(self, window_class: str, wanted: policy.Switches) -> str:
         window = self.by_class().get(window_class) or policy.Window(window_class=window_class)
+        held = None
 
         def build(tx):
             policy.apply(tx, window, wanted, self.strength_for(window.window_class))
+            nonlocal held
+            if self.at_full():
+                # One window's switches written at 100: its tick, wanted or not, may not be
+                # deducible from what was written -- `ticks_at_100` keeps the ones that are not.
+                held = self.ticks_at_100(
+                    tx, {window.window_class: (wanted.transparency, window.resource_name)},
+                    self.config.ticked_at_100)
 
         try:
             diff = writer.run(build)
@@ -221,6 +240,8 @@ class WindowsPart:
                      f"blur={'on' if wanted.blur else 'off'}")
             if writer.dry_run():
                 self.log("would have written:\n" + diff)
+        if held is not None:
+            self.keep_ticks(held)
         self._look_again_soon()
         return "ok"
 
@@ -236,23 +257,34 @@ class WindowsPart:
 
         What is wanted is read first and applied second, deliberately: reading inside the
         transaction that writes would have each row see the half-finished work of the row before
-        it.
+        it. The reading goes through `switches_of`, so a tick held at 100 % is read as the tick it
+        is rather than deduced away -- otherwise re-applying such a row would read it unticked and
+        write it unticked, and the tick would be gone.
         """
         reading = writer.Transaction()
         open_now = self.by_class()
         rows = []
+        touched: dict = {}
         for window_class, changes in wanted.items():
             window = open_now.get(window_class) or policy.Window(window_class=window_class)
-            current, _ = policy.read_switches(reading, window_class, window.resource_name)
+            current, _ = self.switches_of(reading, window_class, window.resource_name)
             for name, value in changes.items():
                 if name not in SWITCHES:
                     return f"error: unknown switch {name}"
                 setattr(current, name, bool(value))
             rows.append((window, current))
+            touched[window_class] = (current.transparency, window.resource_name)
+
+        held = None
 
         def build(tx):
             for window, switches in rows:
                 policy.apply(tx, window, switches, self.strength_for(window.window_class))
+            nonlocal held
+            if self.at_full():
+                # At 100 the tick a row writes reads like no tick at all, so what the rows end at
+                # is what the held list has to remember -- including the ticks it must let go.
+                held = self.ticks_at_100(tx, touched, self.config.ticked_at_100)
 
         try:
             diff = writer.run(build)
@@ -268,6 +300,8 @@ class WindowsPart:
                          f"blur={'on' if switches.blur else 'off'}")
             if writer.dry_run():
                 self.log("would have written:\n" + diff)
+        if held is not None:
+            self.keep_ticks(held)
         for window_class in wanted:
             self.state.mark_seen(window_class)
         self.state.save()
@@ -344,7 +378,7 @@ class WindowsPart:
         for window_class, w in self.by_class().items():
             if not w.manageable() or window_class not in self.state.seen:
                 continue
-            current, _ = policy.read_switches(tx, window_class, w.resource_name)
+            current, _ = self.switches_of(tx, window_class, w.resource_name)
             if current.titlebar:
                 refuses = False
             else:
@@ -375,22 +409,32 @@ class WindowsPart:
         open_now = self.by_class()
         for window_class in sorted(set(open_now) | self.state.seen):
             w = open_now.get(window_class)
-            switches, pattern = policy.read_switches(
+            switches, pattern = self.switches_of(
                 tx, window_class, w.resource_name if w else "")
             shared = policy.shared_pattern(pattern, window_class)
             status = ""
             if window_class in self.state.refuses_ssd:
                 status = "refuses"
+            elif policy.auto_skip(window_class):
+                # Before the closed test: a system window stays one while it is closed. Labelled
+                # "closed", it had the tab offering an opacity menu that `own_allowed` refuses, and
+                # the simulation counting it among the ticks a move to 100 % keeps, though
+                # `transparency_targets` never reaches it -- measured: 15 expected, 13 kept.
+                status = "system"
             elif w is None:
                 status = "closed"
-            elif policy.auto_skip(window_class):
-                status = "system"
             elif shared:
                 status = "shared"
             rows.append({
                 "class": window_class,
                 "title": w.caption if w else "",
                 "open": w is not None,
+                # Whether this app has met the class (`state.seen`): the only windows a move of
+                # the strength reaches (`transparency_targets`). A dialog or a popup with a class
+                # of its own is open and never met, yet reads ticked under a broad rule; a reader
+                # counting the ticks the strength owns needs this to leave it out -- measured in
+                # memory: the simulation's count took one such window in, the daemon kept none.
+                "seen": window_class in self.state.seen,
                 "manageable": w.manageable() if w else True,
                 "skipped": list(w.skipped) if w else [],
                 "titlebar": switches.titlebar,

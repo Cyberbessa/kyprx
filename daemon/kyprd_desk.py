@@ -35,7 +35,7 @@ import writer
 from declared import COLOUR_CACHED_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import OVERLAY_CLASSES, OVERLAY_PATTERNS
-from state import WALLPAPER_LAYOUTS, Config, Defaults, own_strength
+from state import Config, Defaults, kde_wallpapers, own_strength, wallpaper_layout
 
 
 class DeskPart:
@@ -134,7 +134,7 @@ class DeskPart:
         rows = {}
         for window_class in sorted(managed):
             w = open_now.get(window_class)
-            switches, _ = policy.read_switches(tx, window_class, w.resource_name if w else "")
+            switches, _ = self.switches_of(tx, window_class, w.resource_name if w else "")
             row = {"hide_title_bar": not switches.titlebar, "outline": bool(switches.outline),
                    "transparency": bool(switches.transparency),
                    "blur": bool(switches.blur) if per_window_blur else default["blur"],
@@ -202,7 +202,7 @@ class DeskPart:
 
     def _wallpaper_part(self) -> dict | None:
         """The wallpaper of every activity, by the activity's name and by the path of each
-        screen's file, when a video pauses, and the picker's two choices. `None` when the shell
+        screen's file, when a video pauses, and the picker's choices. `None` when the shell
         cannot be asked.
 
         Every activity and not the one in use: an activity switch would otherwise rewrite this
@@ -235,9 +235,10 @@ class DeskPart:
         video_dir = str(self.config.wallpaper.get("video_dir") or "")
         image_dir = str(self.config.wallpaper.get("image_dir") or "")
         return {"activities": activities,
-                "picker": {"layout": self.config.wallpaper.get("layout", "pages"),
+                "picker": {"layout": wallpaper_layout(self.config.wallpaper.get("layout")),
                            "video_folder": explain.home(video_dir) if video_dir else "",
-                           "image_folder": explain.home(image_dir) if image_dir else ""}}
+                           "image_folder": explain.home(image_dir) if image_dir else "",
+                           "kde_wallpapers": kde_wallpapers(self.config.wallpaper)}}
 
     # -- what is wrong with a folder, before anything is applied
 
@@ -315,9 +316,36 @@ class DeskPart:
                  f"mode has to be one of {', '.join(theme.MODES)}")
             need(not col.get("own_colour") or theme.is_colour(str(col["own_colour"])),
                  folder.FILES["colours"], "own_colour is not a colour")
+        w = areas.get("wallpaper")
+        if w is not None:
+            picker = (w or {}).get("picker") or {}
+            need("kde_wallpapers" not in picker or isinstance(picker.get("kde_wallpapers"), bool),
+                 folder.FILES["wallpaper"], "kde_wallpapers has to be true or false")
         return out
 
     # -- applying
+
+    @staticmethod
+    def _restrike_after_rows(restrike: list, rows: dict, default_row: dict, own: dict) -> list:
+        """The strength's restrike, minus the windows the folder's own rows have just decided
+        otherwise about.
+
+        The restrike is read from the desk as it stands, before the rows go in; the rows are
+        applied first, in the same transaction. A row may untick a window the restrike was about
+        to tick, or give it a number of its own -- and the folder is the setup, so its word wins
+        over the strength arriving beside it: without this filter, applying a folder and then
+        applying it again would not be the same as applying it once, and a number the folder gave
+        would be overwritten the moment it landed.
+        """
+        out = []
+        for w in restrike:
+            cls = w.window_class
+            if cls in own or "opacity" in (rows.get(cls) or {}):
+                continue
+            if not {**default_row, **(rows.get(cls) or {})}["transparency"]:
+                continue
+            out.append(w)
+        return out
 
     def apply_areas(self, target: dict, preview: bool = False) -> tuple[str, list[str]]:
         """Apply parts of the folder to the desk, each exactly as it says. Returns ("ok" or
@@ -327,7 +355,11 @@ class DeskPart:
         and every window, so the screen stops once. This app's own settings and profiles next.
         Then the keys, the colours and the wallpaper, each through its own door. Every window this
         app speaks for is brought to its row, or to what a new window gets when the folder does
-        not list it -- that is what "the folder is the setup" means for a window.
+        not list it -- that is what "the folder is the setup" means for a window. The strength,
+        when it moves, is struck on the windows it reaches, the folder's own rows winning where
+        they speak about a window (`_restrike_after_rows`); at 100 % the ticks those writes leave
+        behind cannot be read back off the rules, so they are held (`Config.ticked_at_100`) in the
+        same breath as the settings below.
         """
         c = self.config
         s = target.get("settings")
@@ -347,7 +379,7 @@ class DeskPart:
         strength = int((s or {}).get("opacity", c.transparency)) if s is not None else int(
             c.transparency)
         previous = int(c.transparency)
-        restrike = self.transparency_targets() if strength != previous else []
+        restrike = self.transparency_targets(previous) if strength != previous else []
         reading = writer.Transaction()
         managed = self.managed_classes() | set(rows)
         open_now = self.by_class()
@@ -357,6 +389,23 @@ class DeskPart:
                            else rules.find_managed(reading.rules, cls) is not None)
                      for cls in managed}
         own = {cls: int(r["opacity"]) for cls, r in rows.items() if "opacity" in r}
+        if restrike:
+            restrike = self._restrike_after_rows(restrike, rows, default_row, own)
+        #: At 100 % a tick reads exactly like no tick, so what the rows and the restrike leave
+        #: each window at is what the held ticks (`Config.ticked_at_100`) have to remember --
+        #: including, at 100 to 100, the classes the folder's own rows speak about and only those:
+        #: a folder that names nothing leaves the list exactly as it was, which is what keeps
+        #: applying the folder the desk has just described free of changes. Below 100 every tick
+        #: is deducible again and the list reads empty.
+        touched: dict = {}
+        if self.at_full(strength):
+            if rows_part is not None:
+                for cls, row in rows.items():
+                    touched[cls] = (bool({**default_row, **row}["transparency"]),
+                                    open_now[cls].resource_name if cls in open_now else "")
+            for w in restrike:
+                touched.setdefault(w.window_class, (True, w.resource_name))
+        held = None
 
         def build(tx):
             before = {n: {g: dict(e) for g, e in getattr(tx, n).groups.items()}
@@ -370,6 +419,9 @@ class DeskPart:
                                     strength)
                 if restrike:
                     self.strike_transparency(tx, restrike, strength, previous)
+            nonlocal held
+            held = (self.ticks_at_100(tx, touched, self.config.ticked_at_100, own)
+                    if self.at_full(strength) else [])
             moved = {n: {g for g in set(before[n]) | set(getattr(tx, n).groups)
                          if before[n].get(g) != getattr(tx, n).groups.get(g)}
                      for n in before}
@@ -400,19 +452,28 @@ class DeskPart:
         paper = target.get("wallpaper")
         if paper is not None and isinstance(paper.get("picker"), dict):
             picker = paper["picker"]
-            layout = str(picker.get("layout") or "pages")
             folder_path = str(picker.get("video_folder") or "")
             image_folder_path = str(picker.get("image_folder") or "")
             wanted_config.wallpaper = {
-                "layout": layout if layout in WALLPAPER_LAYOUTS else "pages",
+                "layout": wallpaper_layout(picker.get("layout")),
                 "video_dir": os.path.expanduser(folder_path) if folder_path else "",
-                "image_dir": os.path.expanduser(image_folder_path) if image_folder_path else ""}
+                "image_dir": os.path.expanduser(image_folder_path) if image_folder_path else "",
+                # A picker block without the switch is one written before it existed: the value
+                # held now stands, which is also what keeps the round trip of a folder that has
+                # just been described free of changes.
+                "kde_wallpapers": kde_wallpapers(picker, self.config.wallpaper.get(
+                    "kde_wallpapers")),
+            }
 
         if preview:
             import explain
             tx = writer.Transaction()
             if windows_touched or "decoration" in target or "kwin" in target:
                 build(tx)
+            if held is not None:
+                # Said in the preview, exactly as it would be saved: the list emptying as the
+                # strength comes off 100 is one of the changes the question is being asked about.
+                wanted_config.ticked_at_100 = held
             lines = [explain.preview(tx), explain.own_preview(state.CONFIG_PATH, asdict(c),
                                                                 asdict(wanted_config))]
             if target.get("profiles") is not None:
@@ -442,6 +503,11 @@ class DeskPart:
             for cls in rows:
                 self.state.mark_seen(cls)
             self.state.save()
+        if held is not None:
+            # The held ticks as the writes left them -- set on the settings that are about to be
+            # kept, so that the one save below carries them, and that a list which did not move
+            # costs no save at all.
+            wanted_config.ticked_at_100 = held
         if wanted_config != c:
             self.config = wanted_config
             self.config.save()

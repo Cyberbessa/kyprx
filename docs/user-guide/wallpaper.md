@@ -35,6 +35,15 @@ carry more than one of these lines:
 - **the video folder is not there right now:** *folder*. **Videos** is ticked, and the
   **Video folder** does not exist at the moment, for example because it is on a drive that is not
   plugged in. The picker has nothing to list until it is back.
+- **the pictures folder** *folder* **has no wallpaper in it, so KDE's own wallpapers are listed.**
+  The pictures folder exists but holds nothing the picker can list — no picture of a kind it
+  knows, no wallpaper package. The wallpapers the desktop itself ships are listed instead, so the
+  picker is never empty, and this line says that is why. The same line is shown in the picker
+  itself.
+- **the pictures folder is not there right now:** *folder*, **so KDE's own wallpapers are
+  listed** — or, when **Also list KDE's own wallpapers** is unticked, **so the picker has nothing
+  to list until it is back**. The pictures folder does not exist at the moment, for example
+  because it is on a drive that is not plugged in. The same line is shown in the picker itself.
 - **the Smart Video Wallpaper Reborn plugin is not installed, so there is nothing to play a video
   with**. The activity you are in is set to video wallpapers, but the plugin is not on this
   computer.
@@ -51,9 +60,9 @@ The missing plugin and the old plugin are also reported in the Problems box on t
 The section's **i** says: *What the wallpaper key offers you when you press it. A wallpaper you
 choose reaches every screen of the activity you are in, and no other.*
 
-**Pictures — the wallpapers KDE knows about** and **Videos — played by Smart Video Wallpaper
-Reborn** choose which kind of wallpaper the activity you are in shows, and so what the picker
-lists.
+**Pictures — the folder below, and KDE's own wallpapers** and **Videos — played by Smart Video
+Wallpaper Reborn** choose which kind of wallpaper the activity you are in shows, and so what the
+picker lists.
 
 This is not a setting KyprX keeps. It is the desktop's own **Wallpaper type**, the one in
 *Desktop and Wallpaper* (right-click the desktop). Ticking **Videos** here switches every screen of
@@ -64,12 +73,22 @@ showed last. If the desktop does not take the change, the tick goes back to what
 **Videos** is greyed, with the tooltip *Smart Video Wallpaper Reborn is not installed.*, when that
 plugin is missing. There is no KyprX default here: the tab always shows what the desktop has.
 
-**Pictures folder** is the folder the picker lists pictures from, in addition to the wallpapers KDE
-ships. Type a folder and press Enter, or press **Choose…**, which opens a folder chooser titled
-*Where the pictures are*. The field and the button are greyed unless **Pictures** is ticked; the
-folder is kept either way. While no folder is set, KyprX looks in your Pictures folder
-(`XDG_PICTURES_DIR` in `~/.config/user-dirs.dirs`, or `~/Pictures`). Empty the field to go back to
-the default.
+**Pictures folder** is the folder the picker lists pictures from, beside the wallpapers KDE ships
+(see **Also list KDE's own wallpapers** just below). Type a folder and press Enter, or press
+**Choose…**, which opens a folder chooser titled *Where the pictures are*. The field and the
+button are greyed unless **Pictures** is ticked; the folder is kept either way. While no folder is
+set, KyprX looks in your Pictures folder (`XDG_PICTURES_DIR` in `~/.config/user-dirs.dirs`, or
+`~/Pictures`). Empty the field to go back to the default.
+
+**Also list KDE's own wallpapers** is the tick box under the folder. While it is ticked, the picker
+lists beside your pictures every wallpaper the desktop itself ships — and the tooltip names the
+folders they come from, your own `~/.local/share/wallpapers` first and the system's
+`wallpapers` and `backgrounds` folders after it. Untick it and the list is the pictures folder's
+alone. The box is greyed unless **Pictures** is ticked. KyprX's default: ticked.
+
+Even unticked, the box is not a promise of an empty picker: if the pictures folder has no wallpaper
+in it, KDE's own wallpapers are listed anyway, with the note in the warning band above saying why.
+An empty picker would say nothing to anybody.
 
 **Video folder** is the folder the picker lists videos from. Only the videos directly in it are
 listed, not the ones in folders inside it. Type a folder and press Enter, or press **Choose…**,
@@ -114,13 +133,14 @@ windows, so it can look like a still picture: see
 
 ## Layout
 
-The section's **i** says: *What the wallpaper picker looks like when it opens. Both show the same
-wallpapers and answer the same keys.*
+The section's **i** says: *What the wallpaper picker looks like when it opens. All three show the
+same wallpapers and answer the same keys.*
 
-**Pages — over the desktop, the chosen one in the middle and the rest behind it** and
-**Strip — a column of thumbnails beside one big picture, in a panel** choose which layout the
-picker opens in. Each is described below, under [Pages](#pages) and [Strip](#strip). KyprX's
-default: **Pages**.
+**Pages — over the desktop, the chosen one in the middle and the rest behind it**,
+**Strip — a column of thumbnails beside one big picture, in a panel, no file names** and
+**Strip with names — the same thumbnails and big picture, with the file name under the picture**
+choose which layout the picker opens in. Each is described below, under [Pages](#pages),
+[Strip](#strip) and [Strip with names](#strip-with-names). KyprX's default: **Pages**.
 
 ## The line at the bottom
 
@@ -156,9 +176,16 @@ The picker closes by itself as soon as another window takes the focus.
 What the picker lists follows **Pictures** and **Videos** on the tab, which is the kind of
 wallpaper the activity you are in is showing.
 
-**Pictures** lists what is in the `wallpapers` folder of each of the desktop's data folders:
-`~/.local/share/wallpapers` first, then the system's, usually `/usr/local/share/wallpapers` and
-`/usr/share/wallpapers`. In each one it takes:
+**Pictures** lists what is in the pictures folder set on the tab — your Pictures folder, while no
+folder is set — and, while **Also list KDE's own wallpapers** is ticked, what is in the
+`wallpapers` folder of each of the desktop's data folders: `~/.local/share/wallpapers` first, then
+the system's, usually `/usr/local/share/wallpapers` and `/usr/share/wallpapers`. The `backgrounds`
+folders beside them (`/usr/share/backgrounds` and the rest), where distributions ship their
+wallpapers, are read with the system's `wallpapers` folders, under the same tick box. While the
+pictures folder has no wallpaper in it, the desktop's wallpapers are listed whatever the box says,
+with the note in the warning band above saying why.
+
+In each folder it takes:
 
 - **wallpaper packages**: a folder with a `metadata.json` or `metadata.desktop` file and its
   pictures in `contents/images` (or `contents/images_dark`). A package is listed under its own
@@ -178,8 +205,7 @@ A file whose picture cannot be made on this computer is still listed and can sti
 
 ### Pages
 
-The default layout. There is no panel: the picker is the wallpapers themselves, laid over the
-desktop.
+There is no panel: the picker is the wallpapers themselves, laid over the desktop.
 
 - The selected wallpaper sits large in the middle of the screen, as a page with the shape of your
   screen. Its picture is cropped to that shape.
@@ -200,10 +226,17 @@ A panel in the middle of the screen, in your colour scheme's window colour, with
 
 - On the left, a strip of narrow cards, one per wallpaper, side by side. It scrolls sideways to keep
   the selected card in view, and the selected card has a border in the outline's colour.
-- On the right, the selected wallpaper as one big picture, shown whole, with its name in bold under
-  it.
-- Under the name, a line such as **24 image(s) — arrows to move, Enter to set, Esc to leave**
+- On the right, the selected wallpaper as one big picture, shown whole.
+- Under the picture, a line such as **24 image(s) — arrows to move, Enter to set, Esc to leave**
   (**video(s)** for videos). A line about a problem, when there is one, goes above it.
+- No file name under the picture. A card still says which wallpaper it is when you point at it,
+  and a card whose picture cannot be shown yet still writes its name on the card itself.
+
+### Strip with names
+
+The Strip with one difference: the file name of the selected wallpaper is written under the big
+picture, in bold. Everything else is the same — the panel, the strip of cards, the big picture,
+and the line with the count and the keys.
 
 ### Keys and clicks
 
@@ -212,17 +245,17 @@ A panel in the middle of the screen, in your colour scheme's window colour, with
 | **Right** or **Down** arrow | Selects the next wallpaper. |
 | **Left** or **Up** arrow | Selects the previous one. |
 | **Home** / **End** | Selects the first / the last. |
-| **Page Down** / **Page Up** | Moves five forward / back in Pages, and as many cards as the strip shows at once in Strip. |
+| **Page Down** / **Page Up** | Moves five forward / back in Pages, and as many cards as the strip shows at once in either strip. |
 | **Enter** (on the main keyboard or the number pad) or **Space** | Sets the selected wallpaper. |
 | **Esc** | Closes the picker without changing anything. |
 | Pages: a click on a page behind | Brings that page to the front. It does not set it. |
 | Pages: a click on the page in front | Sets it. |
 | Pages: a click anywhere else | Closes the picker without changing anything. |
-| Strip: a click on a card | Sets that wallpaper at once. |
+| Either strip: a click on a card | Sets that wallpaper at once. |
 
 In Pages a click on a page behind only brings it forward, because those pages are thin slivers and
-a click a little off would otherwise set a wallpaper you never looked at. In Strip every card is
-whole, so a click sets it.
+a click a little off would otherwise set a wallpaper you never looked at. In either strip every
+card is whole, so a click sets it.
 
 ### Setting a wallpaper
 
@@ -242,7 +275,7 @@ wallpaper's name. When the desktop takes it, the picker closes. When it does not
 open and shows **could not set**, the name, and **— see the daemon's log**
 ([Troubleshooting](../troubleshooting.md) says where the log is).
 
-Other lines the picker can show, under the page in front or in the Strip's panel:
+Other lines the picker can show, under the page in front or in a strip's panel:
 
 - **nothing to choose from**: the list is empty, for example a video folder with no videos in it;
 - **the video plugin is set to change the wallpaper on its own, so this one will not stay**: the
@@ -286,9 +319,9 @@ once. A file replaced by another of the same name gets a new picture.
   taken with `ffmpeg`.
 
 When a wallpaper has no picture, because `ffmpeg` is not installed or because this computer cannot
-read that picture file, it is still listed and can still be set. In Strip its card shows its name,
-written sideways, and the big picture reads **no preview**. In Pages it is a plain page. Without
-`ffmpeg`, **Colour from the wallpaper** also has no colour to take from a video.
+read that picture file, it is still listed and can still be set. In either strip its card shows its
+name, written sideways, and the big picture reads **no preview**. In Pages it is a plain page.
+Without `ffmpeg`, **Colour from the wallpaper** also has no colour to take from a video.
 
 ### Always fully opaque
 
@@ -301,8 +334,9 @@ change the picture you are judging.
 - **Another kind of wallpaper.** When the activity you are in shows a kind of wallpaper that is
   neither pictures nor Smart Video Wallpaper Reborn, such as a slideshow, the tab shows **Pictures**
   ticked. Setting a picture from the picker then puts the ordinary picture wallpaper back.
-- **Only those folders are looked in.** A picture kept anywhere else, in `~/Pictures` for
-  example, is listed once it is copied into `~/.local/share/wallpapers`.
+- **Only those folders are looked in.** A picture kept anywhere outside the pictures folder and
+  the folders named in the tooltip of **Also list KDE's own wallpapers** is listed once it is
+  copied into one of them.
 - **Choosing the wallpaper that is already on** changes nothing on the desktop. With
   **Colour from the wallpaper** ticked, it still hands that wallpaper's colour to the desktop, which
   is the way to take the colour of the wallpaper you already have.

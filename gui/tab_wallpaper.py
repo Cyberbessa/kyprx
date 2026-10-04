@@ -1,31 +1,46 @@
 """The Wallpaper tab: which kind of wallpaper the picker lists, how the picker looks, where the
-videos are, and when a video pauses.
+videos are, when a video pauses, and whether KDE's own wallpapers stand in the list.
 
 Which kind is listed is not a setting of this app's: it is the wallpaper plugin the activity in use
 is wearing, read from the shell every time the page is drawn, and choosing here changes that plugin.
-The picker's layout and the videos' folder are this app's own settings, written through
-`SetSettings`; the pause is the video plugin's own setting, written only when it is changed here.
-The picker itself is `gui/picker.py`.
+The picker's layout, the videos' folder and the switch about KDE's own wallpapers are this app's own
+settings, written through `SetSettings`; the pause is the video plugin's own setting, written only
+when it is changed here. The picker itself is `gui/picker.py`.
 """
 
 from __future__ import annotations
 
 import os
 
-from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QRadioButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+                               QPushButton, QRadioButton, QVBoxLayout, QWidget)
 
 from cheatsheet import key_text
 from client import Client
+from picker import DEFAULT_LAYOUT
 from widgets import SECTION_HINTS, Choice, Section, warning
 
 
-#: What each of the two picker layouts looks like, said on the radio itself rather than in a
-#: paragraph under both of them. Everything the two have in common -- the same list, the same
+#: What each of the three picker layouts looks like, said on the radio itself rather than in a
+#: paragraph under all of them. Everything the three have in common -- the same list, the same
 #: keys, the same way of setting a wallpaper -- is worth saying once, in the section's own line.
+#: Pages, the default, comes first: the order here is the order the radios stand in.
 PICKER_LAYOUTS = {
     "pages": ("Pages", "over the desktop, the chosen one in the middle and the rest behind it"),
-    "strip": ("Strip", "a column of thumbnails beside one big picture, in a panel"),
+    "strip": ("Strip", "a column of thumbnails beside one big picture, in a panel, no file names"),
+    "strip-names": ("Strip with names", "the same thumbnails and big picture, with the file name "
+                                        "under the picture"),
+}
+
+#: What each layout's tooltip adds where its own line has no room for it. One entry per layout,
+#: keyed like `PICKER_LAYOUTS`, so a layout added to one table and not the other is a radio with
+#: nothing to say -- which the picker-layouts test finds.
+PICKER_TIPS = {
+    "pages": "No panel of its own, and the border round it is the window outline's.",
+    "strip": "A panel wearing the decoration's own background and corner. A card still says its "
+             "name when you point at it.",
+    "strip-names": "The Strip's panel, with the selected wallpaper's file name under the big "
+                   "picture.",
 }
 
 
@@ -49,9 +64,11 @@ class WallpaperTab(QWidget):
 
         # Radio buttons and not tick boxes: it is one choice out of two, and they are exclusive
         # by being children of the same box.
-        self.images = QRadioButton("Pictures — the wallpapers KDE knows about")
+        self.images = QRadioButton("Pictures — the folder below, and KDE's own wallpapers")
         self.videos = QRadioButton("Videos — played by Smart Video Wallpaper Reborn")
-        self.images.setToolTip("The picker lists the pictures the desktop already knows about.")
+        self.images.setToolTip("The picker lists the pictures in the folder below, and the "
+                               "wallpapers the desktop itself ships while the box under it is "
+                               "ticked.")
         self.videos.setToolTip("The picker lists the videos in the folder below, and the plugin "
                                "plays the one you choose.")
         # `toggled` and not `clicked`, so arrowing through them with the keyboard applies what it
@@ -61,14 +78,18 @@ class WallpaperTab(QWidget):
         self.images.toggled.connect(lambda on: on and self._set_mode("image"))
         self.videos.toggled.connect(lambda on: on and self._set_mode("video"))
 
-        # A second box, so these two are exclusive among themselves and not among the four.
-        self.pages = QRadioButton("{} — {}".format(*PICKER_LAYOUTS["pages"]))
-        self.strip = QRadioButton("{} — {}".format(*PICKER_LAYOUTS["strip"]))
-        self.pages.setToolTip("No panel of its own, and the border round it is the window "
-                              "outline's.")
-        self.strip.setToolTip("A panel wearing the decoration's own background and corner.")
-        self.pages.toggled.connect(lambda on: on and self._set_layout("pages"))
-        self.strip.toggled.connect(lambda on: on and self._set_layout("strip"))
+        # A second box, so these are exclusive among themselves and not among the four. Built
+        # from the tables rather than spelled out, so a layout is one row here and one row in
+        # each of the tables the daemon and the picker keep -- and no fifth place to forget one.
+        self.layouts: dict[str, QRadioButton] = {}
+        for layout_id, (label, line) in PICKER_LAYOUTS.items():
+            radio = QRadioButton(f"{label} — {line}")
+            radio.setToolTip(PICKER_TIPS[layout_id])
+            # The same `toggled` reasoning as the two radios above. The name is bound here rather
+            # than read when the signal fires: a closure that waited would answer every radio
+            # with the last name in the table.
+            radio.toggled.connect(lambda on, name=layout_id: on and self._set_layout(name))
+            self.layouts[layout_id] = radio
 
         self.image_folder = QLineEdit()
         self.image_folder.setPlaceholderText("where the pictures are")
@@ -80,6 +101,14 @@ class WallpaperTab(QWidget):
         image_folder_row.addWidget(QLabel("Pictures folder"))
         image_folder_row.addWidget(self.image_folder, 1)
         image_folder_row.addWidget(self.image_choose)
+
+        #: Whether KDE's own wallpapers stand in the list beside that folder. The folders the
+        #: wallpapers come from are the daemon's answer, spelled the way the interface shows a
+        #: path -- with the home directory written as `~` -- and set as the tooltip here each
+        #: time the page is drawn, so a wallpaper that arrives with the next Plasma shows up
+        #: without this file learning any path.
+        self.kde = QCheckBox("Also list KDE's own wallpapers")
+        self.kde.toggled.connect(self._set_kde)
 
         self.folder = QLineEdit()
         self.folder.setPlaceholderText("where the videos are")
@@ -111,15 +140,16 @@ class WallpaperTab(QWidget):
         form = QVBoxLayout(box)
         form.addWidget(self.images)
         form.addLayout(image_folder_row)
+        form.addWidget(self.kde)
         form.addWidget(self.videos)
         form.addLayout(folder_row)
         form.addLayout(pause_row)
 
-        looks = Section("Layout", SECTION_HINTS["Layout"] + " Both show the same wallpapers and "
-                        "answer the same keys.")
+        looks = Section("Layout", SECTION_HINTS["Layout"] + " All three show the same wallpapers "
+                        "and answer the same keys.")
         looks_form = QVBoxLayout(looks)
-        looks_form.addWidget(self.pages)
-        looks_form.addWidget(self.strip)
+        for radio in self.layouts.values():
+            looks_form.addWidget(radio)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.warning)
@@ -152,6 +182,16 @@ class WallpaperTab(QWidget):
             self.image_folder.setText(data.get("image_dir", ""))
         self.image_folder.setEnabled(mode == "image")
         self.image_choose.setEnabled(mode == "image")
+        # The switch stands under the pictures folder and answers for the same list, so it greys
+        # with the mode and not with the plugin: videos never had KDE's wallpapers in the list.
+        kde = bool(data.get("kde_wallpapers"))
+        self.kde.blockSignals(True)
+        self.kde.setChecked(kde)
+        self.kde.blockSignals(False)
+        self.kde.setEnabled(mode == "image")
+        folders = [str(d) for d in (data.get("kde_dirs") or [])]
+        self.kde.setToolTip("KDE's own wallpapers come from:\n" + "\n".join(folders)
+                            if folders else "KDE's own wallpapers.")
         # Not while somebody is typing in it: this runs on every change the daemon reports, and any
         # window opening used to wipe a folder half typed.
         if not self.folder.hasFocus():
@@ -171,10 +211,16 @@ class WallpaperTab(QWidget):
         self.pause.setCurrentIndex(found if found >= 0 else -1)
         self.pause.blockSignals(False)
         self.pause.setEnabled(videos and mode == "video" and found >= 0)
-        chosen = data.get("layout", "pages")
-        for widget, checked in ((self.pages, chosen != "strip"), (self.strip, chosen == "strip")):
+        # The daemon answers a layout it holds itself, but the answer is a string from the bus and
+        # the tab believes nothing it has not checked: an unknown name -- an older daemon behind a
+        # newer interface, or a file edited by hand -- reads as the picker's default rather than
+        # as no radio marked.
+        chosen = str(data.get("layout") or "")
+        if chosen not in self.layouts:
+            chosen = DEFAULT_LAYOUT
+        for layout_id, widget in self.layouts.items():
             widget.blockSignals(True)
-            widget.setChecked(checked)
+            widget.setChecked(layout_id == chosen)
             widget.blockSignals(False)
 
         # The activity's own name is a number the shell keeps for itself, and it meant nothing to
@@ -187,6 +233,11 @@ class WallpaperTab(QWidget):
         self.summary.setText(" · ".join(parts))
 
         trouble = [data.get("trouble")] if data.get("trouble") else []
+        if data.get("note"):
+            # Why the list is KDE's own alone, or that the pictures folder is not there. A note
+            # and not a trouble -- nothing failed -- but this band is where the tab says what
+            # the list is made of.
+            trouble.append(str(data["note"]))
         if not data.get("video_plugin"):
             trouble.append("Smart Video Wallpaper Reborn is not installed, so the picker can only "
                            "offer pictures.")
@@ -239,6 +290,20 @@ class WallpaperTab(QWidget):
         if self._loading:
             return
         self._send(layout=layout)
+        self.reload()
+
+    def _set_kde(self, on: bool) -> None:
+        """Send the switch only when it moved.
+
+        The checkbox is painted from the daemon's answer with its signals blocked, so a reload
+        never gets here -- but between that paint and a click the answer can have changed, and
+        sending back what is already held would answer a `changed()` for no change.
+        """
+        if self._loading:
+            return
+        if on == bool((self.c.settings().get("wallpaper") or {}).get("kde_wallpapers")):
+            return
+        self._send(kde_wallpapers=on)
         self.reload()
 
     def _set_pause(self) -> None:

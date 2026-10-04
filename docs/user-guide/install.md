@@ -74,8 +74,18 @@ your system, and stops. Keep the folder where it is: the installed files point i
 
 ## Updating
 
-A new version arrives with the rest of your system's updates: `sudo dnf upgrade` on Fedora, the
-automatic updates of a system that updates as a whole (after its restart), or `paru -Syu` on Arch.
+A new version arrives with the rest of your system's updates: `sudo dnf upgrade` on Fedora, or the
+automatic updates of a system that updates as a whole (after its restart). On Arch, an AUR helper
+looks for a new version in the AUR, where KyprX is not yet; until it is, a new version is the new
+release's PKGBUILD, built again in the folder that holds the old one -- `makepkg -si` there instead
+of `paru -Ui` if KyprX was installed that way:
+
+```sh
+cd kyprx
+curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
+paru -Ui
+```
+
 For an install made with `install.sh`, download the new release and run `./install.sh` again from
 it.
 

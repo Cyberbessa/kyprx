@@ -64,7 +64,7 @@ def app_icon() -> QIcon:
 #: and what opens it. A table rather than a chain of `if`s, because each entry has to agree with
 #: `daemon/kyprd_names.py:OVERLAYS` and a list is easier to keep beside another list.
 #:
-#: The wallpaper entry is a **function**, not a class, because which of its two layouts to build
+#: The wallpaper entry is a **function**, not a class, because which of its three layouts to build
 #: is a setting and is only known after the daemon has been asked. It is called the same way, so
 #: nothing below has to know the difference.
 OVERLAYS = {
