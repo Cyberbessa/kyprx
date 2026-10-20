@@ -121,13 +121,23 @@ class ShortcutRow(QWidget):
         self.name = action_label(action.get("name") or action["id"])
         self.keys = action["keys"]
         self._editing = False
+        #: A question about the key just pressed is open. See `ShortcutsTab.reload`.
+        self._asking = False
 
         self.label = QLabel()
         self.label.setMinimumWidth(96)
         self.editor = QKeySequenceEdit()
         self.editor.setMaximumSequenceLength(1)
         self.editor.setVisible(False)
-        self.editor.keySequenceChanged.connect(self._captured)
+        # Queued, so that what a key sets off -- a question, a call to the daemon, a reload of
+        # the tab -- runs once Qt's editor is done with the key, never inside it. The editor
+        # emits `keySequenceChanged` and then `editingFinished` from one key release, and a row
+        # deleted under the first made the second a use of freed memory: the window died with
+        # SIGSEGV in `QKeySequenceEdit::keyReleaseEvent`, seen on a new install and reproduced
+        # offscreen (`tests/test_shortcut_questions.py`). The price, measured: a key released in
+        # the same pass of the event loop as the window losing the keyboard is dropped, and the
+        # footer says so (`FOCUS_LOST_TOLD`).
+        self.editor.keySequenceChanged.connect(self._captured, Qt.ConnectionType.QueuedConnection)
         self.editor.installEventFilter(self)
         self.button = QPushButton("Edit")
         self.button.setMaximumWidth(72)
@@ -252,7 +262,12 @@ class ShortcutRow(QWidget):
                               f"<b>{html.escape(self.name)}</b> holds it.<br><br>Use it anyway?",
                               QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
             box.setDefaultButton(QMessageBox.StandardButton.No)
-            if box.exec() != QMessageBox.StandardButton.Yes:
+            self._asking = True
+            try:
+                answer = box.exec()
+            finally:
+                self._asking = False
+            if answer != QMessageBox.StandardButton.Yes:
                 self.told.emit(f"{html.escape(self.name)}: left as it was.")
                 return
         old = self.keys[0] if self.keys else []
@@ -302,6 +317,8 @@ class ShortcutsTab(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
 
         self.rows: list[ShortcutRow] = []
+        #: The question `_bind` asks is open. See `reload`.
+        self._asking = False
 
         #: One line and the one link on this tab. What used to be here as well -- that an action
         #: with a second key keeps it, what *Remove* takes away, what *on the card* decides -- is
@@ -324,8 +341,18 @@ class ShortcutsTab(QWidget):
         layout.addWidget(self.table)
 
     def reload(self) -> None:
-        if any(row._editing for row in self.rows):
-            return          # someone is in the middle of pressing a key
+        if self._asking or any(row._editing or row._asking for row in self.rows):
+            # Someone is in the middle of pressing a key, or of answering a question about one.
+            # A question runs an event loop of its own, and the daemon's `Changed` arrives inside
+            # it: the question's own window is one the daemon re-reads the window list for. The
+            # row has stopped listening by then, so rebuilding the rows there deleted the one that
+            # asked -- with its own question, which then bound nothing. Flags of this tab's own,
+            # and not `QApplication.activeModalWidget()`: with KDE's own dialogs, a question
+            # closed from its title bar is still the active modal widget for a moment after it
+            # has answered, which refused the read-back below. Once a question is answered,
+            # `_bind` reads the rows back where that is needed, and a key that was bound brings a
+            # `Changed` of its own.
+            return
         data = self.c.shortcuts()
         self.rows = []
         actions = data.get("actions") or []
@@ -395,7 +422,12 @@ class ShortcutsTab(QWidget):
                                   | QMessageBox.StandardButton.Cancel, self)
                 box.button(QMessageBox.StandardButton.Yes).setText("Use it here")
                 box.setDefaultButton(QMessageBox.StandardButton.Cancel)
-                if box.exec() != QMessageBox.StandardButton.Yes:
+                self._asking = True
+                try:
+                    answer = box.exec()
+                finally:
+                    self._asking = False
+                if answer != QMessageBox.StandardButton.Yes:
                     self.says.emit(f"{name}: left as it was.")
                     self.reload()
                     return

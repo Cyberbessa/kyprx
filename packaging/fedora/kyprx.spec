@@ -9,7 +9,7 @@
 # its author's repository.
 
 Name:           kyprx
-Version:        0.1.3
+Version:        0.1.4
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -86,6 +86,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Tue Oct 20 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.4-1
+- Fixes a crash of KyprX's window on the Shortcuts tab
+
 * Tue Oct 20 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.3-1
 - Fixes for KyprX's own keys, effects switched off in KDE, the wallpaper picker and the settings import
 
