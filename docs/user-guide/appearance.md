@@ -90,9 +90,9 @@ The **Profile** menu above the tabs lists the same profiles and puts one on the 
 
 A profile whose preset cannot be used on this computer is still listed. Its row is dimmed and its
 tooltip gives the reason. Selecting it adds *name* **cannot be loaded here:** *reason* to the line,
-and **Load** is greyed. The usual reason is a colour scheme that is not installed, for example a
-profile made with Carl on a computer without Carl. A profile naming a preset that does not exist,
-or a preset of the other mode, is shown the same way. It can still be updated, renamed or deleted.
+and **Load** is greyed. The usual reason is a colour scheme that is not installed on this
+computer. A profile naming a preset that does not exist, or a preset of the other mode, is shown
+the same way. It can still be updated, renamed or deleted.
 
 If the file the profiles are kept in cannot be read, the line under the list gives the reason, and
 every change is refused until the file is put right, so that nothing is saved over it. The file is
@@ -105,7 +105,7 @@ preset the global theme, the application style and the window decoration stay Kl
 panel wears KyprX's own Plasma style, which takes its colours from the colour scheme
 (KDE Plasma).
 
-KyprX's default: **Dark**, **Klassy Dark**, no colour of your own.
+KyprX's default: **Dark**, **Longive**, no colour of your own.
 
 ### The orange band
 
@@ -137,15 +137,15 @@ theme you chose yourself, is put back straight after it.
 
 The cards show the presets of the mode in force, four to a row:
 
-- **Dark**: Klassy Dark, Carl, Catppuccin Mocha, Nord, Gruvbox Dark, Dracula, Solarized Dark,
+- **Dark**: Klassy Dark, Longive, Catppuccin Mocha, Nord, Gruvbox Dark, Dracula, Solarized Dark,
   Monochrome Dark.
 - **Light**: Klassy Light, Catppuccin Latte, Solarized Light, Gruvbox Light, Rosé Pine Dawn,
   Monochrome Light.
 
 **Klassy Dark** and **Klassy Light** are the colour schemes Klassy's global theme applies by
-itself: choosing one is the way back to Klassy's own colours. **Carl** is a colour scheme by another
-author, installed separately and left exactly as it is found (Carl). The
-other eleven are colour schemes KyprX installs itself.
+itself: choosing one is the way back to Klassy's own colours. **Longive** is KyprX's own:
+monochrome surfaces with one soft orange accent. It and the other eleven are colour schemes KyprX
+installs itself. A profile or settings file that names the preset `carl` gets Longive.
 
 Each card is drawn from its colour scheme's own file: the card in the window colour, a content area
 in the view colour, a short selected row in the selection colour, and the name in the text colour.
@@ -155,8 +155,8 @@ cannot be chosen, the reason.
 
 A card that cannot be chosen looks different:
 
-- When the preset's colour scheme is not installed (Carl, on a computer without it), the card is an
-  outline with the preset's name and **not installed**, and cannot be clicked.
+- When the preset's colour scheme is not installed, the card is an outline with the preset's name
+  and **not installed**, and cannot be clicked.
 - When KyprX's own Plasma style is missing, every card is drawn faded and none can be chosen; the
   tooltip says **the Plasma style kyprx is not installed**.
 

@@ -1,9 +1,10 @@
 """The daemon's side of global shortcuts: the keys it binds and the keys it hands back.
 
-It gives back the cheatsheet key that earlier shapes of this app held, and binds a key for the
-Shortcuts tab -- refusing one another action already holds unless the tab asked to take it. When
-the settings window leaves the bus it lifts every suspension of the desktop's shortcuts, which
-undoes one a row listening for keys left behind. This part makes no call to the shortcut registry
+It gives back the cheatsheet key that earlier shapes of this app held, takes KyprX's own keys back
+from any other action that holds them too, and binds a key for the Shortcuts tab -- refusing one
+another action already holds unless the tab asked to take it. When the settings window leaves the
+bus it lifts every suspension of the desktop's shortcuts, which undoes one a row listening for keys
+left behind. This part makes no call to the shortcut registry
 itself: every one of the daemon's is in `daemon/shortcuts.py`.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `interface_owner`,
@@ -42,21 +43,96 @@ class ShortcutsPart:
             # not anything was left to release was a dry run saying something untrue.
             try:
                 held = shortcuts.legacy_claims_held()
-                spectacle = shortcuts.spectacle_conflict_held()
             except dbus.DBusException:
-                held, spectacle = [], []
+                held = []
             if held:
                 writer.report("would release the old claims on the cheatsheet key: "
                               + ", ".join(f"{c}/{a}" for c, a in held))
-            if spectacle:
-                writer.report("would release Meta+R from Spectacle RecordRegion for the wallpaper picker")
             return
         try:
             shortcuts.release_legacy_claims()
-            shortcuts.release_spectacle_conflict()
         except dbus.DBusException as e:
-            self.log(f"could not release legacy shortcut claims: "
+            self.log(f"could not release the legacy cheatsheet claims: "
                      f"{logs.what(e)}", trouble=True)
+
+    def claim_kyprx_keys(self) -> bool:
+        """Take each of KyprX's own keys back from any other action that holds it too. True when a
+        key was really taken, for the caller to bring the KyprX folder up to date.
+
+        From Plasma 6.7 the registry keeps a key two actions share on both, and the one registered
+        first is the one it runs (`shortcuts.holders`). Krohnkite registers Meta+K (Focus Up) and
+        Meta+R (Rotate), and Spectacle Meta+R (Start/Stop Region Recording): on a desk where they
+        were there before the compositor script, KyprX's Meta+K and Meta+R did nothing, and nothing
+        said so. Up to 6.6 the script's key was refused instead, the action holds nothing, and
+        there is nothing here to take.
+
+        Only a key a KyprX action holds **now**. One moved off it -- on the Shortcuts tab or in
+        KDE's own settings, which both take it from this action as they give it to another -- is
+        no longer KyprX's, and is never asked about.
+
+        Done the way *Use it here* on the Shortcuts tab does it, as one session write per action:
+        the key taken from the other action (`shortcuts.take_from`), then this action's own keys
+        written again. The second half is the one that makes the key run KyprX's action at once
+        rather than at the next login, as far as the registry's design goes: a key is grabbed for
+        the action that activated it first, taking it from that action lets the grab go without
+        handing it on, and writing an action's keys has the registry release and grab them again.
+        That is how kglobalacceld's `GlobalShortcut::setKeys` is understood to work, and it is not
+        measured here -- this desk has no clash left to measure it on. *Use it here* does the
+        same two halves.
+
+        Run after the script has been switched on and reloaded, not with the legacy claims: the
+        actions are the script's, and on the first start after a package install they only come
+        into being with the reconfigure `switch_the_script_on` asks for. Whether they already exist
+        when that returns was not measured; when they do not, the next start takes the key.
+        """
+        try:
+            clashes = shortcuts.kyprx_key_clashes()
+        except dbus.DBusException as e:
+            self.log(f"could not read who else holds KyprX's keys: {logs.what(e)}", trouble=True)
+            return False
+        by_action: dict[str, tuple[list[str], list]] = {}
+        for ident, sequence, holder in clashes:
+            by_action.setdefault(ident[1], (ident, []))[1].append((sequence, holder))
+        took = False
+        for action, (ident, takes) in by_action.items():
+            mine = ident[3] or action
+            said = [(shortcuts.key_text(sequence),
+                     f"{holder['name']} ({holder['component_name']})")
+                    for sequence, holder in takes]
+            description = "".join(f"--- {key} on {other}\n+++ kglobalaccel\n-{other}\n+{mine}\n"
+                                  for key, other in said)
+            plain = "; ".join(f"{key} is taken from {other}, so that it runs {mine}"
+                              for key, other in said)
+
+            def act(action=action, takes=takes):
+                refused = []
+                for sequence, holder in takes:
+                    try:
+                        shortcuts.take_from(holder, sequence)
+                    except (shortcuts.Refused, KeyError, dbus.DBusException) as e:
+                        refused.append(logs.what(e))
+                shortcuts.set_keys(action, shortcuts.keys_of(action))
+                if refused:
+                    raise shortcuts.Refused("; ".join(refused))
+
+            def build(tx, description=description, act=act, plain=plain):
+                tx.session_write(description, act, plain)
+
+            try:
+                diff = writer.run(build)
+            except (shortcuts.Refused, KeyError, dbus.DBusException) as e:
+                self.log(f"{mine} may not get its key back from another action: {logs.what(e)}",
+                         trouble=True)
+                continue
+            if writer.dry_run() and diff:
+                # Not "would have written": a shortcut is not a config file, and the scripts read
+                # that marker as one -- the same reason `rebind_shortcut` says "would have bound".
+                self.log("would have taken:\n" + diff)
+            elif diff:
+                took = True
+                self.log(f"{mine} has its key back: "
+                         + ", ".join(f"{key} taken from {other}" for key, other in said))
+        return took
 
     def rebind_shortcut(self, component: str, action: str, old: list[int], new: list[int],
                         take: bool = False) -> str:

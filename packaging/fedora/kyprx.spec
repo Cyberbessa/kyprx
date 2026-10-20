@@ -9,11 +9,11 @@
 # its author's repository.
 
 Name:           kyprx
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
-# The code is GPL-3.0-or-later; the eleven colour schemes and the Plasma style's plasmarc copy
+# The code is GPL-3.0-or-later; the twelve colour schemes and the Plasma style's plasmarc copy
 # blocks of Klassy's files and keep Klassy's licence; the software centre's metadata is CC0-1.0
 # (REUSE.toml, CREDITS.md).
 License:        GPL-3.0-or-later AND LGPL-2.0-or-later AND CC0-1.0
@@ -86,6 +86,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Tue Oct 20 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.3-1
+- Fixes for KyprX's own keys, effects switched off in KDE, the wallpaper picker and the settings import
+
 * Sun Oct 04 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.2-1
 - Fixes for transparency at full opacity, the lock and log-out screens, and the wallpaper picker
 

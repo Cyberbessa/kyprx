@@ -227,6 +227,12 @@ class WindowsPart:
                 held = self.ticks_at_100(
                     tx, {window.window_class: (wanted.transparency, window.resource_name)},
                     self.config.ticked_at_100)
+            elif window.window_class in self.config.ticked_at_100:
+                # Below 100 the row just written says its own tick, so it is no longer held. Only
+                # reachable with the strength off 100 and the list not emptied yet: an import,
+                # which sets the number before its rows and restrikes after them -- and the
+                # restrike read a row the file said was opaque as held, and struck it see-through.
+                held = [c for c in self.config.ticked_at_100 if c != window.window_class]
 
         try:
             diff = writer.run(build)

@@ -246,11 +246,11 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
             #: decoration (`libbreezecommon/decorationcolors.cpp`,
             #: `generateDecorationPaletteGroup`) applies the opacity setting only when the
             #: scheme's `[WM] activeBackground` carries no alpha of its own **or** the flag for
-            #: that state is on. Nine of the eleven schemes this app ships, and Klassy's own
+            #: that state is on. Nine of the twelve schemes this app ships, and Klassy's own
             #: two, carry `activeBackground=r,g,b,191` -- a bar three quarters opaque, decided by
             #: the scheme -- so with the flag off the slider is ignored, the active bar stays at
             #: 75 %, and the decoration's own dialog greys the slider out with "Active opacity
-            #: set by colour scheme". Carl's scheme is opaque, and so is the monochrome pair's,
+            #: set by colour scheme". Longive's scheme is opaque, and so is the monochrome pair's,
             #: which is written that way rather than relying on this flag: a bar three quarters
             #: opaque measured as a **third** tone in a scheme whose whole point is one, and a
             #: scheme has to be right on a desk that is not running this app. The inactive flag is symmetry
@@ -265,7 +265,7 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
             #: `/usr/share/config.kcfg/klassy-decoration.kcfg`, names them `TitleBarOpacityActive`
             #: and `OverrideTitleBarOpacityActive`, and those are the spellings in its library. So
             #: *Restore* wrote two keys nothing read and the active bar stayed at the scheme's 75 %
-            #: under nine presets out of eleven -- the very thing this block exists to stop. The
+            #: under nine presets out of twelve -- the very thing this block exists to stop. The
             #: stale spellings are renamed once by `migrate.py`, and `scripts/dry-run.sh` now checks
             #: every key declared for the decoration against that schema, so a name it does not
             #: know fails a check instead of writing nothing.

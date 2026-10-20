@@ -9,6 +9,10 @@
 # SPDX-FileCopyrightText: 2026 cyberbessa
 # SPDX-License-Identifier: LGPL-2.0-or-later
 #
+# Derived from Klassy's KlassyDark.colors, whose sections and keys it keeps, and so under that
+# file's licence and with its authors above. Its colour effects are Carl's, ChangeSelectionColor
+# aside. The palette's own credit is in CREDITS.md.
+#
 # Longive (KyprX), for KyprX.
 # Palette: Longive -- monochrome surfaces, as in Zed, with one soft orange accent, 245,166,91, on
 # the selection, focus, hover, active and link colours. Text on the orange stays dark (9.35:1).

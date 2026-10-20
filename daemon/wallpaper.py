@@ -425,17 +425,33 @@ def scan_images(image_dir: str = "", include_kde: bool = True, env=None) -> list
     level deeper than the format says and which this machine has. Descending exactly one level
     covers it without turning this into a walk of the whole data directory.
     """
-    return _scan(picture_folders(image_dir, include_kde, env))
+    return _scan(picture_folders(image_dir, include_kde, env), _backgrounds(wallpaper_dirs(env)))
 
 
-def _scan(folders: list[str]) -> list[dict]:
-    """Every package and loose image in these folders, one level of packages down."""
+def _backgrounds(kde_dirs: list[str]) -> frozenset[str]:
+    """The system's `backgrounds` folders among `wallpaper_dirs`, by what they point at: the only
+    folders `_scan` takes loose pictures one folder down in, however the chosen folder spells one."""
+    return frozenset(os.path.realpath(d) for d in kde_dirs
+                     if os.path.basename(os.path.normpath(d)) in SYSTEM_SUBDIRS)
+
+
+def _scan(folders: list[str], backgrounds: frozenset[str] = frozenset()) -> list[dict]:
+    """Every package and loose image in these folders, one level of packages down -- and, in the
+    system's `backgrounds` folders alone (`_backgrounds`), one level of loose images down too.
+
+    Only there, because that is the shape it is for: a distribution groups its pictures in a
+    folder of its own (`/usr/share/backgrounds/fedora-workstation/*.webp`, measured). Taken from
+    every folder, it listed the pictures of every folder inside the pictures folder -- which is
+    `~/Pictures` until one is chosen, so the screenshots and the camera's photos came up as
+    wallpapers, a few thousand of them on a desk with a photo library.
+    """
     out: dict[str, dict] = {}
     for folder in folders:
         try:
             names = sorted(os.listdir(folder))
         except OSError:
             continue
+        loose_below = os.path.realpath(folder) in backgrounds
         for name in names:
             path = os.path.join(folder, name)
             if os.path.isfile(path):
@@ -459,7 +475,8 @@ def _scan(folders: list[str]) -> list[dict]:
                     entry = _package_entry(deeper)
                     if entry is not None:
                         out.setdefault(deeper, entry)
-                elif os.path.isfile(deeper) and inner.lower().endswith(IMAGE_SUFFIXES):
+                elif (loose_below and os.path.isfile(deeper)
+                      and inner.lower().endswith(IMAGE_SUFFIXES)):
                     out.setdefault(deeper, _entry("image", deeper, os.path.splitext(inner)[0],
                                                   to_url(deeper), deeper))
     return sorted(out.values(), key=lambda e: e["name"].lower())
@@ -473,31 +490,36 @@ def picture_catalogue(image_dir: str = "", include_kde: bool = True,
     The chosen folder is scanned first and KDE's own beside it while the switch keeps them; when
     the folder has nothing of its own -- or, with KDE's wallpapers left out, when it was all
     there was -- an empty picker would say nothing to anybody, so KDE's own wallpapers are listed
-    anyway and `fell_back` is True, for the caller to say in words. A folder that is unset, not
-    there, or really one of KDE's own is not a fallback: there the list is KDE's because that is
-    what the switch says, or because there is nothing else, and nothing failed.
+    anyway and `fell_back` is True, for the caller to say in words. A folder that is unset or not
+    there is not a fallback, nor one of KDE's own while the switch keeps them: there the list is
+    KDE's because that is what the switch says, or because there is nothing else, and nothing
+    failed.
     """
     kde_dirs = wallpaper_dirs(env)
+    deep = _backgrounds(kde_dirs)
     chosen = bool(image_dir) and os.path.isdir(image_dir)
-    if chosen and os.path.realpath(image_dir) in [os.path.realpath(d) for d in kde_dirs]:
-        # The folder the picker was pointed at is one of KDE's own, spelled its own way. It is
-        # scanned once, whichever way the switch points: what was chosen is what is listed.
-        return _scan(kde_dirs), False
+    if (chosen and include_kde
+            and os.path.realpath(image_dir) in [os.path.realpath(d) for d in kde_dirs]):
+        # The folder the picker was pointed at is one of KDE's own, spelled its own way: scanned
+        # once among them, not twice under two spellings. With KDE's left out it is a folder like
+        # any other and goes the way below -- it used to come here too, and the switch then
+        # listed every one of KDE's folders while saying it listed the chosen one alone.
+        return _scan(kde_dirs, deep), False
     if not chosen:
         # Nothing of the user's own is in the picture: no folder chosen, or one that is not there
         # right now. KDE's own are listed as the switch says -- that is the switch doing its work,
         # and no folder failed, so this is not a fallback either.
-        return (_scan(kde_dirs) if include_kde else []), False
-    mine = _scan([image_dir])
+        return (_scan(kde_dirs, deep) if include_kde else []), False
+    mine = _scan([image_dir], deep)
     if include_kde:
         # One scan over every folder, so a picture reached from the chosen folder and from a
         # system folder it sits inside is one entry, as it was before the switch existed:
         # `_scan` keys its entries by path, and two scans concatenated listed it twice.
-        both = _scan([image_dir] + kde_dirs)
+        both = _scan([image_dir] + kde_dirs, deep)
         return both, not mine and bool(both)
     if mine:
         return mine, False
-    theirs = _scan(kde_dirs)
+    theirs = _scan(kde_dirs, deep)
     return theirs, bool(theirs)
 
 

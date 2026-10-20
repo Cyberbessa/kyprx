@@ -191,7 +191,9 @@ In each folder it takes:
   pictures in `contents/images` (or `contents/images_dark`). A package is listed under its own
   name, in your session's language when the package has a name in it;
 - **picture files** lying loose in the folder, each under its file name without the ending;
-- **packages one folder further down**, for collections that group their packages in a folder.
+- **packages one folder further down**, for collections that group their packages in a folder;
+- in the system's `backgrounds` folders only, **picture files one folder further down**, where a
+  distribution groups its pictures in a folder of its own.
 
 They are listed in alphabetical order. The picture file types are `.png`, `.jpg`, `.jpeg`,
 `.webp`, `.avif`, `.jxl`, `.heic`, `.heif`, `.bmp`, `.svg`, `.svgz`, `.tif` and `.tiff`, in upper

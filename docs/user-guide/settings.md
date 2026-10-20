@@ -172,7 +172,7 @@ never adjusts by itself
 | Key | What it holds |
 |---|---|
 | `mode` | `dark` or `light` |
-| `preset` | the colour preset's short name: `klassy-dark`, `carl`, `catppuccin-mocha`, `nord`, `gruvbox-dark`, `dracula`, `solarized-dark`, `monochrome-dark`, `klassy-light`, `catppuccin-latte`, `solarized-light`, `gruvbox-light`, `rose-pine-dawn` or `monochrome-light` |
+| `preset` | the colour preset's short name: `klassy-dark`, `longive`, `catppuccin-mocha`, `nord`, `gruvbox-dark`, `dracula`, `solarized-dark`, `monochrome-dark`, `klassy-light`, `catppuccin-latte`, `solarized-light`, `gruvbox-light`, `rose-pine-dawn` or `monochrome-light`. `carl` is read as `longive` |
 | `own_colour` | a colour of your own, as three numbers from 0 to 255 separated by commas, such as `255,152,8`; empty for none |
 | `tint` | how far your own colour soaks into the backgrounds, as a fraction: `0.25` is 25 % |
 
@@ -555,10 +555,11 @@ top of the window says KyprX is off the desk ([The KyprX window](README.md#kyprx
 
 **What it does not touch:** your shortcuts, your wallpaper, your profiles, the colours of the
 decoration's buttons, window rules not named `KyprX: `, and the two rules that keep KyprX's
-cheatsheet and wallpaper picker floating. Two things it does not undo, because they are not KyprX's
-to undo: KDE's own blur effect, if something else switched it off (KyprX never switches it on or
-off), and a key taken from another action with **Use it here** on the
-[Shortcuts](shortcuts.md) tab.
+cheatsheet and wallpaper picker floating. Three things it does not undo, because they are not
+KyprX's to undo: KDE's own blur effect, if something else switched it off (KyprX never switches it
+on or off), a key taken from another action with **Use it here** on the [Shortcuts](shortcuts.md)
+tab, and a key KyprX took for one of its own three actions when it started
+([When another action has the same key](shortcuts.md#when-another-action-has-the-same-key)).
 
 Plain KDE is each program's own defaults, not the desktop as it was before KyprX: nothing recorded
 that.

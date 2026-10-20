@@ -107,8 +107,11 @@ registerShortcut("KyprXCheatsheet", "KyprX: shortcut cheatsheet", "Meta+/", func
              "ShowCheatsheet");
 });
 
-// The wallpaper picker, by the same route. Meta+R is the default shortcut;
-// any conflict with Spectacle's RecordRegion on a fresh install is released by KyprX.
+// The wallpaper picker, by the same route. Meta+R is what end-4/dots-hyprland binds its own
+// wallpaper selector to. Krohnkite's Rotate and Spectacle's region recording register it as well,
+// and Krohnkite's Focus Up registers Meta+K, the settings key below: the daemon takes a key back
+// from any other action while one of KyprX's three actions holds it -- claim_kyprx_keys in
+// daemon/kyprd_shortcuts.py says why.
 registerShortcut("KyprXWallpaper", "KyprX: wallpaper picker", "Meta+R", function () {
     callDBus("org.cyberbessa.KyprX", "/Windows", "org.cyberbessa.KyprX.Windows",
              "ShowWallpaper");

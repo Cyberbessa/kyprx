@@ -186,7 +186,7 @@ def trouble(look: dict) -> str:
     """"" when this look can go on the desktop here, otherwise the sentence saying why not.
 
     A preset this machine does not have is the ordinary case: a profile is a small file, and one
-    written on a desktop with Carl installed reads perfectly well on one without. It is listed,
+    written on a desktop with Klassy installed reads perfectly well on one without. It is listed,
     with this sentence on it, and refused when asked for -- before anything is written.
     """
     try:

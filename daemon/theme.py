@@ -56,7 +56,7 @@ documentation suggests.
   colour is overwritten with the tinted window colour, so the bar stops being a shade lighter than
   the window -- and the tinted colour carries **no alpha** (measured: `kdeglobals [WM]
   activeBackground=57,37,31` under Dracula soaked in at 25 %), so under a colour of your own the bar
-  is opaque whether or not anything overrides the scheme. Worn plain, nine of the eleven schemes
+  is opaque whether or not anything overrides the scheme. Worn plain, nine of the twelve schemes
   here carry an alpha on the active bar, and there it is Klassy's `TitleBarOpacityActive`, with
   the scheme's own alpha overridden, that keeps it opaque (`daemon/defaults.py`, which has the
   measurement).

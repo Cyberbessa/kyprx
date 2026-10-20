@@ -236,6 +236,11 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         self._folder_due()
         self.switch_the_script_on()
         self.note_the_version()
+        #: After both of the script's possible loads above, for the reason in its docstring. A key
+        #: taken changes an action the KyprX folder carries (Krohnkite's Focus Up), and the folder
+        #: pass above has already run: it is asked for again rather than left to the next change.
+        if self.claim_kyprx_keys():
+            self.folder_soon()
         self.request_inventory()
         self.watch_the_desktop()
         self.watch_the_folder()
@@ -280,11 +285,13 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
             if tx.kwin.get(effects.PLUGINS_GROUP, key) is None:
                 effects.set_plugin_enabled(tx.kwin, SCRIPT_PLUGIN, True)
                 tx.reload_kwin = True
-            for plugin in (effects.BLUR_PLUGIN, effects.TILING_PLUGIN, effects.GEOMETRY_PLUGIN):
-                pkey = f"{plugin}Enabled"
-                if tx.kwin.get(effects.PLUGINS_GROUP, pkey) is None:
-                    effects.set_plugin_enabled(tx.kwin, plugin, True)
-                    tx.reload_kwin = True
+            # Only this script's switch, never the effects' or the tiler's. All three are off by
+            # default, and KDE's own pages save a plugin that is back at its default by deleting
+            # its key (`revertToDefault`, called by both `KWin::EffectsModel::save` and
+            # `KPluginModel::save`, read in the 6.7 libraries) -- so for them "not there at all"
+            # is somebody switching it off. Setting it here turned it back on at every login, with
+            # a reconfigure to pay each time. They are switched on once, by the passes in
+            # `daemon/migrate.py`, and by *Restore defaults*.
 
         try:
             diff = writer.run(build)
@@ -293,10 +300,10 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
                      trouble=True)
             return
         if diff and writer.dry_run():
-            self.log("would switch KyprX's compositor script and required plugins on, the first start on this "
+            self.log("would switch KyprX's compositor script on, the first start on this "
                      "desk:\n" + diff)
         elif diff:
-            self.log("switched KyprX's compositor script and required plugins on: the first start on this desk")
+            self.log("switched KyprX's compositor script on: the first start on this desk")
 
     # ------------------------------------------ the overlays and the settings window
 

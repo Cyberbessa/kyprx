@@ -486,7 +486,11 @@ def _bootstrap_pass(tx) -> None:
         klassy.settle_look_and_feel(tx.klassy, theme.package_after(now, wanted))
         for description, action, plain in steps:
             tx.session_write(description, action, plain)
-    shortcuts.release_spectacle_conflict()
+    # No key is taken from another action here, nor in the pass below. A build runs in dry run as
+    # well -- only the commit holds back -- and again on every retry after a conflict, so a call to
+    # the shortcut registry from inside one changed the desk under `--dry-run` and said nothing.
+    # The daemon's start does it, every time and dry run included as a report:
+    # `claim_kyprx_keys` in `daemon/kyprd_shortcuts.py`.
 
 
 def _v7_upgrade_pass(tx) -> None:
@@ -502,7 +506,6 @@ def _v7_upgrade_pass(tx) -> None:
     if tx.kwin.get(effects.BLUR_GROUP, "CornerRadius") == "2.5":
         tx.kwin.set(effects.BLUR_GROUP, "CornerRadius", "7.5")
         tx.reload_blur = True
-    shortcuts.release_spectacle_conflict()
 
 
 def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:

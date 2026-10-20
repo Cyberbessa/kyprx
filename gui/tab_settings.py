@@ -31,8 +31,8 @@ from widgets import SECTION_HINTS, WARNING_STYLE, Section, note
 #: Three short lines where there were four paragraphs. Two things it used to say were not true:
 #: *the three switches above the tabs* -- there are two switches and a menu up there, and the third
 #: setting it means is the notification tick on this very page -- and the preset by name, which
-#: `daemon/defaults.py` deliberately leaves unnamed so that the mode's own default is resolved in
-#: one place. What it writes in full is in `docs/user-guide/settings.md`.
+#: is `daemon/defaults.py`'s to say (`COLOURS`), so that it is named in one place and cannot
+#: drift here. What it writes in full is in `docs/user-guide/settings.md`.
 #:
 #: The breaks are `<br>` and not `\n`: this string carries tags, so Qt renders it as rich text,
 #: and in rich text a newline is a space. Both of the long texts on this page had that wrong.

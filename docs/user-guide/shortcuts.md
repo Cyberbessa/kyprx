@@ -84,6 +84,19 @@ again. If one of the three does not exist on the desktop yet, the **Problems** b
 KyprX sets no default for the Tiling and Window management keys: those are Krohnkite's and the
 desktop's.
 
+### When another action has the same key
+
+Other programs register some of these keys too: Krohnkite puts **Focus Up** on Meta+K and
+**Rotate** on Meta+R, and Spectacle puts **Start/Stop Region Recording** on Meta+R. The desktop
+keeps a shared key on both actions and runs only the one it registered first, which on a new desk
+is usually the other one, so the key would do nothing for KyprX.
+
+So each time KyprX starts, a key that one of KyprX's three actions holds is taken away from any
+other action that holds it as well, the way **Use it here** takes one (below). The log says what was
+taken and from which action. A key you moved away from KyprX's action is not KyprX's any more, and
+KyprX leaves it alone. Up to Plasma 6.6 the desktop refused the key to KyprX's action instead, and
+the action stays without one until you give it a key here.
+
 ## A row
 
 Each row shows the action's keys, then, for some actions, **on the card:**, then **Edit** and

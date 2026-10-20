@@ -6,9 +6,7 @@ MAP), but the desktop settings it changes belong to programs other people wrote,
 of its colour presets wear palettes other people chose. This page says whose, under what terms, and
 what those terms ask of KyprX.
 
-The licences below are as each project's repository and its installed metadata state them. Carl
-links a website rather than a repository, so its licences are those its installed metadata
-declares.
+The licences below are as each project's repository and its installed metadata state them.
 
 ## The programs it works with
 
@@ -19,7 +17,6 @@ declares.
 | **Krohnkite** | Vjatcheslav V. Kolchkov, continuing Eon S. Jeon's Kröhnkite | [anametologin/krohnkite](https://github.com/anametologin/krohnkite), archived there with a note that the project moved to [codeberg.org/anametologin/Krohnkite](https://codeberg.org/anametologin/Krohnkite) | MIT | The tiling. See Krohnkite |
 | **Geometry Change** | Peter Fajdiga | [peterfajdiga/kwin4_effect_geometry_change](https://github.com/peterfajdiga/kwin4_effect_geometry_change) | GPL-3.0 | The window animation. See Geometry Change |
 | **Smart Video Wallpaper Reborn** | Luis Bocanegra, with Rog131 and adhe | [luisbocanegra/plasma-smart-video-wallpaper-reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn) | GPL-2.0-or-later | Optional: video wallpapers. See Smart Video Wallpaper Reborn |
-| **Carl** | jomada | [seduccionlinux.wordpress.com](https://seduccionlinux.wordpress.com) | Global theme GPL-3.0-or-later, Plasma style LGPL; its colour scheme file names no licence | Optional: its colour scheme is offered as a preset when it is installed. Nothing of it is shipped here. See Carl |
 
 ## The palettes
 
@@ -35,11 +32,16 @@ from them are KyprX's work on the structure of Klassy's, and carry Klassy's lice
 | Solarized Dark, Solarized Light | Ethan Schoonover | [altercation/solarized](https://github.com/altercation/solarized) | MIT |
 | Rosé Pine Dawn | Rosé Pine | [rose-pine/rose-pine-theme](https://github.com/rose-pine/rose-pine-theme) | MIT |
 
-The other presets are not borrowed palettes. Monochrome Dark and Monochrome Light are KyprX's own;
-their single background for the whole window follows the shape of Carl's scheme, as the header of
+The other presets are not borrowed palettes. Longive, Monochrome Dark and Monochrome Light are
+KyprX's own. Longive's surfaces are monochrome, as in the editor Zed, with one soft orange accent.
+Longive and the Monochrome pair owe something to Carl, a Plasma theme by jomada
+([seduccionlinux.wordpress.com](https://seduccionlinux.wordpress.com)) whose colour scheme file
+names no licence, and of which KyprX uses nothing at run time. Longive's `[ColorEffects]` values,
+the effects the desktop lays over a disabled control and a window out of focus, are those of
+Carl's scheme, all but `ChangeSelectionColor`. The Monochrome pair's single background for the
+whole window follows the shape of Carl's scheme, as the header of
 `share/color-schemes/KyprXMonochromeDark.colors` explains. Klassy Dark and Klassy Light are
-Klassy's own schemes, and Carl is Carl's. A colour of your own, or one taken from your wallpaper,
-is yours.
+Klassy's own schemes. A colour of your own, or one taken from your wallpaper, is yours.
 
 ## What it runs on
 
@@ -60,30 +62,31 @@ All of these are used as the system installs them; none is copied into this repo
 
 **Two kinds of file here are derived from Klassy's, and they keep Klassy's licence.**
 
-- The eleven colour schemes in `share/color-schemes/` keep the sections and keys of Klassy's
+- The twelve colour schemes in `share/color-schemes/` keep the sections and keys of Klassy's
   `KlassyDark.colors` (all but its French name) and its colour effects, except that the two
-  Monochrome schemes grey the `Color` value of their `[ColorEffects]` groups. `KlassyDark.colors`
-  is LGPL-2.0-or-later.
+  Monochrome schemes grey the `Color` value of their `[ColorEffects]` groups and Longive's carry
+  Carl's values (above). `KlassyDark.colors` is LGPL-2.0-or-later.
 - The Plasma style's `share/desktoptheme/kyprx/colors` carries its `[Colors:Complementary]` block
   from Klassy's `KlassyDark.colors`, and its `plasmarc` carries two blocks of settings,
   `[ContrastEffect]` and `[AdaptiveTransparency]`, from Klassy's `klassy-dark` style, whose
   metadata declares LGPL.
 
-So those thirteen files are under LGPL-2.0-or-later rather than under KyprX's own licence. Each
+So those fourteen files are under LGPL-2.0-or-later rather than under KyprX's own licence. Each
 one's
 header names its original authors and says what it is derived from, and the licence's text is in
 [`LICENSES/LGPL-2.0-or-later.txt`](LICENSES/LGPL-2.0-or-later.txt). `REUSE.toml` declares
 GPL-3.0-or-later for every file and lets a file's own licence lines win, which is how these
-thirteen keep theirs. They sit beside KyprX's own files rather than inside them, and the LGPL
+fourteen keep theirs. They sit beside KyprX's own files rather than inside them, and the LGPL
 version 2
 itself allows any copy to be put under the ordinary GPL, version 2 or a later one (its section 3).
 
 **Nothing else here carries another project's licence.** Klassy, Better Blur DX, Krohnkite,
-Geometry Change, Smart Video Wallpaper Reborn and Carl are separate projects: KyprX writes their
+Geometry Change and Smart Video Wallpaper Reborn are separate projects: KyprX writes their
 settings, applies the themes among them and opens Klassy's settings dialog, and contains none of
 their code. What it repeats from them is the names of their settings and some of their default
 values, which it needs in order to write those settings. The palettes reach this repository only
-as colour values in the scheme files.
+as colour values in the scheme files, and Carl's scheme only as the colour-effect values in
+Longive's.
 
 The palettes and Krohnkite are MIT-licensed, and their notices are reproduced below.
 
@@ -115,7 +118,7 @@ The MIT licence, as it applies to each of these:
 > DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 > OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-The authors of Klassy's `KlassyDark.colors`, as its header names them and as the eleven colour
+The authors of Klassy's `KlassyDark.colors`, as its header names them and as the twelve colour
 schemes and the style's `colors` file repeat: Andrew Lake, Marco Martin, Nate Graham, Noah Davis,
 Neal Gompa, David Redondo, Thomas Duckworth and Paul A McAuley. The style's `plasmarc` names
 Paul A McAuley, the author of `klassy-dark`.
