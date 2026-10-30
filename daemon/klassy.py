@@ -183,15 +183,6 @@ def read(cfg) -> list[Override]:
     return [Override.from_group(group) for group in read_groups(cfg)]
 
 
-def orphans(cfg) -> list[int]:
-    """Indices written past a hole — present in the file and invisible to Klassy.
-
-    Reported, not repaired on sight: the repair happens the next time the list is written, where
-    it is one renumbering rather than a write of its own.
-    """
-    return [i for pos, (i, _) in enumerate(_numbered(cfg)) if i != pos]
-
-
 def _numbered(cfg) -> list[tuple[int, str]]:
     """Every `Windeco Exception N` group, by index. Includes the ones past a hole."""
     return sorted((int(m.group(1)), g) for g in cfg.groups if (m := GROUP_RE.match(g)))
@@ -215,16 +206,16 @@ def write(cfg, overrides: list[Override]) -> None:
 def read_groups(cfg) -> list[dict]:
     """The list as the raw groups it is in the file, read the way Klassy reads it.
 
-    For the settings file, and raw on purpose: **every key**, spelled as it is written. `read`
+    For the KyprX folder, and raw on purpose: **every key**, spelled as it is written. `read`
     above answers with `Override`s, which is the right shape for this app's own writing -- eleven
-    named fields and `extra` for whatever a future version adds -- and the wrong shape for a
-    **backup**, because a round trip through it re-spells what it read: `Enabled` goes out through
+    named fields and `extra` for whatever a future version adds -- and the wrong shape for what
+    is **carried**, because a round trip through it re-spells what it read: `Enabled` goes out through
     `bool` and comes back `true`, `HideTitleBar` through `int`. Those happen to be the same strings
     the decoration writes today, and that is a promise nobody made for tomorrow.
 
     One entry per window pattern: a group that holds several (`MERGED`) comes back as the entries
-    it was written from, so a backup, the KyprX folder and every rule in `daemon/policy.py` see the
-    same list whichever way the file keeps it.
+    it was written from, so the KyprX folder, taking KyprX off the desk and every rule in
+    `daemon/policy.py` see the same list whichever way the file keeps it.
     """
     return listed(cfg.groups)
 

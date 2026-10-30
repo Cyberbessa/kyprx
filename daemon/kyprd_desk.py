@@ -1,12 +1,12 @@
 """The desk as the KyprX folder describes it, and a folder's description put back on the desk.
 
 `describe` turns everything KyprX controls into the folder's parts -- one file each for settings,
-profiles, windows, the decoration, the compositor, shortcuts, colours and the wallpaper -- and
-`apply_areas` makes the desk what a set of those parts says: the compositor's files in one
-transaction, this app's own settings and profiles next, then the keys, the colours and the
-wallpaper, each through its own door. `folder_problems` reads a folder that changed from outside
-before any of it is applied: one problem, and nothing is. When a pass runs, what it compares and
-what is merged three ways is `daemon/folder.py` and `daemon/kyprd_folder.py`.
+profiles, windows, the decoration, the compositor, the tiling, shortcuts, colours and the
+wallpaper -- and `apply_areas` makes the desk what a set of those parts says: the compositor's
+files in one transaction, this app's own settings and profiles next, then the keys, the colours
+and the wallpaper, each through its own door. `folder_problems` reads a folder that changed from
+outside before any of it is applied: one problem, and nothing is. When a pass runs, what it
+compares and what is merged three ways is `daemon/folder.py` and `daemon/kyprd_folder.py`.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, `profiles`,
 `state`.
@@ -30,12 +30,20 @@ import shortcuts
 import snapshot
 import state
 import theme
+import tiling
 import wallpaper
 import writer
 from declared import COLOUR_CACHED_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import OVERLAY_CLASSES, OVERLAY_PATTERNS
-from state import Config, Defaults, kde_wallpapers, own_strength, wallpaper_layout
+from state import (Config, Defaults, all_screens, kde_wallpapers, own_strength, strip_text,
+                   wallpaper_layout)
+
+
+def tiling_key_carried(key: str) -> bool:
+    """Can `tiling.json` carry a key of this name? Asked of `tiling.part_problems`, so that the
+    rule the folder is checked by on the way in is the one it is described by on the way out."""
+    return not tiling.part_problems({key: ""})
 
 
 class DeskPart:
@@ -83,9 +91,10 @@ class DeskPart:
         out["windows"] = {"windows": self._window_rows(tx, managed)}
         out["decoration"] = self._decoration_part(tx, managed)
         out["kwin"] = self._kwin_part(tx, managed)
+        out["tiling"] = self._tiling_part(tx, managed)
         try:
-            out["shortcuts"] = {"keys": {a["key"]: [shortcuts.words(k) for k in a["keys"]]
-                                         for a in shortcuts.bindings()}}
+            out["shortcuts"] = {"keys": {key: [shortcuts.words(k) for k in held]
+                                         for key, held in self._keys_now().items()}}
         except dbus.DBusException:
             out["shortcuts"] = None
         now = theme.current()
@@ -171,14 +180,17 @@ class DeskPart:
                 if klassy.PRESET_PREFIX + n in tx.presets.groups},
         }
 
-    #: The compositor's groups the folder carries, by the name its file gives them, and the one
-    #: per-window list inside each that the rows stand for.
+    #: The compositor's groups `kwin.json` carries, by the name its file gives them, and the one
+    #: per-window list inside each that the rows stand for; and the plugins it says are on.
+    #:
+    #: The tiling is not one of them. Its group is KyprX's own engine's, and it is a file of its
+    #: own, `tiling.json` (`_tiling_part`, `_apply_tiling`). A `kwin.json` written before KyprX
+    #: tiled the windows itself still carries a `tiling` part and a `tiling` switch, another
+    #: program's settings, and both are passed over on the way in.
     KWIN_PARTS = (("decoration", DECORATION_GROUP, None), ("window_behaviour", WINDOWS_GROUP, None),
                   ("blur", effects.BLUR_GROUP, effects.BLUR_LIST),
-                  ("animation", effects.GEOMETRY_GROUP, effects.GEOMETRY_LIST),
-                  ("tiling", effects.TILING_GROUP, effects.TILING_FLOAT_LIST))
-    KWIN_PLUGINS = (("tiling", effects.TILING_PLUGIN), ("blur", effects.BLUR_PLUGIN),
-                    ("animation", effects.GEOMETRY_PLUGIN))
+                  ("animation", effects.GEOMETRY_GROUP, effects.GEOMETRY_LIST))
+    KWIN_PLUGINS = (("blur", effects.BLUR_PLUGIN), ("animation", effects.GEOMETRY_PLUGIN))
 
     @staticmethod
     def _split_list(raw, key: str) -> tuple[list[str], str]:
@@ -186,9 +198,9 @@ class DeskPart:
         return [x.strip() for x in str(raw or "").split(sep) if x.strip()], sep
 
     def _kwin_part(self, tx, managed: set) -> dict:
-        """The compositor's five groups this app has controls in, whole, with the windows this app
-        speaks for taken out of the three per-window lists -- their rows say it -- and which of the
-        three plugins are on."""
+        """The compositor's four groups `kwin.json` carries, whole, with the windows this app
+        speaks for taken out of the two per-window lists among them -- their rows say it -- and
+        which of the two plugins are on."""
         out = {}
         for name, group, list_key in self.KWIN_PARTS:
             entries = snapshot._plain(tx.kwin.groups.get(group, {}))
@@ -200,14 +212,33 @@ class DeskPart:
                           for name, plugin in self.KWIN_PLUGINS}
         return out
 
+    @staticmethod
+    def _tiling_part(tx, managed: set) -> dict:
+        """KyprX's tiling, `[Script-kyprx]`, as `tiling.json` carries it (`tiling.describe_part`):
+        every key the group has, as its text, and nothing for a key it does not have -- so a
+        setting at the engine's own default travels as the absence it is, and an empty object is a
+        desk that set none -- the zone layouts and arrangements written out as an object, in the
+        version the desk holds them, and the floating list without the windows this app speaks
+        for, whose rows in `windows.json` say it.
+
+        A key whose name the folder refuses (`tiling_key_carried`) -- one somebody wrote by hand
+        with a space or a bracket in it -- is left out, and stays on the desk as it is when the
+        folder is applied: carried, it would make the folder the desk has just described one that
+        cannot be applied at all."""
+        part = tiling.describe_part(tx.kwin.groups.get(effects.TILING_GROUP, {}), managed)
+        return {k: v for k, v in part.items() if tiling_key_carried(k)}
+
     def _wallpaper_part(self) -> dict | None:
         """The wallpaper of every activity, by the activity's name and by the path of each
-        screen's file, when a video pauses, and the picker's choices. `None` when the shell
-        cannot be asked.
+        screen's file, with the screen it is on, when a video pauses, and the picker's choices.
+        `None` when the shell cannot be asked.
 
         Every activity and not the one in use: an activity switch would otherwise rewrite this
         file, and on a second machine sharing the folder it would put one activity's wallpaper on
-        another. By name, because an activity's id is this machine's."""
+        another. By name, because an activity's id is this machine's. Each screen by its number --
+        the shell's, 0 being the primary -- and in that order, because the shell lists its desktops
+        in the order it made them, and a screen can keep a wallpaper of its own: applying the
+        folder puts each one back on its own screen (`_restore_wallpaper`)."""
         try:
             found = wallpaper.snapshot_all()
         except wallpaper.WallpaperError:
@@ -216,7 +247,10 @@ class DeskPart:
         activities: dict = {}
         for activity in found:
             screens = []
-            for desktop in activity.get("desktops") or []:
+            rows = activity.get("desktops") or []
+            # Screens without a number last, and in the shell's order among themselves.
+            for desktop in sorted(rows, key=lambda d: (wallpaper.screen_number(d) < 0,
+                                                       max(wallpaper.screen_number(d), 0))):
                 plugin = str(desktop.get("plugin") or "")
                 kind = {wallpaper.IMAGE_PLUGIN: "image",
                         wallpaper.VIDEO_PLUGIN: "video"}.get(plugin, plugin)
@@ -224,6 +258,8 @@ class DeskPart:
                              if kind == "video" else "") or ""
                 screen = {"kind": kind,
                           "file": explain.home(wallpaper.to_path(target)) if target else ""}
+                if wallpaper.screen_number(desktop) >= 0:
+                    screen["screen"] = wallpaper.screen_number(desktop)
                 if kind == "video" and str(desktop.get("pause") or "") in wallpaper.PAUSE_MODES:
                     screen["pause"] = str(desktop.get("pause"))
                 screens.append(screen)
@@ -236,6 +272,8 @@ class DeskPart:
         image_dir = str(self.config.wallpaper.get("image_dir") or "")
         return {"activities": activities,
                 "picker": {"layout": wallpaper_layout(self.config.wallpaper.get("layout")),
+                           "strip_text": strip_text(self.config.wallpaper),
+                           "all_screens": all_screens(self.config.wallpaper),
                            "video_folder": explain.home(video_dir) if video_dir else "",
                            "image_folder": explain.home(image_dir) if image_dir else "",
                            "kde_wallpapers": kde_wallpapers(self.config.wallpaper)}}
@@ -302,6 +340,14 @@ class DeskPart:
             need(all(isinstance(k.get(n, {}), dict) for n, _, _ in self.KWIN_PARTS)
                  and isinstance(k.get("plugins", {}), dict), folder.FILES["kwin"],
                  "every group has to be an object")
+        t = areas.get("tiling")
+        if t is not None:
+            # The zone layouts and arrangements against every rule of their version, because only a
+            # value that keeps them can be written back as its one text; the rest only has to be
+            # text, which the engine reads the way it reads the same text in `kwinrc`
+            # (`tiling.part_problems`).
+            out.extend(f"{folder.FILES['tiling']}: {problem}"
+                       for problem in tiling.part_problems(t))
         sc = areas.get("shortcuts")
         if sc is not None:
             for action, keys in (sc.get("keys") or {}).items():
@@ -318,9 +364,20 @@ class DeskPart:
                  folder.FILES["colours"], "own_colour is not a colour")
         w = areas.get("wallpaper")
         if w is not None:
+            listed = (w or {}).get("activities")
+            for name, entry in listed.items() if isinstance(listed, dict) else []:
+                screens = entry.get("on_screen") if isinstance(entry, dict) else None
+                numbers = [one["screen"] for one in screens or [] if isinstance(one, dict)
+                           and "screen" in one] if isinstance(screens, list) else []
+                # `type` and not `isinstance`, because JSON's true is an int to Python.
+                need(all(type(n) is int and n >= 0 for n in numbers), folder.FILES["wallpaper"],
+                     f"{name}: screen has to be a whole number from 0")
+                need(len(numbers) == len(set(map(str, numbers))), folder.FILES["wallpaper"],
+                     f"{name}: two wallpapers name the same screen")
             picker = (w or {}).get("picker") or {}
-            need("kde_wallpapers" not in picker or isinstance(picker.get("kde_wallpapers"), bool),
-                 folder.FILES["wallpaper"], "kde_wallpapers has to be true or false")
+            for key in ("strip_text", "all_screens", "kde_wallpapers"):
+                need(key not in picker or isinstance(picker.get(key), bool),
+                     folder.FILES["wallpaper"], f"{key} has to be true or false")
         return out
 
     # -- applying
@@ -351,8 +408,10 @@ class DeskPart:
         """Apply parts of the folder to the desk, each exactly as it says. Returns ("ok" or
         "error: …", what did not go in) -- or, with `preview`, the plain words and nothing else.
 
-        The compositor's files first, in one transaction: the decoration, the compositor's groups
-        and every window, so the screen stops once. This app's own settings and profiles next.
+        The compositor's files first, in one transaction: the decoration, the compositor's groups,
+        the tiling and every window, so the screen stops once -- and for a change to the tiling
+        alone, not at all: the engine is told to read its settings again, and the compositor is
+        asked for nothing (`daemon/tiling.py`). This app's own settings and profiles next.
         Then the keys, the colours and the wallpaper, each through its own door. Every window this
         app speaks for is brought to its row, or to what a new window gets when the folder does
         not list it -- that is what "the folder is the setup" means for a window. The strength,
@@ -365,6 +424,10 @@ class DeskPart:
         s = target.get("settings")
         rows_part = target.get("windows")
         windows_touched = any(k in target for k in ("settings", "windows", "decoration", "kwin"))
+        #: The tiling's part is not one that moves a window to its row: what it carries of the
+        #: windows this app speaks for -- their Float -- is kept as the desk has it
+        #: (`_apply_tiling`), so a gap changed in `tiling.json` costs no pass over every window.
+        files_touched = windows_touched or "tiling" in target
         rows = (rows_part or {}).get("windows") if rows_part is not None else None
         if rows is None:
             rows = self.describe_windows_only()
@@ -376,6 +439,12 @@ class DeskPart:
         default_row = self._new_window_row(
             {**self._new_window_row(), **new_windows} if new_windows and rows_part is not None
             else None)
+        #: What new windows get from here on: the folder's own switches whenever they arrive, on
+        #: their own too -- the half the row above keeps away from the windows already here. Taken
+        #: from the row above instead, a `settings.json` edited by hand or pulled alone went in as
+        #: nothing, and the next pass wrote the desk's switches back over it.
+        new_row = (self._new_window_row({**self._new_window_row(), **new_windows})
+                   if new_windows else default_row)
         strength = int((s or {}).get("opacity", c.transparency)) if s is not None else int(
             c.transparency)
         previous = int(c.transparency)
@@ -414,6 +483,8 @@ class DeskPart:
                 self._apply_decoration(tx, target["decoration"], managed)
             if "kwin" in target:
                 self._apply_kwin(tx, target["kwin"], managed)
+            if "tiling" in target:
+                self._apply_tiling(tx, target["tiling"], managed)
             if windows_touched:
                 self._apply_windows(tx, rows, default_row, managed, open_now, draws_own, own,
                                     strength)
@@ -429,11 +500,14 @@ class DeskPart:
                 tx.reload_kwin = True
             if moved["klassy"] & COLOUR_CACHED_GROUPS:
                 tx.reload_colours = True
-            if moved["kwin"]:
+            # Every group of the compositor's file but the tiling's is read again by a reconfigure;
+            # the tiling's is read by KyprX's engine, which is told to (`reload_tiling`), and the
+            # switches in `[Plugins]` are no longer any tiler's.
+            if moved["kwin"] - {effects.TILING_GROUP}:
                 tx.reload_kwin = True
             if effects.BLUR_GROUP in moved["kwin"] or effects.PLUGINS_GROUP in moved["kwin"]:
                 tx.reload_blur = True
-            if effects.TILING_GROUP in moved["kwin"] or effects.PLUGINS_GROUP in moved["kwin"]:
+            if effects.TILING_GROUP in moved["kwin"]:
                 tx.reload_tiling = True
 
         wanted_config = Config.from_dict(asdict(c))
@@ -443,24 +517,36 @@ class DeskPart:
             wanted_config.transparency = strength
             if new_windows:
                 wanted_config.defaults = Defaults(
-                    titlebar=not default_row["hide_title_bar"], outline=default_row["outline"],
-                    transparency=default_row["transparency"], blur=default_row["blur"])
-            wanted_config.cheatsheet_keys = {str(k): shortcuts.from_words(v) for k, v in
-                                             (s.get("cheatsheet_shows") or {}).items()}
+                    titlebar=not new_row["hide_title_bar"], outline=new_row["outline"],
+                    transparency=new_row["transparency"], blur=new_row["blur"])
+            # Each under the one name its action is spelt by (`state.chosen_keys`).
+            wanted_config.cheatsheet_keys = state.chosen_keys(
+                {str(k): shortcuts.from_words(v)
+                 for k, v in (s.get("cheatsheet_shows") or {}).items()})
         if rows_part is not None:
             wanted_config.own_transparency = {k: v for k, v in own.items() if self.own_allowed(k)}
         paper = target.get("wallpaper")
         if paper is not None and isinstance(paper.get("picker"), dict):
             picker = paper["picker"]
             folder_path = str(picker.get("video_folder") or "")
-            image_folder_path = str(picker.get("image_folder") or "")
+            # A block with no picture folder at all was written by a KyprX from before the key,
+            # and leaves the folder held now, as a block without one of the switches below leaves
+            # that switch; an empty one says there is none. Read as empty, an older KyprX sharing
+            # the folder cleared the folder chosen here every time it wrote the block.
+            if "image_folder" in picker:
+                image_folder_path = str(picker.get("image_folder") or "")
+                image_dir = os.path.expanduser(image_folder_path) if image_folder_path else ""
+            else:
+                image_dir = str(self.config.wallpaper.get("image_dir") or "")
             wanted_config.wallpaper = {
                 "layout": wallpaper_layout(picker.get("layout")),
                 "video_dir": os.path.expanduser(folder_path) if folder_path else "",
-                "image_dir": os.path.expanduser(image_folder_path) if image_folder_path else "",
-                # A picker block without the switch is one written before it existed: the value
+                "image_dir": image_dir,
+                # A picker block without a switch is one written before it existed: the value
                 # held now stands, which is also what keeps the round trip of a folder that has
                 # just been described free of changes.
+                "strip_text": strip_text(picker, self.config.wallpaper.get("strip_text")),
+                "all_screens": all_screens(picker, self.config.wallpaper.get("all_screens")),
                 "kde_wallpapers": kde_wallpapers(picker, self.config.wallpaper.get(
                     "kde_wallpapers")),
             }
@@ -468,7 +554,7 @@ class DeskPart:
         if preview:
             import explain
             tx = writer.Transaction()
-            if windows_touched or "decoration" in target or "kwin" in target:
+            if files_touched or "decoration" in target or "kwin" in target:
                 build(tx)
             if held is not None:
                 # Said in the preview, exactly as it would be saved: the list emptying as the
@@ -492,7 +578,7 @@ class DeskPart:
             return "\n".join(x for x in lines if x and not x.startswith("error")), []
 
         trouble: list[str] = []
-        if windows_touched or "decoration" in target or "kwin" in target:
+        if files_touched or "decoration" in target or "kwin" in target:
             try:
                 diff = writer.run(build)
             except Exception as e:  # noqa: BLE001 — nothing was written; the caller says so
@@ -548,8 +634,10 @@ class DeskPart:
     @staticmethod
     def _paper_of(part: dict) -> dict | None:
         """The folder's wallpaper part in the shape `_restore_wallpaper` reads -- the shell's own,
-        activity by activity, by name. A screen drawn by a plugin this app does not set -- a
-        slideshow, a plain colour -- leaves its activity to the desktop."""
+        activity by activity, by name, each screen with its number when the folder gives one. A
+        screen drawn by a plugin this app does not set -- a slideshow, a plain colour -- is left
+        to the desktop: that screen alone when the folder numbers its screens, and its whole
+        activity when it does not, because then there is no telling which screen it was."""
         wanted = part.get("activities")
         if not isinstance(wanted, dict):
             return None
@@ -561,15 +649,21 @@ class DeskPart:
             desktops = []
             for screen in screens:
                 kind = str((screen or {}).get("kind") or "")
+                number = wallpaper.screen_number(screen)
+                if kind not in wallpaper.PLUGINS and number >= 0:
+                    continue
                 if kind not in wallpaper.PLUGINS:
                     desktops = []
                     break
                 path = os.path.expanduser(str((screen or {}).get("file") or ""))
                 url = "file://" + path if path else ""
-                desktops.append({"plugin": wallpaper.PLUGINS[kind],
-                                 "image": url if kind == "image" else "",
-                                 "last": url if kind == "video" else "",
-                                 "pause": str((screen or {}).get("pause") or "")})
+                row = {"plugin": wallpaper.PLUGINS[kind],
+                       "image": url if kind == "image" else "",
+                       "last": url if kind == "video" else "",
+                       "pause": str((screen or {}).get("pause") or "")}
+                if number >= 0:
+                    row["screen"] = number
+                desktops.append(row)
             if desktops:
                 activities.append({"name": str(name).split(" #")[0], "desktops": desktops})
         return {"activities": activities} if activities else None
@@ -631,6 +725,84 @@ class DeskPart:
             on = (part.get("plugins") or {}).get(name)
             if isinstance(on, bool) and effects.plugin_enabled(cfg, plugin) != on:
                 effects.set_plugin_enabled(cfg, plugin, on)
+
+    def _apply_tiling(self, tx, part: dict, managed: set) -> None:
+        """Make `[Script-kyprx]` what a `tiling.json` part says (`tiling.group_from_part`): every
+        key it names, as its text, and no other -- a key the part does not name is the engine's
+        default, which is how a setting gets back to it -- with three things kept from the desk.
+
+        - **The windows this app speaks for keep their Float**, merged into the floating list the
+          way `_apply_kwin` merges the compositor's per-window lists: the part leaves them out,
+          their rows in `windows.json` say it, and `_apply_windows` puts each row's Float in.
+        - **A list, or zone layouts and arrangements, the desk already holds in other words** stay
+          in those words (`_tiling_value_alike`). The part normalises both -- a list's entries
+          trimmed, the arrangements written out as an object -- so without this, applying the
+          folder the desk has just described would rewrite a list typed with spaces after its
+          commas, or arrangements somebody spelt by hand, and change nothing else. And a part that
+          has them in the other version and means the same -- a machine that has edited and one
+          that has not, sharing a folder -- leaves this desk's version as it is; one in the same
+          version goes in unless it is the same text once canonical.
+        - **A key with no value**, `[$d]`, which the part leaves out because it reads as absent,
+          which is what the part says; and a key whose name the folder cannot carry
+          (`tiling_key_carried`), which the part leaves out because it has no way to say it.
+
+        And an empty group is left as it is rather than deleted: it reads as no group at all.
+        """
+        cfg = tx.kwin
+        group = effects.TILING_GROUP
+        now = snapshot._plain(cfg.groups.get(group, {}))
+        wanted: dict = dict(tiling.group_from_part(part))
+        floats = effects.TILING_FLOAT_LIST
+        current, theirs = tiling.entries(now.get(floats)), tiling.entries(wanted.get(floats))
+        edited = [v for v in current if v in managed or v in theirs]
+        edited += [v for v in theirs if v not in edited and v not in managed]
+        if edited == current:
+            if floats in now:
+                wanted[floats] = now[floats]
+            else:
+                wanted.pop(floats, None)
+        elif edited:
+            wanted[floats] = ",".join(edited)
+        else:
+            wanted.pop(floats, None)
+        for key, value in now.items():
+            if key not in wanted and (value is None or not tiling_key_carried(key)):
+                wanted[key] = value
+            elif (isinstance(value, str) and isinstance(wanted.get(key), str)
+                  and self._tiling_value_alike(key, value, wanted[key])):
+                wanted[key] = value
+        if wanted:
+            snapshot._set_group(cfg, group, wanted)
+        elif cfg.groups.get(group):
+            cfg.delete_group(group)
+
+    @staticmethod
+    def _tiling_value_alike(key: str, now: str, wanted: str) -> bool:
+        """Do two texts of one `[Script-kyprx]` key say the same thing? The same entries, for a
+        list, read the way the engine reads one (`tiling.entries`); for the zone layouts and
+        arrangements, what `tiling.alike` says of the two values the texts hold -- one canonical
+        text within one version, one upgrade to version 2 across two -- so that one spelt by hand
+        and one in the other version are alike; and otherwise only the same text. Two values that
+        cannot both be read are alike only when they are the same text: an unreadable text is
+        somebody's work, never rewritten on a guess.
+
+        The upgrade across two versions is what keeps a desk in version 1 until somebody edits:
+        the window hands back what it read in version 2, and so does a folder from a machine that
+        has edited, and none of that is a change to this desk. Within one
+        version the text decides, because the upgrade forgets a choice an earlier KyprX sharing
+        the folder still makes (`tiling.alike` has the case, and what it cost).
+        """
+        if now == wanted:
+            return True
+        kind = tiling.KEYS.get(key)
+        if kind == "list":
+            return tiling.entries(now) == tiling.entries(wanted)
+        if kind == "json":
+            try:
+                return tiling.alike(tiling.parse(now), tiling.parse(wanted))
+            except tiling.ArrangementsError:
+                return False
+        return False
 
     def _apply_windows(self, tx, rows: dict, default_row: dict, managed: set, open_now: dict,
                        draws_own: dict, own: dict, strength: int) -> None:

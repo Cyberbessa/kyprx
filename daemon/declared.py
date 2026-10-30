@@ -80,6 +80,14 @@ def write_declared(tx, tree: dict) -> set[tuple[str, str]]:
     Skipping is not an optimisation. Writing a value a key already has would fill three shared
     config files with lines nobody chose -- and it would take away the `. default` marker that
     tells you nothing has been written for a setting yet.
+
+    For the tiling, what "ships" is KyprX's own engine's defaults (`tiling.DEFAULTS`), so the gaps
+    and the rest, declared at those same values, write nothing on a desk that never set them, and
+    the switch -- absent is off -- is written. The comparison stays one of text there too, though
+    the engine reads `TRUE` as true (`tiling.value_of`): a file spelling a value another way is
+    written in the one spelling the declaration uses, which is the one every reader of the group
+    -- the daemon, the window, the folder -- spells alike. So the declared values are text, never
+    Python's `True`, whose text no reader writes.
     """
     shipped = shipped_defaults()
     moved: set[tuple[str, str]] = set()
@@ -132,9 +140,6 @@ def write_declared_colours(tx, tree: dict) -> bool:
     return changed
 
 
-#: Which reload each source needs. The tiler is the disruptive one -- reloading it rearranges
-#: every window on screen -- which is why it is a source of its own rather than part of the
-#: general reconfigure.
 #: The Klassy groups whose values the decoration keeps in a colour cache that the ordinary
 #: reconfigure does not touch. Writing one of these and asking only for the reconfigure leaves the
 #: decoration drawing the colour it had -- the control saying one thing and the window another,
@@ -164,7 +169,14 @@ COLOUR_CACHED_GROUPS = {"WindowOutlineStyle", "ButtonColors", "TitleBarOpacity"}
 
 
 def note_reloads(tx, moved) -> None:
-    """`moved` is a set of (source, group) pairs -- see `write_declared`."""
+    """Ask for the reloads what moved needs, and no others. `moved` is a set of (source, group)
+    pairs -- see `write_declared`.
+
+    The tiling is a source of its own because what it needs is not the compositor's reconfigure:
+    the daemon tells KyprX's engine to read its settings again (`tx.reload_tiling`), and that asks
+    the compositor for nothing else -- `daemon/tiling.py` says why the engine works that way. The
+    plugins' switches are the compositor's own, read again by its reconfigure.
+    """
     sources = {source for source, _ in moved}
     if sources & {"klassy", "decoration", "windows", "plugins", "geometry"}:
         tx.reload_kwin = True

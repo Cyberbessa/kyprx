@@ -1,4 +1,4 @@
-"""The wallpaper picker, in three layouts.
+"""The wallpaper picker, in two layouts.
 
 Kept apart from the settings window for the reason the cheatsheet is: it shares almost nothing with
 a settings form. One read, a window, and drawing code.
@@ -7,16 +7,23 @@ a settings form. One read, a window, and drawing code.
 the middle of the screen, and the rest lean away behind it -- the ones before it to the left, the
 ones after it to the right -- like pages of a book held open. It is the default. **Strip** is a
 column of narrow cards beside one big picture, inside a panel wearing the decoration's own
-background, corner and outline -- and no file name under the picture: the strip says where you are
-in the list, and the picture is what you are choosing from; the name said it a third time.
-**Strip with names** is the same column and the same big picture in the same panel, with the name
-written under the picture after all. Which one the key opens is a setting.
+background, corner and outline. Whether the strip writes anything is a switch of its own
+(`strip_text`): off, which is the default, it is pictures and nothing else, and the only words it
+ever shows are a problem, the same as Pages; on, the selected wallpaper's name stands under the
+picture, the count and the keys under that, and a card says its name. Which layout the key opens
+is a setting, and so is the switch.
 
 The window is the cheatsheet's window in every respect that was measured -- frameless, fixed size
 so the tiler leaves it alone, placed by a rule because a Wayland client cannot place itself -- with
 one deliberate difference. **The size does not come from `sizeHint()`.** A list of shortcuts has one
 right size; a list of wallpapers does not, and a folder of two hundred videos would ask for a window
 forty screens wide. So the size comes from the screen.
+
+**It is sized for the screen it opens on**, which the daemon names (`screen`): the one the compositor
+counts as active, which is where the placement rule centres it and where a wallpaper chosen goes.
+Qt's own idea of the primary screen is no answer on Wayland -- it is the first output announced,
+not the desktop's primary -- and a window cannot learn its screen until it is on it, with its size
+already fixed.
 
 **Nothing is applied until Enter or a click.** Moving the selection redraws this window and touches
 the desktop not at all, which is what makes Escape mean what it says.
@@ -41,8 +48,8 @@ from cheatsheet import card_look, card_style
 
 #: The picker's title. The compositor is told where to put this window by matching on the class,
 #: and the daemon holds the same title string -- the two must not drift. See
-#: `daemon/kyprd_names.py:WALLPAPER_TITLE`. **All three layouts use it**: they are one window with three ways of
-#: drawing, so the placement rule covers all three without knowing any.
+#: `daemon/kyprd_names.py:WALLPAPER_TITLE`. **Both layouts use it**: they are one window with two
+#: ways of drawing, so the placement rule covers both without knowing either.
 TITLE = "KyprX wallpapers"
 
 #: How long a selection has to stand still before the full-size picture is decoded. Holding an
@@ -118,7 +125,20 @@ class Picker(QWidget):
         self._big_running = False
         self._closing = False
         self._cancel = threading.Event()
+        #: The screen this opens on, as the daemon asked the compositor, and whether a wallpaper
+        #: chosen here hands its colour to the desktop -- which decides whether its colour is
+        #: worth working out ahead of time (`_decode_big`).
+        self.screen_name = str(data.get("screen") or "")
+        self.gives_colour = bool(data.get("gives_colour", True))
+        self._screen_watched = False
 
+        # Before the size, which is measured from it. On Wayland this decides only the scale the
+        # first frame is drawn at: which output the window lands on is the compositor's choice,
+        # and the placement rule makes it the same active screen the daemon named. `setScreen` on
+        # the widget and not on its window handle, which does not exist until the window is shown.
+        target = self._target_screen()
+        if target is not None:
+            self.setScreen(target)
         self.setFixedSize(self._window_size())
         self._build()
 
@@ -137,6 +157,25 @@ class Picker(QWidget):
         self._settle.start()
 
     # ---------------------------------------------------------------- what a layout provides
+
+    def _target_screen(self):
+        """The `QScreen` the daemon named, or Qt's primary screen when it named none this window
+        knows -- offscreen, where the one screen has no name, or with no compositor to ask."""
+        for screen in QGuiApplication.screens():
+            if self.screen_name and screen.name() == self.screen_name:
+                return screen
+        return QGuiApplication.primaryScreen()
+
+    def _screen_now(self) -> str:
+        """The screen to send with a wallpaper chosen: the one this window is on now, as Qt says,
+        on the Wayland platform where its screens carry the outputs' names; the one the daemon
+        named otherwise. A pointer moved in the moment the picker took to open can have put it on
+        another screen than the one asked for, and what is chosen goes where it is seen."""
+        if QGuiApplication.platformName().startswith("wayland"):
+            here = self.screen()
+            if here is not None and here.name():
+                return here.name()
+        return self.screen_name
 
     def _window_size(self) -> QSize:
         raise NotImplementedError
@@ -164,6 +203,11 @@ class Picker(QWidget):
     def _say(self, text: str) -> None:
         self.trouble = text
         self.update()
+
+    def _say_progress(self, text: str) -> None:
+        """A line that is news and not a problem -- which wallpaper is being set. Said the way a
+        problem is, except where a layout keeps its words for problems alone."""
+        self._say(text)
 
     # ---------------------------------------------------------------- the list
 
@@ -274,7 +318,8 @@ class Picker(QWidget):
         """
         if not self.entries:
             return
-        self.c.prepare_colour(self.entries[self.index].get("target", ""))
+        if self.gives_colour:
+            self.c.prepare_colour(self.entries[self.index].get("target", ""))
         kept = self._bigs.get(self.index)
         if kept is not None:
             self._bigs.move_to_end(self.index)
@@ -373,8 +418,8 @@ class Picker(QWidget):
             return
         self._busy = True
         entry = self.entries[self.index]
-        self._say(f"setting {entry.get('name', '')}…")
-        ok = self.c.set_wallpaper(entry.get("target", ""))
+        self._say_progress(f"setting {entry.get('name', '')}…")
+        ok = self.c.set_wallpaper(entry.get("target", ""), self._screen_now())
         if ok:
             self.hide()
             QGuiApplication.processEvents()
@@ -415,6 +460,27 @@ class Picker(QWidget):
         if not self._busy:
             self.close()
 
+    def showEvent(self, event):  # noqa: N802 — Qt's spelling
+        """Listen for the window changing screen, once it has a window to listen to."""
+        handle = self.windowHandle()
+        if handle is not None and not self._screen_watched:
+            handle.screenChanged.connect(self._screen_moved)
+            self._screen_watched = True
+        super().showEvent(event)
+
+    def _screen_moved(self, _screen) -> None:
+        """Landed on another screen than the one it was sized for, or moved: the pictures decoded
+        for the last screen's pixel ratio go, and the one in front is decoded again for this one.
+        The thumbnails stay -- they are drawn scaled, at one size for every screen."""
+        self._bigs.clear()
+        self._big = None
+        self._screen_changed()
+        self._settle.start()
+        self.update()
+
+    def _screen_changed(self) -> None:
+        """What a layout keeps per screen, dropped when the screen changes."""
+
     def closeEvent(self, event):  # noqa: N802 — Qt's spelling
         """Stop the workers before the interpreter goes: a decode still running when the window
         is gone would hand a picture to a widget that no longer exists. The cancel stops ffmpeg
@@ -444,15 +510,22 @@ INNER_MARGIN = 18
 
 
 class Tile(QWidget):
-    """One wallpaper, cropped to a slice, with a border when it is the one selected."""
+    """One wallpaper, cropped to a slice, with a border when it is the one selected.
+
+    `named` is the strip's text switch. On, the card says its name when it is pointed at, and
+    writes it sideways while it has no picture yet. Off, it says nothing at all, and a card with no
+    picture yet is a plain card -- the same as a page with nothing decoded yet in Pages.
+    """
 
     picked = Signal(int)
 
-    def __init__(self, index: int, entry: dict, look: dict, size: QSize, parent=None):
+    def __init__(self, index: int, entry: dict, look: dict, size: QSize, named: bool = True,
+                 parent=None):
         super().__init__(parent)
         self.index = index
         self.entry = entry
         self.look = look
+        self.named = named
         self.pixmap: QPixmap | None = None
         #: The picture cropped to this card, kept until the picture or the size changes. It was
         #: cropped again on every paint -- a scale and a copy per card per scroll step.
@@ -461,7 +534,8 @@ class Tile(QWidget):
         self.setFixedSize(size)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(entry.get("name", ""))
+        if named:
+            self.setToolTip(entry.get("name", ""))
 
     def set_pixmap(self, pixmap: QPixmap | None) -> None:
         self.pixmap = pixmap
@@ -497,7 +571,7 @@ class Tile(QWidget):
             painter.setClipRect(area)
             painter.drawPixmap(area, self._cropped)
             painter.restore()
-        else:
+        elif self.named:
             # A wallpaper with no picture is still a wallpaper somebody may want. The name, turned
             # sideways because the card is taller than it is wide.
             painter.save()
@@ -518,21 +592,25 @@ class Tile(QWidget):
 
 
 class StripPicker(Picker):
-    """A column of narrow cards, the one selected shown large beside them, and its name under it.
+    """A column of narrow cards, the one selected shown large beside them -- and, with its text
+    switched on, the selected one's name, the count and the keys under the picture.
 
-    The name standing under the picture is what `NAMES` decides and what the bare strip takes out.
-    The class is older than the names the settings use, and keeps the name it was born with: the
-    id that builds it is `strip-names`, because the word *Strip* on its own is the owner's word
-    for the one without the names -- that is `BareStripPicker` below.
+    One layout with a switch, where there were two layouts: the owner asked for one Strip
+    (`defaults.VERSION` 8). With the text off, everything that writes goes, the three pieces the
+    strip without the names used to keep included -- a card's tooltip, the name written sideways
+    on a card with no picture yet, and "no preview". What is left is pictures, and the one line
+    still shown is a problem, which is what Pages shows and no more. A failure always says
+    `could not set {name}`: a refusal that did not say which wallpaper was refused is no answer,
+    and one kept quiet is a wallpaper that silently did not change.
     """
 
-    #: Whether the name of the selected wallpaper is written under the big picture. A class
-    #: constant rather than a constructor argument because a layout *is* its drawing: the choice
-    #: lives beside `_window_size` and `_build`, and nothing else needs to know it.
-    NAMES = True
+    def __init__(self, client, data: dict):
+        #: The text switch. Read before the window is built, because `_build` draws from it.
+        self.text = bool((data or {}).get("strip_text"))
+        super().__init__(client, data)
 
     def _window_size(self) -> QSize:
-        screen = QGuiApplication.primaryScreen()
+        screen = self._target_screen()
         available = screen.availableGeometry() if screen else None
         width, height = (1200, 560)
         if available is not None:
@@ -552,7 +630,7 @@ class StripPicker(Picker):
         strip_row.setSpacing(TILE_GAP)
         self.tiles: list[Tile] = []
         for position, entry in enumerate(self.entries):
-            card_widget = Tile(position, entry, self.look, tile)
+            card_widget = Tile(position, entry, self.look, tile, named=self.text)
             card_widget.picked.connect(self._apply_at)
             strip_row.addWidget(card_widget)
             self.tiles.append(card_widget)
@@ -572,10 +650,10 @@ class StripPicker(Picker):
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setMinimumSize(1, 1)
 
-        # The name under the picture, when this layout writes one. `None` rather than an empty
-        # label: an empty label still takes a row of the layout, and a layout without names would
-        # be reserving space for a word it never shows. Every use of it is guarded.
-        self.caption = QLabel() if self.NAMES else None
+        # The name under the picture, when the text is on. `None` rather than an empty label: an
+        # empty label still takes a row of the layout, and the strip without its text would be
+        # reserving space for a word it never shows. Every use of it is guarded.
+        self.caption = QLabel() if self.text else None
         if self.caption is not None:
             caption_font = QFont()
             caption_font.setBold(True)
@@ -583,7 +661,7 @@ class StripPicker(Picker):
             self.caption.setFont(caption_font)
         self.status = QLabel()
         self.status.setWordWrap(True)
-        self.status.setText("\n".join(t for t in (self.trouble, self.hint) if t))
+        self._set_status("\n".join(t for t in (self.trouble, self.hint if self.text else "") if t))
 
         right = QVBoxLayout()
         right.setSpacing(8)
@@ -633,7 +711,10 @@ class StripPicker(Picker):
     def _paint_preview(self) -> None:
         picture = self.front_picture()
         if picture is None or picture.isNull():
-            self.preview.setText("no preview")
+            if self.text:
+                self.preview.setText("no preview")
+            else:
+                self.preview.clear()
             return
         # The same picture at the same size is the same scaling, and `_show` asks for it on
         # every step of the selection whether or not the picture moved.
@@ -645,29 +726,23 @@ class StripPicker(Picker):
     def _page_step(self) -> int:
         return max(1, self.strip.viewport().width() // (TILE_WIDTH + TILE_GAP))
 
+    def _set_status(self, text: str) -> None:
+        """The line under the picture, and no row at all while it has nothing to say -- which,
+        with the text off, is every moment nothing is wrong."""
+        self.status.setText(text)
+        self.status.setVisible(bool(text))
+
     def _say(self, text: str) -> None:
         super()._say(text)
-        self.status.setText(text)
+        self._set_status(text)
+
+    def _say_progress(self, text: str) -> None:
+        if self.text:
+            self._say(text)
 
     def _apply_at(self, position: int) -> None:
         self._select(position)
         self._apply()
-
-
-class BareStripPicker(StripPicker):
-    """The strip without the file names: the same thumbnails, the same big picture, no caption.
-
-    This is the layout the id `strip` builds and the one the word *Strip* means on the tab. Three
-    pieces of writing stay, on purpose. A card still carries its name as a **tooltip**,
-    because a tooltip is what tells you which card you are pointing at without spending any of the
-    strip's narrow width on it. A card with **no picture yet** still writes its name sideways,
-    because there the name is not decoration -- it is the only thing on the card that says what it
-    is. And a **failure** still says `could not set {name}`, because a refusal that did not say
-    which wallpaper was refused is no answer at all. The caption under the picture was the one
-    place the name was a fixture rather than a need, and that is the one that goes.
-    """
-
-    NAMES = False
 
 
 # ---------------------------------------------------------------------- the pages
@@ -752,11 +827,11 @@ class PagesPicker(Picker):
 
         **The window is clamped to the usable area**, because that is where a window can be.
 
-        On more than one screen this measures the primary one, while applying reaches every screen
-        of the activity. There is no single honest answer on a mixed-aspect desk; the primary one
-        is the one whose middle the window is centred on.
+        On more than one screen this measures the screen it opens on (`_target_screen`), which is
+        the one it is centred on and the one a wallpaper chosen goes on -- so the card is that
+        screen shrunk, whatever the shape of the others.
         """
-        screen = QGuiApplication.primaryScreen()
+        screen = self._target_screen()
         if screen is None:
             self._measure(QSize(1920, 1080))
             return QSize(1600, 500)
@@ -818,6 +893,10 @@ class PagesPicker(Picker):
         return None
 
     # ---------------------------------------------------------------- painting
+
+    def _screen_changed(self) -> None:
+        # Each page behind was drawn at the last screen's pixel ratio, pixel for pixel.
+        self._renders.clear()
 
     def _thumb_ready(self, position: int) -> None:
         for key in [k for k in self._renders if k[0] == position]:
@@ -1036,13 +1115,10 @@ class PagesPicker(Picker):
 
 # ---------------------------------------------------------------------- picking the layout
 
-#: Which id builds which class. The map looks inside out, and that is the owner's decision rather
-#: than an accident to tidy: the strip was meant to be the one **without** the file names, so
-#: `strip` builds `BareStripPicker` and the variant that writes the name under the picture lives
-#: under an id of its own, `strip-names`. The class names are older than that decision and stay --
-#: renaming them would touch every drawing method for no drawing at all; it is the map that
-#: changed, and `StripPicker`'s docstring says which id reaches it.
-LAYOUTS = {"pages": PagesPicker, "strip": BareStripPicker, "strip-names": StripPicker}
+#: Which id builds which class. The old `strip-names` is not here: the daemon reads it as `strip`
+#: with the text on before it ever answers (`state.RETIRED_LAYOUTS`), so the answer this map is
+#: given names one of these two.
+LAYOUTS = {"pages": PagesPicker, "strip": StripPicker}
 
 #: What opens when the settings name no layout the map knows: Pages, which is also what a fresh
 #: install and *Restore defaults* get (`defaults.WALLPAPER["layout"]`, held equal to this by a

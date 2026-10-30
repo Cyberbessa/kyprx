@@ -1,11 +1,12 @@
 """The form the Appearance, Effects and Tiling tabs are made of: fields drawn from `gui/fields.py`,
 read from the daemon, and written back by themselves a moment after they change.
 
-`SettingsPage` draws a page of `Field`s in sections, paints what each key reads as now -- the file's
-value, or what its program ships, with the dot that says nothing has been written -- and sends only
-the keys that changed, once the edits stop. Its subclasses add what one tab needs through `_load`,
-`extra_changes` and `after`; `PluginPage` is the Effects tab's kind, a page whose subject -- a
-plugin of the compositor -- can be switched off entirely.
+`SettingsPage` draws a page of `Field`s in sections, with each field's sentence on a mark after its
+name where the page asks for that (`marks`); paints what each key reads as now -- the file's value,
+or what its program ships, with the dot that says nothing has been written -- and sends only the
+keys that changed, once the edits stop. Its subclasses add what one tab needs through `_load`,
+`extra_changes`, `_sent` and `after`; `PluginPage` is the Effects tab's kind, a page whose subject
+-- a plugin of the compositor -- can be switched off entirely.
 """
 
 from __future__ import annotations
@@ -44,6 +45,11 @@ class SettingsPage(QWidget):
     Two guards make that safe rather than merely quick, and both are in the controls this class
     builds, from `gui/widgets.py`: a number is read when it settles rather than as it is typed
     (`Spin`), and no control here can be changed by a wheel rolling past it (`NoWheel`).
+
+    **`marks` puts each field's sentence behind a mark after its name**, the mark a section has
+    beside its title (`FieldLabel`), as well as on the name's tooltip, which only a pointer resting
+    on the name ever finds. Only the Tiling tab asks for them, because the owner asked for the
+    marks on that tab; the other pages keep the tooltip alone.
     """
 
     #: Long enough for a sequence of edits to count as one, short enough that the window still
@@ -61,7 +67,8 @@ class SettingsPage(QWidget):
     #: name and the daemon looks up what it means. Empty for a form that enforces nothing.
     enforces: str = ""
 
-    def __init__(self, sections: list[tuple[str, list[Field]]], client: Client, parent=None):
+    def __init__(self, sections: list[tuple[str, list[Field]]], client: Client, parent=None, *,
+                 marks: bool = False):
         super().__init__(parent)
         self.c = client
         #: Set across the whole of a load, subclasses included, and checked by `queue`. It is what
@@ -77,9 +84,12 @@ class SettingsPage(QWidget):
         self.widgets: dict[tuple[str, str, str], QWidget] = {}
         self.labels: dict[tuple[str, str, str], QLabel] = {}
         #: The whole label column of a row: the dot that says nothing has been written for this
-        #: setting, and the name. `labels` is still the name alone, which is what everything else
-        #: here reads and writes.
+        #: setting, the name, and with `marks` the mark after it. `labels` is still the name
+        #: alone, which is what everything else here reads and writes.
         self.rows: dict[tuple[str, str, str], FieldLabel] = {}
+        #: What each field reads as in the file, as far as this page knows: painted from the
+        #: daemon's answer (`_paint`), and moved to what was sent by a write (`apply`). It is what
+        #: `changes` compares with.
         self.originals: dict[tuple[str, str, str], str] = {}
         #: Only what someone actually touched is ever written. A widget showing a value for a key
         #: that is not in the file is showing a guess, and a guess must not become a setting.
@@ -93,8 +103,9 @@ class SettingsPage(QWidget):
         #: a switch that governs a whole subject, say.
         self.section_of: dict[tuple[str, str, str], str] = {}
         #: The boxes themselves. `extra_top` and `extra_bottom` put something above or below all of
-        #: them; `after` puts something **between** two, which the Tiling tab needs for a box it
-        #: can only build once the daemon has said which layouts there are.
+        #: them; `after` puts something **between** two, which the Tiling tab needs for its
+        #: arrangements and zone layouts -- boxes of their own rather than sections of fields,
+        #: because what they edit is one value of the tiler's, drawn rather than typed.
         self.section_boxes: dict[str, Section] = {}
 
         body = QWidget()
@@ -112,7 +123,7 @@ class SettingsPage(QWidget):
                 self.section_of[ident] = title
                 w = self._widget(f)
                 self.widgets[ident] = w
-                row = FieldLabel(f.label)
+                row = FieldLabel(f.label, f.hint if marks else "")
                 self.rows[ident] = row
                 label = row.label
                 self.labels[ident] = label
@@ -142,8 +153,8 @@ class SettingsPage(QWidget):
 
     def after(self, title: str, widget: QWidget) -> None:
         """Put a widget straight after the named section, in the column the sections are stacked
-        in. For a box that cannot be a section because its rows are not known until the daemon
-        answers -- the layouts in the rotation, which the tiler names."""
+        in. For a box that is not a section of fields -- the Tiling tab's arrangements and zone
+        layouts, which edit one value of the tiler's with a builder of their own."""
         box = self.section_boxes.get(title)
         at = self.column.indexOf(box) + 1 if box is not None else self.column.count() - 1
         self.column.insertWidget(at, widget)
@@ -154,7 +165,8 @@ class SettingsPage(QWidget):
         The two are not the same signal for a text field. `textEdited` marks it -- which is what
         stops the daemon repainting the box under somebody's fingers -- but the write waits for
         `editingFinished`, on Enter or on the focus leaving. A debounce over a keystroke signal
-        would put `firef` in the never-tiled list and re-tile the screen to prove it.
+        would write `firef` into the never-tiled list -- half a word, which matches nothing -- at
+        every pause in the typing, and have the tiler read its settings again for each.
         """
         mark = lambda *_: self.touched.add(ident)          # noqa: E731
         for signal in ("toggled", "valueChanged", "currentIndexChanged", "textEdited"):
@@ -231,10 +243,11 @@ class SettingsPage(QWidget):
         `changes()` can trust `originals` now.
 
         **The flag is the point of the wrapper.** Every page here paints some widget of its own on
-        top of what `_paint` does -- the two plugin switches, the twelve layout numbers -- and none
-        of those is in `fields`, so the `touched` refusal never covered them. With everything
-        applying by itself they would each write on the way up, which is the one defect
-        `scripts/simulate.sh` was built to catch. Subclasses override `_load`, inside the flag.
+        top of what `_paint` does -- the two plugin switches, the Tiling tab's zone layouts and
+        arrangements -- and none of those is in `fields`, so the `touched` refusal never covered
+        them. With everything applying by itself they would each write on the way up, which is the
+        one defect `scripts/simulate.sh` was built to catch. Subclasses override `_load`, inside
+        the flag.
         """
         if self.touched or self._pending.isActive():
             return
@@ -372,14 +385,9 @@ class SettingsPage(QWidget):
         nothing either. Both used to write.
         """
         out: dict = {}
-        for ident in sorted(self.touched):
+        for ident, value in self._to_write().items():
             source, group, key = ident
             f = self.fields[ident]
-            value = self._value(ident)
-            if value == self.originals.get(ident):
-                continue
-            if value == "" and f.kind == "choice":
-                continue
             written = f.writes.get(value, {}) if f.writes else {n: value for n in (key, *f.also)}
             for name, one in written.items():
                 if group:
@@ -388,9 +396,26 @@ class SettingsPage(QWidget):
                     out.setdefault(source, {})[name] = one
         return out
 
+    def _to_write(self) -> dict:
+        """The fields `changes` writes, each with the value it writes: touched, different from
+        `originals`, and not a menu left on its empty entry."""
+        out: dict = {}
+        for ident in sorted(self.touched):
+            value = self._value(ident)
+            if value == self.originals.get(ident):
+                continue
+            if value == "" and self.fields[ident].kind == "choice":
+                continue
+            out[ident] = value
+        return out
+
     def extra_changes(self) -> dict:
         """Subclasses add whatever their own widgets contributed."""
         return {}
+
+    def _sent(self, payload: dict) -> None:
+        """The daemon took `payload`: a subclass whose widgets keep a comparison point of their
+        own -- what `extra_changes` compares against -- moves it to what was sent. See `apply`."""
 
     def _words(self, ident, value: str) -> str:
         """One value, in the words that are on screen rather than the ones in the file."""
@@ -442,7 +467,17 @@ class SettingsPage(QWidget):
         said = self._said()
         if said:
             self.says.emit(said)
-        self.c.set_groups(payload)
+        written = self._to_write()
+        if self.c.set_groups(payload):
+            # What was sent is what the file holds now, so it is what the next edit is compared
+            # with. The re-read below is the other way the page learns that, and `load` refuses
+            # it while an edit is pending: compared with what the file held before this write, an
+            # edit put back within those 400 ms would look like no change and never be sent --
+            # the window showing one value and the file holding another until the tab is opened
+            # again. A write the daemon refused moves nothing, and the re-read repaints the page
+            # from the file.
+            self.originals.update(written)
+            self._sent(payload)
         # Applied, so nothing is pending any more and the page may take the file's word again.
         self.touched.clear()
         QTimer.singleShot(400, lambda: self.load(self.c.groups()))
@@ -461,6 +496,8 @@ class PluginPage(SettingsPage):
     def __init__(self, sections, client, plugins: list[tuple[str, str]], parent=None):
         super().__init__(sections, client, parent)
         self.plugin_boxes: dict[str, QCheckBox] = {}
+        #: What each switch reads as in the compositor's config, as far as this page knows: painted
+        #: at a load, and moved to what was sent by a write (`_sent`).
         self._plugins_at_load: dict[str, bool] = {}
         #: Which section each switch governs, so everything under it can grey out with it.
         self._plugin_sections: dict[str, str] = {}
@@ -518,3 +555,8 @@ class PluginPage(SettingsPage):
         changed = {p: b.isChecked() for p, b in self.plugin_boxes.items()
                    if b.isChecked() != self._plugins_at_load.get(p)}
         return {"plugins": changed} if changed else {}
+
+    def _sent(self, payload: dict) -> None:
+        """A switch sent is what the compositor's config holds now, and what the next flick of
+        it is compared with."""
+        self._plugins_at_load.update(payload.get("plugins") or {})

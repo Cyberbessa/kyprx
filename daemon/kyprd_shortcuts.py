@@ -1,10 +1,10 @@
 """The daemon's side of global shortcuts: the keys it binds and the keys it hands back.
 
-It gives back the cheatsheet key that earlier shapes of this app held, takes KyprX's own keys back
-from any other action that holds them too, and binds a key for the Shortcuts tab -- refusing one
-another action already holds unless the tab asked to take it. When the settings window leaves the
-bus it lifts every suspension of the desktop's shortcuts, which undoes one a row listening for keys
-left behind. This part makes no call to the shortcut registry
+It gives back the keys this app's old claims held (`shortcuts.LEGACY_CLAIMS`), takes the keys of
+four of KyprX's actions back from any other action that holds them too, and binds a key for the
+Shortcuts tab -- refusing one another action already holds unless the tab asked to take it. When the
+settings window leaves the bus it lifts every suspension of the desktop's shortcuts, which undoes
+one a row listening for keys left behind. This part makes no call to the shortcut registry
 itself: every one of the daemon's is in `daemon/shortcuts.py`.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `interface_owner`,
@@ -26,17 +26,20 @@ class ShortcutsPart:
     # ------------------------------------------------------------ global shortcuts
 
     def release_legacy_shortcut_claims(self) -> None:
-        """Give back the cheatsheet key that earlier shapes of this app were holding.
+        """Give back the keys this app's old claims were holding (`shortcuts.LEGACY_CLAIMS`): the
+        earlier shapes of the cheatsheet key, and the scratchpad's two actions, which KyprX has no
+        more.
 
-        The shortcut is the compositor script's now — registered there the way the tiling script
-        registers its own, which is the one way that demonstrably gets a key grabbed. Two earlier
-        shapes claimed it from here instead: a component of this app's own, which came back
+        The cheatsheet key is the compositor script's now — registered there the way the tiling
+        script registers its own, which is the one way that demonstrably gets a key grabbed. Two
+        earlier shapes claimed it from here instead: a component of this app's own, which came back
         inactive and so was never grabbed, and a desktop entry of its own, which the registry
         accepted and the compositor still ignored.
 
         What matters is that they let go. Up to Plasma 6.6 a combination another component still
         held was refused to the script; from 6.7 both keep it and the older claim is the one the key
-        runs. Either way the key goes on doing nothing, for a third reason.
+        runs. Either way the key goes on doing nothing, for a third reason. The scratchpad's two
+        would do the same to whatever is given their keys next.
         """
         if writer.dry_run():
             # Named, and only when there is one: announcing a release on every start whether or
@@ -46,25 +49,30 @@ class ShortcutsPart:
             except dbus.DBusException:
                 held = []
             if held:
-                writer.report("would release the old claims on the cheatsheet key: "
+                writer.report("would release the old shortcut claims: "
                               + ", ".join(f"{c}/{a}" for c, a in held))
             return
         try:
             shortcuts.release_legacy_claims()
         except dbus.DBusException as e:
-            self.log(f"could not release the legacy cheatsheet claims: "
+            self.log(f"could not release the old shortcut claims: "
                      f"{logs.what(e)}", trouble=True)
 
     def claim_kyprx_keys(self) -> bool:
-        """Take each of KyprX's own keys back from any other action that holds it too. True when a
-        key was really taken, for the caller to bring the KyprX folder up to date.
+        """Take the key of each of four of KyprX's actions (`shortcuts.CLAIMED_ACTIONS`) back from
+        any other action that holds it too: the three that open a window, and Toggle Automatic
+        Tiling. True when a key was really taken, for the caller to bring the KyprX folder up to
+        date.
 
         From Plasma 6.7 the registry keeps a key two actions share on both, and the one registered
-        first is the one it runs (`shortcuts.holders`). Krohnkite registers Meta+K (Focus Up) and
-        Meta+R (Rotate), and Spectacle Meta+R (Start/Stop Region Recording): on a desk where they
-        were there before the compositor script, KyprX's Meta+K and Meta+R did nothing, and nothing
-        said so. Up to 6.6 the script's key was refused instead, the action holds nothing, and
-        there is nothing here to take.
+        first is the one it runs (`shortcuts.holders`). Spectacle registers Meta+R (Start/Stop
+        Region Recording): on a desk where it was there before the compositor script, KyprX's Meta+R
+        did nothing, and nothing said so. Toggle Automatic Tiling's default is another program's on
+        a stock Plasma 6.7 desk: KWin's Edit Tiles -- its tile editor -- has Meta+T for its default
+        (read in the registry's own file, which stores `Edit Tiles=none,Meta+T` where it was set to
+        none). Only the one key is taken: the other action keeps any other key it has. Up to 6.6
+        the script's key was refused instead, the action holds nothing, and there is nothing here
+        to take.
 
         Only a key a KyprX action holds **now**. One moved off it -- on the Shortcuts tab or in
         KDE's own settings, which both take it from this action as they give it to another -- is

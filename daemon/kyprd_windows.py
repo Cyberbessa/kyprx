@@ -7,8 +7,8 @@ settle and then asks for the whole list (`request_inventory`), no more often tha
 once (`apply_defaults`); `check_applied` looks afterwards for an application that refused its title
 bar. The Windows tab's rows are `table`; its ticks are `set_switches` for the switches written per
 window (`SWITCHES`) and `set_window_lists` for the two that are memberships of one of the
-compositor's lists, in one transaction per batch because writing the tiler's list re-tiles the
-screen.
+compositor's lists, in one transaction per batch because each list written is something else told
+to act on it: the tiling reading its settings again, the compositor reconfigured.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, `migrated`,
 `state`, `windows`, `_deferred`, `_folder_holding`, `_last_inventory`, `_last_report`, `_settle`,
@@ -27,6 +27,7 @@ import effects
 import logs
 import policy
 import shortcuts
+import tiling
 import writer
 from kyprd_names import LIST_SWITCHES, OVERLAY_CLASSES, SWITCHES
 
@@ -50,7 +51,7 @@ MIN_INVENTORY_GAP = 0.4
 MAX_SETTLE_MS = 3000
 
 #: The compositor script's action for "re-read the window list". Addressed by name, through the
-#: shortcut registry — see `kwin-script/contents/code/main.js` for why it is not a script load.
+#: shortcut registry — see `kwin-script/contents/ui/main.qml` for why it is not a script load.
 INVENTORY_ACTION = shortcuts.INVENTORY_ACTION
 
 
@@ -76,7 +77,12 @@ class WindowsPart:
         `run()` it, unload it — was measured to be silently broken: the compositor numbers scripts
         by the size of its own list, so the id it hands back is reused after any unload, the new
         script's object path is already taken by a live one, and `run()` lands on somebody else's
-        script with no error anywhere. See `kwin-script/contents/code/main.js`.
+        script with no error anywhere. Point 3 at the top of `kwin-script/contents/ui/main.qml`.
+
+        The script also asks for its tiling settings at every one of these (`Tiling()`), which is
+        how the daemon learns the script's version again right after starting -- the first request
+        is made as it starts -- and why the Tiling tab never reads a script as missing that is
+        only waiting to be asked.
 
         Rate limited, and a request inside the floor is **deferred**, not dropped.
         """
@@ -91,6 +97,15 @@ class WindowsPart:
         try:
             shortcuts.invoke(INVENTORY_ACTION)
         except dbus.DBusException as e:
+            # Nobody on the bus answers for the shortcut registry, which is the compositor's own:
+            # the compositor is not up. Seen at a login, the daemon running eight seconds before
+            # the new session's compositor, and nothing was wrong -- the script sends its window
+            # list as it loads. Said as a trouble with the question below, it read as a broken
+            # install in the journal of a desk that was fine.
+            if e.get_dbus_name() == "org.freedesktop.DBus.Error.ServiceUnknown":
+                self.log("the compositor is not on the bus yet; KyprX's compositor script sends "
+                         "the window list itself as it loads")
+                return
             self.log(f"could not ask the compositor for the window list: {logs.what(e)} — "
                      f"is the compositor script installed and switched on?", trouble=True)
             return
@@ -214,43 +229,6 @@ class WindowsPart:
             self.state.mark_seen(w.window_class)
         self.state.save()
 
-    def apply_to(self, window_class: str, wanted: policy.Switches) -> str:
-        window = self.by_class().get(window_class) or policy.Window(window_class=window_class)
-        held = None
-
-        def build(tx):
-            policy.apply(tx, window, wanted, self.strength_for(window.window_class))
-            nonlocal held
-            if self.at_full():
-                # One window's switches written at 100: its tick, wanted or not, may not be
-                # deducible from what was written -- `ticks_at_100` keeps the ones that are not.
-                held = self.ticks_at_100(
-                    tx, {window.window_class: (wanted.transparency, window.resource_name)},
-                    self.config.ticked_at_100)
-            elif window.window_class in self.config.ticked_at_100:
-                # Below 100 the row just written says its own tick, so it is no longer held. Only
-                # reachable with the strength off 100 and the list not emptied yet: an import,
-                # which sets the number before its rows and restrikes after them -- and the
-                # restrike read a row the file said was opaque as held, and struck it see-through.
-                held = [c for c in self.config.ticked_at_100 if c != window.window_class]
-
-        try:
-            diff = writer.run(build)
-        except Exception as e:  # noqa: BLE001
-            self.log(f"failed on {window_class}: {logs.what(e)}", trouble=True)
-            return f"error: {e}"
-        if diff:
-            self.log(f"{window_class}: titlebar={'shown' if wanted.titlebar else 'hidden'} "
-                     f"outline={'on' if wanted.outline else 'off'} "
-                     f"transparency={'on' if wanted.transparency else 'off'} "
-                     f"blur={'on' if wanted.blur else 'off'}")
-            if writer.dry_run():
-                self.log("would have written:\n" + diff)
-        if held is not None:
-            self.keep_ticks(held)
-        self._look_again_soon()
-        return "ok"
-
     def set_switch(self, window_class: str, name: str, value: bool) -> str:
         return self.set_switches({window_class: {name: value}})
 
@@ -318,20 +296,45 @@ class WindowsPart:
         """Add or remove window classes from the two lists the last table columns stand for.
 
         One transaction for the whole batch, and that is the point of the method existing at all.
-        Writing the tiler's list makes the tiling script re-read itself, and a script that has just
-        started tiles the screen from scratch. Doing that once per ticked row would have the
-        windows rearrange five times over while somebody sets five of them to float.
+        Writing the tiler's list has KyprX's tiling read its settings again, one call and no
+        reconfigure (`reload.tell_tiler`), and lay the windows out by them; once per ticked row,
+        somebody setting five windows to float would have the screen laid out five times over --
+        and the animation's list, in the same batch, costs a reconfigure of the compositor.
 
         An overlay's own class is refused rather than silently re-added later: the daemon puts
         those back on every start, so removing one here would be a change that undoes itself.
+
+        A class the engine floats whatever the list says (`tiling.BUILTIN_FLOAT`: KyprX's own
+        settings window) is left as the list has it, in both directions. Added, it would be a line
+        that changes nothing on the screen, and taken out it would tile nothing: Toggle Float is
+        what tiles that window, until it closes. Said in the log only when it would have moved the
+        list, so that every row's Float written back as it was read -- which is what
+        `scripts/drive.py` does -- says nothing at all.
         """
+        builtin = tiling.BUILTIN_FLOAT
+        # The rows whose Float this leaves as the list has it, whatever they ask: left out of the
+        # changes said below, since they are none of them.
+        left_alone = {window_class for window_class, on in (wanted.get("float") or {}).items()
+                      if window_class in builtin or (window_class in OVERLAY_CLASSES and not on)}
+        # Why each of those was left, said once the batch has gone in. Said from `build`, a line
+        # came once per run of it, and `writer.run` runs it again after another writer got to the
+        # file first.
+        refused: list[str] = []
+
         def build(tx):
+            refused.clear()
             floating = effects.tiling_list(tx.kwin, effects.TILING_FLOAT_LIST)
             after = list(floating)
             for window_class, on in (wanted.get("float") or {}).items():
                 if window_class in OVERLAY_CLASSES and not on:
-                    self.log(f"{window_class} is one of this app's overlays and has to float; "
-                             f"leaving it in the list")
+                    refused.append(f"{window_class} is one of this app's overlays and has to "
+                                   f"float; leaving it in the list")
+                    continue
+                if window_class in builtin:
+                    if bool(on) != (window_class in floating):
+                        refused.append(f"{window_class} is KyprX's own settings window, which "
+                                       f"floats whatever this list says; leaving the list as it "
+                                       f"is")
                     continue
                 if on and window_class not in after:
                     after.append(window_class)
@@ -357,9 +360,13 @@ class WindowsPart:
         except Exception as e:  # noqa: BLE001
             self.log(f"failed on the window lists: {logs.what(e)}", trouble=True)
             return f"error: {e}"
+        for line in refused:
+            self.log(line)
         if diff:
             for name in LIST_SWITCHES:
                 for window_class, on in (wanted.get(name) or {}).items():
+                    if name == "float" and window_class in left_alone:
+                        continue
                     self.log(f"{window_class}: {name}={'yes' if on else 'no'}")
             if writer.dry_run():
                 self.log("would have written:\n" + diff)
@@ -409,7 +416,11 @@ class WindowsPart:
         # table of thirty windows would otherwise do sixty of them for one answer each.
         floating = effects.tiling_list(tx.kwin, effects.TILING_FLOAT_LIST)
         excluded = effects.geometry_excluded(tx.kwin)
-        tiling_on = effects.plugin_enabled(tx.kwin, effects.TILING_PLUGIN)
+        # Built on demand, a new list each time (`tiling.__getattr__`): asked once for the table.
+        builtin_float = tiling.BUILTIN_FLOAT
+        # The tiling as the engine is told it, not its switch alone: off the desk, a Float tick
+        # has nothing to do.
+        tiling_on = self.tiling_on_now(tx.kwin)
         geometry_on = effects.plugin_enabled(tx.kwin, effects.GEOMETRY_PLUGIN)
         rows = []
         open_now = self.by_class()
@@ -418,6 +429,8 @@ class WindowsPart:
             switches, pattern = self.switches_of(
                 tx, window_class, w.resource_name if w else "")
             shared = policy.shared_pattern(pattern, window_class)
+            float_why = ("overlay" if window_class in OVERLAY_CLASSES
+                         else "settings" if window_class in builtin_float else "")
             status = ""
             if window_class in self.state.refuses_ssd:
                 status = "refuses"
@@ -441,6 +454,12 @@ class WindowsPart:
                 # counting the ticks the strength owns needs this to leave it out -- measured in
                 # memory: the simulation's count took one such window in, the daemon kept none.
                 "seen": window_class in self.state.seen,
+                # Whether the class is on the skip list, which no move of the strength reaches
+                # (`transparency_targets`). The status cannot say it on its own: "refuses" comes
+                # first, so a skip-list window whose app refused the title bar reads "refuses" --
+                # measured in the simulation on a real desk: the screenshot tool did, the
+                # simulation counted it among 31 windows drawn at the strength, the daemon kept 30.
+                "system": policy.auto_skip(window_class),
                 "manageable": w.manageable() if w else True,
                 "skipped": list(w.skipped) if w else [],
                 "titlebar": switches.titlebar,
@@ -457,17 +476,24 @@ class WindowsPart:
                 "pattern": pattern or "",
                 "shared": shared,
                 "blur_per_window": blur_per_window,
+                # In the tiler's list, and only that: the settings window floats without being in
+                # it, which `float_why` says instead.
+                "float": window_class in floating,
                 # Inverted once, here, and never again: the effect keeps a list of what it must
                 # *not* animate, and the column asks whether it does. Inverting in the interface
                 # instead would mean two places knowing the polarity and one of them being wrong.
-                "float": window_class in floating,
                 "animate": window_class not in excluded,
                 "tiling_enabled": tiling_on,
                 "geometry_enabled": geometry_on,
-                # An overlay floats because a window rule and this list say so, and the daemon
-                # puts both back every time it starts. A tick that undoes itself on the next start
-                # is worse than no tick, so the interface is told not to offer one.
-                "float_locked": window_class in OVERLAY_CLASSES,
+                # Why the window floats whatever its tick says, when it does. "overlay": a window
+                # rule and this list float it, and the daemon puts both back every time it starts.
+                # "settings": KyprX's own settings window, which the engine floats whatever the
+                # list says (`tiling.BUILTIN_FLOAT`) -- Toggle Float still tiles it, until it
+                # closes. A tick that undoes itself on the next start, or one that changes nothing
+                # on the screen, is worse than no tick, so the interface is told not to offer one
+                # -- and why, to say in its place.
+                "float_why": float_why,
+                "float_locked": bool(float_why),
                 # One of this app's own windows. The three switches do not apply to it: it is not
                 # managed like an application, and the daemon takes that treatment back off on
                 # every start -- so a tick here would be a tick that undoes itself, and an empty

@@ -3,9 +3,10 @@ videos are, when a video pauses, and whether KDE's own wallpapers stand in the l
 
 Which kind is listed is not a setting of this app's: it is the wallpaper plugin the activity in use
 is wearing, read from the shell every time the page is drawn, and choosing here changes that plugin.
-The picker's layout, the videos' folder and the switch about KDE's own wallpapers are this app's own
-settings, written through `SetSettings`; the pause is the video plugin's own setting, written only
-when it is changed here. The picker itself is `gui/picker.py`.
+The picker's layout and the strip's text, the videos' folder, the switch about KDE's own wallpapers
+and *Set for all screens* are this app's own settings, written through `SetSettings`; the pause is
+the video plugin's own setting, written only when it is changed here. The picker itself is
+`gui/picker.py`.
 """
 
 from __future__ import annotations
@@ -21,15 +22,13 @@ from picker import DEFAULT_LAYOUT
 from widgets import SECTION_HINTS, Choice, Section, warning
 
 
-#: What each of the three picker layouts looks like, said on the radio itself rather than in a
-#: paragraph under all of them. Everything the three have in common -- the same list, the same
+#: What each of the two picker layouts looks like, said on the radio itself rather than in a
+#: paragraph under both of them. Everything the two have in common -- the same list, the same
 #: keys, the same way of setting a wallpaper -- is worth saying once, in the section's own line.
 #: Pages, the default, comes first: the order here is the order the radios stand in.
 PICKER_LAYOUTS = {
     "pages": ("Pages", "over the desktop, the chosen one in the middle and the rest behind it"),
-    "strip": ("Strip", "a column of thumbnails beside one big picture, in a panel, no file names"),
-    "strip-names": ("Strip with names", "the same thumbnails and big picture, with the file name "
-                                        "under the picture"),
+    "strip": ("Strip", "a column of thumbnails beside one big picture, in a panel"),
 }
 
 #: What each layout's tooltip adds where its own line has no room for it. One entry per layout,
@@ -37,11 +36,16 @@ PICKER_LAYOUTS = {
 #: nothing to say -- which the picker-layouts test finds.
 PICKER_TIPS = {
     "pages": "No panel of its own, and the border round it is the window outline's.",
-    "strip": "A panel wearing the decoration's own background and corner. A card still says its "
-             "name when you point at it.",
-    "strip-names": "The Strip's panel, with the selected wallpaper's file name under the big "
-                   "picture.",
+    "strip": "A panel wearing the decoration's own background and corner. Whether it writes "
+             "anything is the box under it.",
 }
+
+#: What the strip writes when its text is on, said where the box is. Off, it is pictures only, and
+#: the one line it still shows is a problem -- the same as Pages.
+STRIP_TEXT_TIP = ("The selected wallpaper's name under the big picture, how many there are and "
+                  "which keys do what, and a card's name when you point at it or while it has no "
+                  "picture yet. Unticked, the strip is pictures only, and it writes a line only when "
+                  "something is wrong.")
 
 
 class WallpaperTab(QWidget):
@@ -91,6 +95,12 @@ class WallpaperTab(QWidget):
             radio.toggled.connect(lambda on, name=layout_id: on and self._set_layout(name))
             self.layouts[layout_id] = radio
 
+        #: The strip's text: one switch for every word it writes. Greyed while Pages is chosen,
+        #: because Pages has no text to switch -- it writes only a problem, either way.
+        self.strip_text = QCheckBox("Show the names and the keys in the strip")
+        self.strip_text.setToolTip(STRIP_TEXT_TIP)
+        self.strip_text.toggled.connect(self._set_strip_text)
+
         self.image_folder = QLineEdit()
         self.image_folder.setPlaceholderText("where the pictures are")
         self.image_folder.editingFinished.connect(self._image_folder_typed)
@@ -109,6 +119,16 @@ class WallpaperTab(QWidget):
         #: without this file learning any path.
         self.kde = QCheckBox("Also list KDE's own wallpapers")
         self.kde.toggled.connect(self._set_kde)
+
+        #: KDE's own *Set for all screens*, in KDE's own words, because it is the same choice its
+        #: Wallpaper page offers. Shown only with more than one screen, as there: with one, every
+        #: screen and this screen are the same thing.
+        self.all_screens = QCheckBox("Set for all screens")
+        self.all_screens.setToolTip(
+            "Ticked, a wallpaper you choose in the picker goes on every screen of the activity you "
+            "are in. Unticked, it goes on the screen the picker opened on -- the one you are "
+            "working on -- as on KDE's own Wallpaper page.")
+        self.all_screens.toggled.connect(self._set_all_screens)
 
         self.folder = QLineEdit()
         self.folder.setPlaceholderText("where the videos are")
@@ -135,8 +155,9 @@ class WallpaperTab(QWidget):
         self.summary.setWordWrap(True)
         self.warning = warning()
 
-        box = Section("Picker", SECTION_HINTS["Picker"] + " A wallpaper you choose reaches "
-                      "every screen of the activity you are in, and no other.")
+        box = Section("Picker", SECTION_HINTS["Picker"] + " A wallpaper you choose goes on the "
+                      "screen the picker opened on, or on every screen of the activity with Set "
+                      "for all screens ticked, and never on another activity.")
         form = QVBoxLayout(box)
         form.addWidget(self.images)
         form.addLayout(image_folder_row)
@@ -144,12 +165,21 @@ class WallpaperTab(QWidget):
         form.addWidget(self.videos)
         form.addLayout(folder_row)
         form.addLayout(pause_row)
+        form.addWidget(self.all_screens)
 
-        looks = Section("Layout", SECTION_HINTS["Layout"] + " All three show the same wallpapers "
+        looks = Section("Layout", SECTION_HINTS["Layout"] + " Both show the same wallpapers "
                         "and answer the same keys.")
         looks_form = QVBoxLayout(looks)
-        for radio in self.layouts.values():
+        for layout_id, radio in self.layouts.items():
             looks_form.addWidget(radio)
+            if layout_id == "strip":
+                # Under the radio it belongs to, set in the way the colour's soak sits under the
+                # colour: it is something the strip does, not a third layout.
+                text_row = QHBoxLayout()
+                text_row.addSpacing(18)
+                text_row.addWidget(self.strip_text)
+                text_row.addStretch()
+                looks_form.addLayout(text_row)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.warning)
@@ -222,10 +252,19 @@ class WallpaperTab(QWidget):
             widget.blockSignals(True)
             widget.setChecked(layout_id == chosen)
             widget.blockSignals(False)
+        self.strip_text.blockSignals(True)
+        self.strip_text.setChecked(bool(data.get("strip_text")))
+        self.strip_text.blockSignals(False)
+        self.strip_text.setEnabled(chosen == "strip")
 
         # The activity's own name is a number the shell keeps for itself, and it meant nothing to
-        # anybody reading it. How many screens is worth saying only when there is more than one.
-        screens = int(data.get("desktops", 0) or 0)
+        # anybody reading it. How many screens is worth saying only when there is more than one --
+        # the shell's own count of screens, and not of desktops, which an unplugged screen keeps.
+        screens = int(data.get("screens", 0) or 0)
+        self.all_screens.blockSignals(True)
+        self.all_screens.setChecked(bool(data.get("all_screens")))
+        self.all_screens.blockSignals(False)
+        self.all_screens.setVisible(screens > 1)
         parts = [f"{len(data.get('entries') or [])} to choose from"]
         if screens > 1:
             parts.append(f"{screens} screens")
@@ -241,6 +280,12 @@ class WallpaperTab(QWidget):
         if not data.get("video_plugin"):
             trouble.append("Smart Video Wallpaper Reborn is not installed, so the picker can only "
                            "offer pictures.")
+        if data.get("kinds_differ"):
+            # Somebody's own doing in *Desktop and Wallpaper*: this app gives a screen a kind of
+            # its own only when a wallpaper of that kind is chosen for it. The tab's two buttons
+            # say what the picker's screen wears, and switch every screen of the activity.
+            trouble.append("the screens of this activity show different kinds of wallpaper. "
+                           "Pictures and Videos here switch every one of them.")
         if data.get("rotates"):
             trouble.append("the video plugin is set to change the wallpaper by itself, so a video "
                            "chosen here will not stay. Its own settings are where that is turned "
@@ -290,6 +335,24 @@ class WallpaperTab(QWidget):
         if self._loading:
             return
         self._send(layout=layout)
+        self.reload()
+
+    def _set_all_screens(self, on: bool) -> None:
+        """Send the switch only when it moved, for the reason `_set_kde` below gives."""
+        if self._loading:
+            return
+        if on == bool((self.c.settings().get("wallpaper") or {}).get("all_screens")):
+            return
+        self._send(all_screens=on)
+        self.reload()
+
+    def _set_strip_text(self, on: bool) -> None:
+        """Send the switch only when it moved, for the reason `_set_kde` below gives."""
+        if self._loading:
+            return
+        if on == bool((self.c.settings().get("wallpaper") or {}).get("strip_text")):
+            return
+        self._send(strip_text=on)
         self.reload()
 
     def _set_kde(self, on: bool) -> None:

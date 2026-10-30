@@ -12,12 +12,12 @@ from __future__ import annotations
 import html
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QHBoxLayout, QLabel,
                                QPushButton, QRadioButton, QVBoxLayout, QWidget)
 
 from client import Client
-from widgets import SECTION_HINTS, ColorButton, Section, Spin, warning
+from widgets import SECTION_HINTS, Choice, ColorButton, Section, Spin, warning
 
 
 # ---------------------------------------------------------------------- the desktop's colours
@@ -248,6 +248,32 @@ class ThemeBox(Section):
         accent_holder = QWidget()
         accent_holder.setLayout(accent_row)
 
+        #: Which screen's wallpaper the colour comes from, when there is more than one screen: the
+        #: primary, or one by its output's name. Drawn from `Screens` (`reload_screens`), and only
+        #: there -- never in `load`, which runs again on every `ColourReady`.
+        self.source = Choice()
+        self.source.setToolTip("The screen whose wallpaper the colour comes from. A wallpaper set "
+                               "on another screen leaves the colours alone. Choosing another "
+                               "screen here takes its wallpaper's colour at once, while Colour "
+                               "from the wallpaper is ticked.")
+        self.source.currentIndexChanged.connect(self._source_picked)
+        source_row = QHBoxLayout()
+        source_row.setContentsMargins(0, 0, 0, 0)
+        source_row.addWidget(QLabel("Colour from the wallpaper of"))
+        source_row.addWidget(self.source, 1)
+        source_holder = QWidget()
+        source_holder.setLayout(source_row)
+        source_holder.setVisible(False)
+        self._source_holder = source_holder
+        self._source_loading = False
+        self._source_held = ""
+        #: What the offer line calls the screen the colour comes from, with more than one screen.
+        self._source_words = ""
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.screenAdded.connect(self._screens_moved)
+            app.screenRemoved.connect(self._screens_moved)
+
         self.offer = QLabel()
         self.offer.setWordWrap(True)
         self.take = QPushButton("Take it")
@@ -297,7 +323,8 @@ class ThemeBox(Section):
         column.addWidget(self.holder)
         column.addWidget(self.panel)
         # The wallpaper's offer above the colour and not below it: it is what to decide before
-        # choosing one by hand.
+        # choosing one by hand -- and which screen's wallpaper it is, above the offer.
+        column.addWidget(source_holder)
         column.addWidget(offer_holder)
         column.addWidget(accent_holder)
         column.addWidget(soak_holder)
@@ -403,7 +430,9 @@ class ThemeBox(Section):
             self.offer.setText("This colour came from your wallpaper.")
             self.take.setVisible(False)
             return
-        self.offer.setText(f"Your wallpaper offers <b>{offered}</b>. The colour below is yours, and "
+        whose = (f"The wallpaper of {html.escape(self._source_words)}" if self._source_words
+                 else "Your wallpaper")
+        self.offer.setText(f"{whose} offers <b>{offered}</b>. The colour below is yours, and "
                            f"stands until the next wallpaper.")
         self.take.setVisible(True)
 
@@ -447,6 +476,65 @@ class ThemeBox(Section):
             "The window outline is on a colour of its own. A colour that came from your wallpaper "
             "moves it, and so does choosing a preset above; <i>Take the theme colour</i>, under "
             "<i>Outline</i> below, puts it on the colour above.")
+
+    def reload_screens(self) -> None:
+        """Draw the screens the colour can come from, each with the wallpaper it shows.
+
+        Asked here and not in `load`: `load` runs again on every `ColourReady`, once per stop of
+        the picker's selection, and a question to the shell each time is exactly what that signal
+        is narrow to avoid. Called when the tab is drawn, when the daemon says something changed,
+        and when a screen comes or goes. Painted with the signals blocked, so drawing it writes
+        nothing; shown only with more than one screen.
+        """
+        here = {s.name(): s for s in QGuiApplication.screens() if s.name()}
+        answer = self.c.screens(list(here)) if here else {}
+
+        def number(row) -> int:
+            value = row.get("number")
+            return value if isinstance(value, int) and not isinstance(value, bool) else -1
+
+        rows = sorted((r for r in answer.get("screens") or [] if isinstance(r, dict)
+                       and number(r) >= 0), key=number)
+        held = str(answer.get("colour_screen") or "")
+        self._source_loading = True
+        try:
+            self.source.clear()
+            self.source.addItem("the primary screen", "")
+            for row in rows:
+                name = str(row.get("name") or "")
+                screen = here.get(name)
+                made = " ".join(t for t in ((screen.manufacturer(), screen.model()) if screen
+                                            else ()) if t)
+                label = name + (f" ({made})" if made else "")
+                label += ", the primary screen" if row.get("primary") else ""
+                label += f": {row['wallpaper']}" if row.get("wallpaper") else ""
+                self.source.addItem(label, name)
+            if held and self.source.findData(held) < 0:
+                self.source.addItem(f"{held}, not connected now: the primary screen gives it",
+                                    held)
+            self.source.setCurrentIndex(max(0, self.source.findData(held)))
+        finally:
+            self._source_loading = False
+        self._source_held = held
+        several = int(answer.get("count") or 0) > 1
+        self._source_holder.setVisible(several)
+        self._source_words = (str(self.source.currentData() or "") or "the primary screen"
+                              if several else "")
+        self._say_offer()
+
+    def _screens_moved(self, _screen) -> None:
+        self.reload_screens()
+
+    def _source_picked(self) -> None:
+        """Send the screen only when it moved: painting the menu never writes, and choosing the
+        screen already held answers nothing."""
+        if self._source_loading:
+            return
+        value = str(self.source.currentData() or "")
+        if value == self._source_held:
+            return
+        self._source_held = value
+        self.c.set_settings(colour_screen=value)
 
     def _take_offered(self) -> None:
         offered = str(self._data.get("from_wallpaper") or "")
@@ -504,8 +592,8 @@ class ThemeBox(Section):
         preset is how a colour of your own is kept.
 
         **Here and not in the daemon**, and that is not tidiness. The same rule inside `set_theme`
-        would silently discard the colour of every settings file imported and every profile loaded
-        whose preset differs from the one in force — a backup that does not restore — and would
+        would silently discard the colour of every KyprX folder applied and every profile loaded
+        whose preset differs from the one in force — a profile that does not load — and would
         break the check that drives every installed preset with a probe colour in one payload.
 
         Switching **mode** arrives here too: `_mode_picked` checks that mode's default preset, and

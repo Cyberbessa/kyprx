@@ -368,13 +368,13 @@ class Profiles:
     def replace(self, entries: list) -> str:
         """Put this list in place of the one kept. "" when done, otherwise why not.
 
-        What a settings file being imported does with its profiles. **Replaced and not merged**,
-        because that is what a backup means: a list that kept a profile the file does not carry is
-        not the list that was saved.
+        What the KyprX folder and a copy of the desk do with the profiles they carry. **Replaced
+        and not merged**: a list that kept a profile the file does not carry is not the list that
+        was saved.
 
         A file that could not be read is never saved over, exactly as in every other mutator here.
         An entry that is not an object, or has no name, or repeats a name already taken, is passed
-        over rather than refused -- one bad row in somebody's backup is not a reason to drop the
+        over rather than refused -- one bad row in somebody's file is not a reason to drop the
         rest of it. A look that cannot be read at all is refused, with the sentence `normalise`
         raised, and nothing is changed.
 

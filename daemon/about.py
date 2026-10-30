@@ -2,7 +2,7 @@
 data folders are.
 
 **The version is one file**, `VERSION`, at the top of the tree this code runs from, found through
-this file's real path the way the Credits box finds `CREDITS.md`. That tree is the working tree
+this file's real path the way *About KyprX…* finds `CREDITS.md`. That tree is the working tree
 for an install made by `install.sh`, whose links point into it, and `/usr/share/kyprx` for a
 package, which `packaging/stage.sh` lays out the same way. One file rather than a constant in the
 code, because what builds a package needs it before any code runs, and a number kept in several
@@ -50,13 +50,16 @@ def version() -> str:
 RUNNING = version()
 
 
-def from_package() -> bool:
-    """Was this installed by a package manager, rather than linked from a working tree?
+def from_package(top: str | None = None) -> bool:
+    """Was `top` -- this installation's tree unless another is named, as `daemon/update.py`
+    does -- put in place by a package manager, rather than linked from a working tree?
 
     A package puts the code under the system's prefix, where nobody keeps a working tree; a working
     tree is wherever somebody cloned or unpacked it, and `install.sh` links the session to it.
+    `None` reads `TOP` when asked, not when this module was imported, the way `removal_command`
+    reads it: a test that moves `TOP` moves this answer with it.
     """
-    return TOP.startswith(("/usr/", "/opt/"))
+    return (TOP if top is None else top).startswith(("/usr/", "/opt/"))
 
 
 def data_dirs(env=None) -> list[str]:

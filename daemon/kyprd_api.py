@@ -25,15 +25,18 @@ import folder
 import klassy
 import policy
 import profiles
+import reload as reloader
 import shortcuts
 import snapshot
 import theme
+import tiling
 import writer
 from declared import note_reloads, shipped_defaults, write_declared
 from klassy import KLASSY_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import LIST_SWITCHES, MANAGER_IFACE, SCRIPT_PLUGIN
-from state import Defaults, kde_wallpapers, wallpaper_layout
+from state import (Defaults, all_screens, colour_screen, kde_wallpapers, strip_text,
+                   wallpaper_layout)
 
 if TYPE_CHECKING:
     # The daemon's class, for the annotation only. Never imported for real: kyprd.py runs as the
@@ -87,6 +90,9 @@ class Manager(dbus.service.Object):
         return json.dumps({"paused": self.d.config.paused,
                            "notify": self.d.config.notify,
                            "auto_colour": self.d.config.auto_colour,
+                           #: The screen the colour comes from, "" for the primary. The window
+                           #: draws the choice from `Screens`, which says which screens there are.
+                           "colour_screen": self.d.config.colour_screen,
                            "transparency": self.d.config.transparency,
                            #: Read here and written through `SetOwnTransparency`, never through
                            #: `SetSettings`: a number reaches a window the moment it is set, and
@@ -109,6 +115,7 @@ class Manager(dbus.service.Object):
     def SetSettings(self, payload):
         d = json.loads(str(payload))
         was_paused = self.d.config.paused
+        auto_was, screen_was = self.d.config.auto_colour, self.d.config.colour_screen
         if "paused" in d:
             self.d.config.paused = bool(d["paused"])
         if "notify" in d:
@@ -119,6 +126,8 @@ class Manager(dbus.service.Object):
             # nothing that is on screen -- the window outline included. Clear, beside the colour,
             # is what takes a colour off.
             self.d.config.auto_colour = bool(d["auto_colour"])
+        if "colour_screen" in d:
+            self.d.config.colour_screen = colour_screen(d["colour_screen"])
         strength_moved = False
         if "transparency" in d:
             try:
@@ -140,8 +149,10 @@ class Manager(dbus.service.Object):
                 "video_dir": str(paper.get("video_dir", held.get("video_dir", ""))),
                 "image_dir": str(paper.get("image_dir", held.get("image_dir", ""))),
                 "layout": wallpaper_layout(paper.get("layout", held.get("layout"))),
-                # A block without the switch is one written before it existed, or the interface
+                # A block without a switch is one written before it existed, or the interface
                 # sending back the keys it read: either way the value held now stands.
+                "strip_text": strip_text(paper, held.get("strip_text")),
+                "all_screens": all_screens(paper, held.get("all_screens")),
                 "kde_wallpapers": kde_wallpapers(paper, held.get("kde_wallpapers")),
             }
             # A `mode` sent here is not stored and not silently dropped either: it is a change to
@@ -154,6 +165,11 @@ class Manager(dbus.service.Object):
             self.d.restrike_transparency(was_strength)
         if was_paused and not self.d.config.paused:
             self.d.apply_defaults()
+        if self.d.config.colour_screen != screen_was and auto_was and self.d.config.auto_colour:
+            # Only while the colour was coming from a wallpaper and still is: the switch being
+            # flicked on in the same breath -- which putting the settings back after *Restore
+            # defaults* does -- takes no colour, the same as flicking it on alone.
+            self.d.follow_colour_screen(screen_was)
         self.changed()
         return "ok"
 
@@ -198,6 +214,22 @@ class Manager(dbus.service.Object):
         return json.dumps(self.d.wallpapers())
 
     @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
+    def Screens(self, payload):
+        """`{"names": ["HDMI-A-1", ...]}` -- the outputs the window knows of -- answered with the
+        screen each is now, whether it is the primary, and the wallpaper it shows; with how many
+        screens the shell counts and the screen the colour comes from. A read.
+
+        The names come from the window because nothing else here can list them: the shell can
+        only say which screen a name it is given is (`wallpaper.snapshot`)."""
+        try:
+            asked = json.loads(str(payload))
+            names = [str(n) for n in (asked.get("names") or []) if n] if isinstance(asked, dict) \
+                else []
+        except (json.JSONDecodeError, TypeError):
+            names = []
+        return json.dumps(self.d.screens(names))
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
     def PrepareColour(self, payload):
         """`{"target": "file://..."}` — work this wallpaper's colour out now, before it is wanted.
 
@@ -239,12 +271,15 @@ class Manager(dbus.service.Object):
 
     @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
     def SetWallpaper(self, payload):
-        """`{"target": "file://..."}` — on every screen of the activity in use, and no other.
+        """`{"target": "file://...", "screen": "HDMI-A-1"}` — on the activity in use, and no other.
 
-        The other activity keeps its own, which is the whole reason the script asks the shell for
-        `desktopsForActivity(currentActivity())` rather than for every desktop there is.
+        `screen` is an output's name, and the wallpaper goes on that screen alone; without one it
+        goes on every screen of the activity. The other activity keeps its own either way, which is
+        the whole reason the script asks the shell for `desktopsForActivity(currentActivity())`
+        rather than for every desktop there is.
         """
-        r = self.d.set_wallpaper(str(json.loads(str(payload)).get("target", "")))
+        d = json.loads(str(payload))
+        r = self.d.set_wallpaper(str(d.get("target", "")), str(d.get("screen") or ""))
         self.changed()
         return r
 
@@ -263,8 +298,8 @@ class Manager(dbus.service.Object):
         step would look like it worked while the palette it was meant to change stayed put.
         """
         #: The only caller that passes `from_preset`, and the only one that should: this is the
-        #: Colours box, which is somebody choosing. See `set_theme` for why the other three --
-        #: a profile, a settings file, *Restore defaults* -- must not.
+        #: Colours box, which is somebody choosing. See `set_theme` for why the others -- a
+        #: profile, the KyprX folder, *Restore defaults* -- must not.
         r = self.d.set_theme(json.loads(str(payload)), from_preset=True)
         self.changed()
         return r
@@ -280,9 +315,20 @@ class Manager(dbus.service.Object):
         including the ones that ship on, and then wrote that false reading the moment anyone
         touched it. And `kyprx_defaults` is this app's declaration, sent for whoever asks --
         nothing in the interface shows it today -- and nothing on a form may edit it.
+
+        The tiling is KyprX's own, so its reply carries what only this app can say about it: the
+        zone layouts and arrangements as the daemon reads them (`tiling_arrangements`: what the
+        stored value means, whether the file stores any, and what is wrong with what it stores),
+        and where the tiling stands (`tiling_state`, read the way the engine's own answer is). What
+        the value means is always version 2 -- the upgrade of one stored in version 1
+        (`tiling.arrangements_of`) -- so the window reads one shape whatever the file holds, and
+        the file keeps what it holds until something is edited. Its `tiling_defaults` carry KyprX's
+        own zone layouts and arrangements as their canonical text, in version 2 as well.
         """
         tx = writer.Transaction()
         shipped = shipped_defaults()
+        group = dict(tx.kwin.groups.get(effects.TILING_GROUP, {}))
+        arrangements, stored, problem = tiling.arrangements_of(group)
         return json.dumps({
             "klassy": {g: dict(tx.klassy.groups.get(g, {})) for g in KLASSY_GROUPS},
             "klassy_defaults": shipped["klassy"],
@@ -295,14 +341,15 @@ class Manager(dbus.service.Object):
             "blur_mode": effects.blur_mode(tx.kwin),
             "geometry": dict(tx.kwin.groups.get(effects.GEOMETRY_GROUP, {})),
             "geometry_defaults": shipped["geometry"][""],
-            "tiling": dict(tx.kwin.groups.get(effects.TILING_GROUP, {})),
+            #: Text only: a key with no value (`[$d]`) means its default, the same as no key, and
+            #: is the one thing in a group JSON cannot carry as it is.
+            "tiling": {k: v for k, v in group.items() if isinstance(v, str)},
             "tiling_defaults": shipped["tiling"][""],
-            "layouts": effects.LAYOUTS,
+            "tiling_arrangements": {"value": arrangements, "stored": stored, "problem": problem},
+            "tiling_state": self.d.tiling_state_now(tx.kwin),
             "plugins": {p: effects.plugin_enabled(tx.kwin, p)
-                        for p in (effects.BLUR_PLUGIN, effects.GEOMETRY_PLUGIN,
-                                  effects.TILING_PLUGIN)},
+                        for p in (effects.BLUR_PLUGIN, effects.GEOMETRY_PLUGIN)},
             "kyprx_defaults": defaults.SETTINGS,
-            "kyprx_defaults_version": defaults.VERSION,
             #: So that each tab can say when what it sets has nothing to act on -- see `Requirements`.
             "needs": self.d.needs(),
         })
@@ -319,8 +366,38 @@ class Manager(dbus.service.Object):
         The enforced keys are written **first** and the tab's own keys after, so a control that is
         still on screen always wins over a declaration -- they never overlap today, and the order
         makes a future overlap harmless rather than baffling.
+
+        **The zone layouts and arrangements are checked before anything is written** and written as
+        their one canonical text, in the version they came in (`tiling.canonical`): version 2 from
+        the window, which sends nothing else, and version 1 from a script that still writes it.
+        What the window built and what a script hand-wrote are the same text when they are the
+        same value, and a value that breaks a rule answers `error: <sentence>` with nothing written
+        at all. A value the file already holds in other words -- spelt by hand, or in the other
+        version, which is how a desk keeps its version-1 text until somebody edits on the Tiling
+        tab -- is left in those words (`_tiling_value_alike`, as the KyprX folder and the settings
+        file leave them): sending back what `Groups` just read -- the file's own text, or what it
+        means in version 2 -- must write nothing, and rewriting somebody's text to say the same
+        thing is a write nobody asked for. `null` in their place takes the key away, which is
+        KyprX's own zone layouts and arrangements back -- after a copy of the desk, because they
+        are somebody's work and nothing else keeps them. A `null` for any other tiling key takes
+        that key away too, back to its default.
         """
         d = json.loads(str(payload))
+        given = {source: dict(d.get(source) or {}) for source in
+                 ("decoration", "windows", "blur", "geometry", "tiling")}
+        if "arrangements" in given["tiling"]:
+            if given["tiling"]["arrangements"] is None:
+                stored = writer.Transaction().kwin.groups.get(effects.TILING_GROUP, {})
+                if ("arrangements" in stored and not self.d.take_snapshot(
+                        "before KyprX's zone layouts and arrangements")):
+                    return ("error: a copy of the desk could not be kept first, so nothing was "
+                            "changed")
+            else:
+                try:
+                    given["tiling"]["arrangements"] = tiling.canonical(
+                        given["tiling"]["arrangements"])
+                except tiling.ArrangementsError as e:
+                    return f"error: {e}"
 
         def build(tx):
             moved = set()
@@ -334,8 +411,18 @@ class Manager(dbus.service.Object):
                                   (effects.BLUR_GROUP, "blur"),
                                   (effects.GEOMETRY_GROUP, "geometry"),
                                   (effects.TILING_GROUP, "tiling")):
-                for key, value in (d.get(source) or {}).items():
-                    tx.kwin.set(group, key, value)
+                for key, value in given[source].items():
+                    held = tx.kwin.get(group, key)
+                    if source == "tiling" and value is None:
+                        tx.kwin.delete_key(group, key)
+                    elif (source == "tiling" and key == "arrangements" and isinstance(held, str)
+                          and self.d._tiling_value_alike(key, held, value)):
+                        # The one value made over before it gets here -- it is canonical by now --
+                        # so without this a text spelt by hand, or one in version 1, sent back as
+                        # `Groups` read it would be rewritten to say the same at every apply.
+                        continue
+                    else:
+                        tx.kwin.set(group, key, value)
             for plugin, enabled in (d.get("plugins") or {}).items():
                 effects.set_plugin_enabled(tx.kwin, plugin, bool(enabled))
             # The geometry animation belongs in this list and was missing: its group was written
@@ -457,7 +544,12 @@ class Manager(dbus.service.Object):
 
     @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
     def Shortcuts(self):
-        return json.dumps({"actions": shortcuts.bindings(self.d.config.cheatsheet_keys)})
+        """Every action of the fixed lists with its keys (`shortcuts.bindings`), and `screen`: the
+        screen the compositor counts as active (`reload.active_output`), "" when it cannot say.
+        The cheatsheet opens there, centred by its rule, and lays itself out for that screen's
+        height before it is shown -- the reason the picker is told the same, in `Wallpapers`."""
+        return json.dumps({"actions": shortcuts.bindings(self.d.config.cheatsheet_keys),
+                           "screen": reloader.active_output()})
 
     @dbus.service.method(MANAGER_IFACE, in_signature="sai", out_signature="s")
     def SetShortcut(self, action, keys):
@@ -534,7 +626,7 @@ class Manager(dbus.service.Object):
 
     @dbus.service.method(MANAGER_IFACE, in_signature="b", out_signature="s")
     def Requirements(self, refresh):
-        """The five projects KyprX is built on, each as it stands here: installed or not, its
+        """The four projects KyprX is built on, each as it stands here: installed or not, its
         version, whether the compositor runs it, and what to do when something is wrong. From
         memory unless `refresh` -- see `InstallationPart.needs`. Writes nothing."""
         return json.dumps(self.d.needs(refresh=bool(refresh)))
@@ -577,8 +669,12 @@ class Manager(dbus.service.Object):
 
     @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
     def Diagnostics(self):
+        """What the Settings tab's Problems box is drawn from: the counts and orphans of the
+        rules and overrides, the compositor script and its actions, the versions, the theme's
+        trouble, and where KyprX's tiling stands (`tiling_state`, read like the engine's answer).
+        A read."""
         tx = writer.Transaction()
-        d = policy.diagnostics(tx)
+        d = policy.diagnostics(tx, self.d.tiling_on_now(tx.kwin))
         d["dry_run"] = writer.dry_run()
         #: In every folder the compositor looks in, the user's first: a package puts the script
         #: under the system's prefix, `install.sh` under the user's own.
@@ -590,14 +686,17 @@ class Manager(dbus.service.Object):
         d["version"] = about.RUNNING
         d["version_on_disk"] = about.version()
         d["from_package"] = about.from_package()
-        #: A shortcut added to the compositor script does not exist until the compositor loads the
-        #: script again, and it only does that when the script is unloaded and loaded. Reported
-        #: rather than repaired here: a daemon that is only starting up should not be unloading
-        #: compositor scripts, and `install.sh` is where that belongs.
-        #: Every action of ours the compositor has not got yet, rather than a field per action.
-        #: A shortcut added to the script does not exist until the script has been unloaded and
-        #: loaded again, which `install.sh` does; a third action should not need a third field.
-        d["missing_actions"] = [a for a in shortcuts.KYPRX_ACTIONS if not shortcuts.exists(a)]
+        #: Every action of the compositor script's that the registry has not got, rather than a
+        #: field per action: all of them, the keyless two the daemon invokes included -- the
+        #: tiling's settings reach it through one of those. An action added to the script does not
+        #: exist until the compositor has loaded that version of it, and the compositor keeps what
+        #: it compiled of a declarative script for the whole session, so after an update that is
+        #: the next login (the head of `kwin-script/contents/ui/main.qml` has the finding).
+        #: Reported rather than repaired: nothing a daemon can do inside the session loads it
+        #: sooner. One read of the registry for all of them, not one each.
+        held = set(shortcuts.script_actions_held())
+        d["missing_actions"] = [a for a in shortcuts.SCRIPT_ACTIONS if a not in held]
+        d["tiling_state"] = self.d.tiling_state_now(tx.kwin)
         d["outline_preset"] = (klassy.PRESET_PREFIX + klassy.OUTLINE_OFF_PRESET
                                in tx.presets.groups)
         #: Reported, never repaired. Putting these back means applying the global theme, which
@@ -631,31 +730,6 @@ class Manager(dbus.service.Object):
             self.d.log("would have written:\n" + diff)
         self.changed()
         return json.dumps(renamed)
-
-    @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
-    def ExportSettings(self):
-        return json.dumps(self.d.export_settings(), indent=2, ensure_ascii=False, sort_keys=True)
-
-    @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
-    def ImportSettings(self, payload):
-        try:
-            settings = json.loads(str(payload))
-        except json.JSONDecodeError as e:
-            return f"error: this is not a settings file: {e}"
-        if not isinstance(settings, dict):
-            # Read field by field, so anything but an object stopped the import at its first
-            # `.get`, as an exception across the bus rather than as a sentence.
-            return "error: this is not a settings file -- it has no settings in it"
-        if settings.get("version") not in self.d.SETTINGS_VERSIONS:
-            return "error: unknown settings file version"
-        #: A file exported by an earlier KyprX, applied over the desk -- a big change like any
-        #: other, with a copy kept first so *Go back to a copy…* undoes it.
-        if not self.d.take_snapshot("before applying a backup file from an earlier version"):
-            return "error: a copy of the desk could not be kept first, so nothing was changed"
-        self.d.leave_off()
-        r = self.d.import_settings(settings)
-        self.changed()
-        return r
 
     # ------------------------------------------------------------ profiles
 

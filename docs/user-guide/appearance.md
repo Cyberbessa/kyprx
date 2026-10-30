@@ -145,7 +145,7 @@ The cards show the presets of the mode in force, four to a row:
 **Klassy Dark** and **Klassy Light** are the colour schemes Klassy's global theme applies by
 itself: choosing one is the way back to Klassy's own colours. **Longive** is KyprX's own:
 monochrome surfaces with one soft orange accent. It and the other eleven are colour schemes KyprX
-installs itself. A profile or settings file that names the preset `carl` gets Longive.
+installs itself. A profile or a KyprX folder that names the preset `carl` gets Longive.
 
 Each card is drawn from its colour scheme's own file: the card in the window colour, a content area
 in the view colour, a short selected row in the selection colour, and the name in the text colour.
@@ -187,17 +187,33 @@ highlights keep following the preset too, as they do on KDE's own Colours page.
 ### The wallpaper's colour
 
 While **Colour from the wallpaper** is ticked in the strip above the tabs
-([The KyprX window](README.md#colour-from-the-wallpaper)), every wallpaper set from the picker
-hands its colour to the desktop. That colour becomes your own colour on the preset in force (on the
+([The KyprX window](README.md#colour-from-the-wallpaper)), a wallpaper set from the picker hands its
+colour to the desktop: with more than one screen, the wallpaper of the screen the colour comes
+from, below. That colour becomes your own colour on the preset in force (on the
 mode's Klassy preset when the colours are not one of the presets), soaks into the backgrounds at
 the strength already soaking in, or at 25 % when nothing is, and is put on the window outline
 wherever the outline's style reads a custom colour. How the colour is worked out is on the
 [Wallpaper](wallpaper.md#colour-from-the-wallpaper) page.
 
+**Colour from the wallpaper of** is a menu above that row, there only when the computer has more
+than one screen. It lists **the primary screen** — whichever monitor is the primary in KDE's display
+settings — and then each screen by its name, such as `DP-1`, with the monitor's maker and model and
+the wallpaper it shows; the primary one says so. Choose a screen and, while **Colour from the
+wallpaper** is ticked, the desktop takes the colour of that screen's wallpaper at once. From then
+on, a wallpaper set on that screen, or on every screen, hands its colour over, and one set on
+another screen leaves the colours alone. A screen chosen here and not connected now is shown as
+**not connected now**, and the primary screen gives the colour until it is back. KyprX's default:
+the primary screen.
+
+The choice belongs to this computer, because a screen's name does: the KyprX folder does not
+carry it, and neither **Restore defaults** nor going back to a copy of the
+desk changes it ([Settings](settings.md)).
+
 While the tick is on, a row above **Your own colour** says what the wallpaper on screen offers:
 
 - **This colour came from your wallpaper.** The colour on the desktop is the wallpaper's.
-- **Your wallpaper offers** *three numbers*. **The colour below is yours, and stands until the next
+- **Your wallpaper offers** *three numbers* — with more than one screen, **The wallpaper of**
+  *the screen* **offers** *three numbers* — **The colour below is yours, and stands until the next
   wallpaper.**, with a **Take it** button. You have chosen another colour since, or the wallpaper
   was changed outside KyprX, which never recolours the desktop by itself.
 - **working out what colour this wallpaper gives — one moment**, while KyprX works out the colour

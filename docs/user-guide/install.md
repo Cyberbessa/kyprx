@@ -1,9 +1,9 @@
 # Installing, updating and removing KyprX
 
-KyprX is built on five other programs, and needs every one of them: Klassy (the window
-decoration), Better Blur DX (the blur), Krohnkite (the tiling), Geometry Change (the window
-animation) and Smart Video Wallpaper Reborn (video wallpapers). The packages install them with
-KyprX. It runs on KDE Plasma 6 in a Wayland session.
+KyprX is built on four other programs, and needs every one of them: Klassy (the window
+decoration), Better Blur DX (the blur), Geometry Change (the window animation) and Smart Video
+Wallpaper Reborn (video wallpapers). The packages install them with KyprX. The tiling is KyprX's
+own, so no tiling script is among them. It runs on KDE Plasma 6 in a Wayland session.
 
 Installing changes nothing on your desktop. KyprX switches itself on the first time you open it,
 from the application menu.
@@ -40,26 +40,31 @@ to be added the same way; the
 
 ## Arch, and systems built on it
 
-The five programs are in the AUR, and KyprX is on its way there. Until it is, each release on
-GitHub carries KyprX's PKGBUILD, and `paru` builds it and installs the five with it. Krohnkite's
-own AUR package fails its checksum at the moment, so its `-git` package goes first:
+The four programs are in the AUR, and KyprX is on its way there. Until it is, each release on
+GitHub carries KyprX's PKGBUILD, and `paru` builds it and installs the four with it. The four
+lines build the package in a temporary folder and delete that folder at the end, so nothing of
+the build is left where you run them; paru keeps its own copies of the four programs it builds
+in `~/.cache/paru/clone/`, as it does for every AUR package:
 
 ```sh
-paru -S kwin-scripts-krohnkite-git
-mkdir kyprx && cd kyprx
-curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
-paru -Ui
+build=$(mktemp -d)
+curl -fL -o "$build/PKGBUILD" https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
+(cd "${build:?}" && paru -Ui)
+rm -rf "$build"
 ```
 
-With another AUR helper, such as `yay`, install the five with it first -- `klassy`,
-`kwin-effects-better-blur-dx`, `kwin-scripts-krohnkite-git`, `kwin-effects-geometry-change` and
-`plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run `makepkg -si` in the folder that
-holds the PKGBUILD. Klassy and Better Blur DX are built on your computer, which takes a few
-minutes.
+The four lines are for bash and zsh. In fish, the shell CachyOS starts with, type `bash` first,
+paste them there, and type `exit` afterwards.
+
+With another AUR helper, such as `yay`, install the four with it first -- `klassy`,
+`kwin-effects-better-blur-dx`, `kwin-effects-geometry-change` and
+`plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run the same four lines with
+`makepkg -si` in place of `paru -Ui`. Klassy and Better Blur DX are built on your computer, which
+takes a few minutes.
 
 ## Any other system
 
-Install the five programs first -- each one's page says how -- and KyprX's own requirements:
+Install the four programs first -- each one's page says how -- and KyprX's own requirements:
 PySide6, dbus-python and PyGObject for Python 3, and Plasma's `kwriteconfig6` and
 `plasma-apply-colorscheme`. Then download a release, unpack it where it will stay, and run the
 installer inside your Plasma session:
@@ -74,20 +79,23 @@ your system, and stops. Keep the folder where it is: the installed files point i
 
 ## Updating
 
-A new version arrives with the rest of your system's updates: `sudo dnf upgrade` on Fedora, or the
-automatic updates of a system that updates as a whole (after its restart). On Arch, an AUR helper
-looks for a new version in the AUR, where KyprX is not yet; until it is, a new version is the new
-release's PKGBUILD, built again in the folder that holds the old one -- `makepkg -si` there instead
-of `paru -Ui` if KyprX was installed that way:
+Updating never starts by removing anything: the new version goes in over the old one. To find out
+whether there is one, press **Look for a new version**, on the
+[Settings](settings.md#look-for-a-new-version) tab: KyprX never looks by itself.
 
-```sh
-cd kyprx
-curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
-paru -Ui
-```
+How a new version arrives depends on how KyprX was installed:
 
-For an install made with `install.sh`, download the new release and run `./install.sh` again from
-it.
+- **Fedora**: `sudo dnf upgrade --refresh kyprx`. If it finds nothing, try again later: the
+  package is built a few minutes after the release.
+- **A Fedora system that updates as a whole**: `rpm-ostree upgrade`, then restart the computer.
+- **Arch**: the same [four lines as the install](#arch-and-systems-built-on-it), which build the
+  new release's package over the installed one; `makepkg -si` in place of `paru -Ui` if that is
+  how KyprX was installed.
+- **`install.sh`**: `./install.sh --update`, or **Update now** in the dialog that
+  [Look for a new version](settings.md#look-for-a-new-version) opens. On a clone of the
+  repository it brings in what the branch it follows has; on a folder unpacked from a release it
+  unpacks the newest release beside the old folder, which stays until you delete it. `--dry-run`
+  on either shows what would be done, changing nothing.
 
 Your setup is kept. When a new version keeps its own files in a new shape, KyprX first copies the
 files it will rewrite into your KyprX folder, `~/.config/kyprx/snapshots/`, and the log says
@@ -96,7 +104,9 @@ where.
 The new version takes over as each part of KyprX starts again. If you update while KyprX is running,
 the window shows a band until then, with a button that restarts the background service (see
 [KyprX was updated while it ran](README.md#kyprx-was-updated-while-it-ran)). Logging out and back
-in does the same.
+in does the same. If the Tiling tab then shows a band saying that KyprX's part of the compositor is
+from before the update, log out and back in: the compositor keeps the part of KyprX it has loaded
+for the rest of the session, and that part goes on tiling as it did until then.
 
 **After a Plasma update.** Klassy and Better Blur DX are compiled for one version of KDE's window
 manager. Until each is built again for the new one, the title bars or the blur stop working, and
@@ -124,36 +134,50 @@ It then takes back what only KyprX used and gives you the command that removes i
 | Arch | `sudo pacman -Rs kyprx` |
 | `install.sh` | `./install.sh --uninstall`, from the folder you installed from |
 
-The five programs are not removed by KyprX: they are programs of their own. The package manager
+Run before the button, `./install.sh --uninstall` removes nothing: it says the button comes first.
+`--force` removes the files anyway, and leaves everything the button would have taken back.
+
+Three things stay, whatever you answer:
+
+- the desktops KyprX made for windows, as ordinary desktops;
+- the keys KyprX took from other actions -- Meta+R from Spectacle's **Start/Stop Region
+  Recording**, Meta+T from KWin's **Toggle Tiles Editor** -- which are left without one. System
+  Settings, under **Shortcuts**, gives each its key back;
+- with your desktop left as it is, the look and the window behaviour KyprX gave it -- focus that
+  follows the mouse among it. KyprX's panel style and colour presets go with its files, and
+  nothing is put in their place.
+
+The four programs are not removed by KyprX: they are programs of their own. The package manager
 removes the ones it installed only for KyprX, and asks first; the ones you installed yourself stay.
 
 ### Arch, installed from the release's PKGBUILD
 
 pacman leaves a program you installed by a command of your own, and KyprX's own command names only
-KyprX. Installed as [above](#arch-and-systems-built-on-it) with `paru`, Krohnkite came in that way;
-name it too, when you installed it only for KyprX:
+KyprX. Installed as [above](#arch-and-systems-built-on-it) with `paru`, the four came in as KyprX's
+own needs, and `sudo pacman -Rs kyprx` takes the ones nothing else needs. With `yay` and
+`makepkg -si`, all four came in by a command of yours, so name the four:
 
 ```sh
-sudo pacman -Rs kyprx kwin-scripts-krohnkite-git
-```
-
-With `yay` and `makepkg -si`, all five came in that way, so name the five:
-
-```sh
-sudo pacman -Rs kyprx klassy kwin-effects-better-blur-dx kwin-scripts-krohnkite-git \
+sudo pacman -Rs kyprx klassy kwin-effects-better-blur-dx \
   kwin-effects-geometry-change plasma6-wallpapers-smart-video-wallpaper-reborn
 ```
 
 pacman lists everything it will remove, and asks before it removes anything: read the list. It
 takes what you named and whatever was installed only for it, and never a package something else
 still needs, so on a Plasma desktop Plasma itself stays. Tried on a clean Arch installed with
-`paru`: afterwards KyprX, the five and their files were gone.
+`paru`, with the same command naming a fifth program besides these four: afterwards KyprX, the five
+and their files were gone. The recipe with four has not been tried that way.
 
-Three things stay behind, and each is yours to delete or keep:
+Two things stay behind, and each is yours to delete or keep:
 
-- the folder you downloaded the PKGBUILD into;
 - the copies of what the AUR helper built, in `~/.cache/paru/clone/` or `~/.cache/yay/` --
   `paru -Sc` or `yay -Sc` offers to clear them;
-- tools installed only to build the five, such as `extra-cmake-modules`, `rust` and `typescript`,
-  which nothing needs once they are built. `pacman -Qdt` lists every package nothing needs -- the
-  whole system's, not only KyprX's -- so read it before removing any of them.
+- tools installed only to build the four, such as `extra-cmake-modules`, which nothing needs once
+  they are built. `pacman -Qdt` lists every package nothing needs -- the whole system's, not only
+  KyprX's -- so read it before removing any of them.
+
+A PKGBUILD built some other way leaves, in the folder it was built in, the PKGBUILD, the
+downloaded code (`kyprx-<version>.tar.gz`), the built package
+(`kyprx-<version>-1-any.pkg.tar.zst`) and the files the build tools add there, such as a hidden
+`.SRCINFO` or the `src` and `pkg` folders. KyprX needs none of them once it is installed: delete
+them, or the whole folder if it was made for them alone.

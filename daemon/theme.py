@@ -96,6 +96,9 @@ PACKAGES = {"dark": "org.kde.klassydarkbottompanel.desktop",
 
 #: KDE's own global themes, which *Take KyprX off this desk* applies -- see `pure_plan`.
 PURE = {"dark": "org.kde.breezedark.desktop", "light": "org.kde.breeze.desktop"}
+#: The Plasma style and the colour schemes those two put on: Breeze's, which Plasma ships.
+PURE_STYLE = "default"
+PURE_SCHEME = {"dark": "BreezeDark", "light": "BreezeLight"}
 
 #: What the packages above set when they are applied. Kept here because applying one makes these
 #: true whatever was chosen before, and `plan()` has to compare against what will be, not what is.
@@ -800,22 +803,32 @@ def package_after(now: dict, wanted: dict) -> str:
     return package if package and now.get("package") != package else ""
 
 
+def pure_mode(now: dict) -> str:
+    """The mode KDE's own look is put back in: the one in force -- `current` knows it for Klassy's
+    global themes, and Breeze's say it by which one is on, since Breeze's light one has no "light"
+    in its name -- and otherwise going by the name of the global theme on."""
+    package = str(now.get("package") or "")
+    return (now.get("mode") or next((m for m, p in PURE.items() if p == package), "")
+            or ("light" if "light" in package else "dark"))
+
+
 def pure_package(now: dict) -> str:
     """The global theme `pure_plan` would apply, or "" when the desktop already wears it."""
-    mode = now.get("mode") or ("light" if "light" in str(now.get("package")) else "dark")
+    mode = pure_mode(now)
     return PURE[mode] if now.get("package") != PURE[mode] else ""
 
 
 def pure_plan(now: dict) -> list[tuple[str, Callable, str]]:
     """The steps that put KDE's own look back: Breeze's global theme for the mode in force, and no
-    colour of this app's. Empty when the desktop already wears it.
+    colour of this app's -- nor its panel style or colour scheme, which can sit on top of Breeze's
+    global theme. Empty when the desktop already wears it.
 
     The package is applied the way `plan` applies Klassy's, and for the same measured reason the
     same things are put back after it: applying a global theme deletes every key it names, and the
     ones this app never meant to take -- an icon theme chosen by hand, say -- are written back. The
     five this app took over (`OURS`) are the ones Breeze now takes back, which is the point.
     """
-    mode = now.get("mode") or ("light" if "light" in str(now.get("package")) else "dark")
+    mode = pure_mode(now)
     package = PURE[mode]
     steps: list[tuple[str, Callable, str]] = []
     if now.get("package") != package:
@@ -835,6 +848,20 @@ def pure_plan(now: dict) -> list[tuple[str, Callable, str]]:
                           partial(_run, ["kwriteconfig6", "--file", name, "--group", group,
                                          "--key", key, "--notify", value]),
                           plain))
+    else:
+        # Breeze's global theme is on already, so nothing above runs -- but this app's panel style
+        # and colour schemes are applied apart from any global theme (`plan`) and can stay on top
+        # of it: KDE would not be as KDE has it, and once KyprX is removed the desktop would go on
+        # naming a style and a scheme whose files are gone. Breeze's own two are put back instead.
+        if now.get("style") == STYLE:
+            steps.append((_line("the panel", "plasma-apply-desktoptheme", STYLE, PURE_STYLE),
+                          partial(_run, ["plasma-apply-desktoptheme", PURE_STYLE]),
+                          "put the panel back on Breeze's own Plasma style"))
+        if now.get("scheme") in {CUSTOM} | {p.scheme for p in PRESETS}:
+            steps.append((_line("the colours", "plasma-apply-colorscheme", now["scheme"],
+                                PURE_SCHEME[mode]),
+                          partial(_run, ["plasma-apply-colorscheme", PURE_SCHEME[mode]]),
+                          f"put the colours back on Breeze's own {mode} scheme"))
     if now.get("accent"):
         steps.append((_line("your own colour", "kwriteconfig6", now["accent"], ""),
                       partial(_run, ["kwriteconfig6", "--file", "kdeglobals", "--group", "General",

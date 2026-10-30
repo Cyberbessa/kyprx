@@ -22,14 +22,18 @@ either direction:
   by an unrelated change -- two machines sharing a folder would otherwise take turns reapplying it;
 * the folder's side is merged key by key with what the desk has now, three ways (`merge`): a key
   the folder changed wins, a key only the desk changed stays, and a key both changed goes the
-  folder's way and is named in what the daemon says.
+  folder's way and is named in what the daemon says. The tiling's zone layouts and arrangements
+  are one value, never merged inside (`ATOMIC`): whichever side changed them brings the whole of
+  them, and the same ones written in the other version are no change (`tiling.alike`).
 
 With nothing remembered -- a new machine with a copied folder, or the memory deleted -- the folder
 is applied whole. That is what restoring over a clean install means.
 
 **What is left out, and why.** Facts about this machine rather than about the setup: which windows
-it has met, which applications refuse a server-side decoration, and the decoration's bundled
-presets (only a preset some override points at travels). Carrying them would have two machines
+it has met, which applications refuse a server-side decoration, the decoration's bundled presets
+(only a preset some override points at travels), whether new windows are being adjusted (*Adjust
+new windows*, `paused`), and which screen's wallpaper the colour comes from (`colour_screen`),
+whose name is this machine's. Carrying them would have two machines
 with one folder correcting each other for ever. A window at the defaults is not listed either: what
 is not written is the default, so a new window appearing does not change a file.
 
@@ -46,20 +50,33 @@ import json
 import os
 
 import snapshot
+import tiling
 import writer
 
 #: Bumped when a file changes shape. `MIGRATIONS` takes an older folder forward one step at a time;
 #: a newer one is refused, because applying half of what a later version meant is worse than
 #: applying nothing.
+#:
+#: The zone layouts and arrangements in `tiling.json` coming in a second version is not a new
+#: shape, because the value says its own version. A KyprX that reads version 2 reads version 1 for
+#: good (`daemon/tiling.py`), and one that reads only version 1 refuses a version-2 value for its
+#: version alone, saying a newer KyprX wrote it -- one problem, so nothing of the folder is applied
+#: there, as with a folder of a newer shape. A desk keeps version 1 until its zone layouts or
+#: arrangements are edited, and so does the folder it writes, which every KyprX reads: bumping
+#: this would have the older ones refuse that folder too, for nothing in it they cannot read.
 FORMAT = 1
 
 #: The folder itself -- the same place the copies of the desk live under.
 PATH = snapshot.FOLDER
 MANIFEST = "kyprx.json"
 
-#: Each part of the setup, and the file it lives in.
-AREAS = ("settings", "profiles", "windows", "decoration", "kwin", "shortcuts", "colours",
-         "wallpaper")
+#: Each part of the setup, and the file it lives in. `tiling` is KyprX's own engine, a file of its
+#: own rather than a part of `kwin.json`: its group is this app's rather than the compositor's, and
+#: its arrangements are written out as what they are instead of one long line. A file a folder of
+#: this shape did not have before is not a new shape: an older KyprX reads every file it knows and
+#: none it does not, and a folder without it is a part that is simply absent -- see `parse`.
+AREAS = ("settings", "profiles", "windows", "decoration", "kwin", "tiling", "shortcuts",
+         "colours", "wallpaper")
 FILES = {area: f"{area}.json" for area in AREAS}
 
 #: What the daemon remembers about the last moment folder and desk agreed. Machine-local on
@@ -88,6 +105,44 @@ seconds after anything changes, so they are always the desk as it is.
 - `windows.json` -- the Windows tab: every window that differs from what a new window gets.
 - `decoration.json` -- the window decoration's (Klassy's) settings, and its per-window settings
   that are not columns on the Windows tab.
+- `kwin.json` -- focus, borders, the blur and the window animation, and whether those two are
+  switched on.
+- `tiling.json` -- the tiling: whether it is on and tiles windows as they open, whether names show
+  on screen, where a new window goes and what it does when the arrangement is full, where a new
+  desktop goes, the gaps, the zone layouts and the arrangements, and the windows that float or are
+  never tiled. A window on the Windows tab says whether it floats in `windows.json` instead.
+- `shortcuts.json` -- the keys of the actions on the Shortcuts tab.
+- `colours.json` -- the mode, the colour preset, a colour of your own and how far it soaks in.
+- `wallpaper.json` -- the wallpaper of every activity and screen, by the path of its file, when a
+  video pauses, and the picker's choices.
+- `kyprx.json` -- which shape these files are in.
+- `snapshots/` -- copies of the desk taken before every big change. Not part of the setup.
+
+**Copy this folder to another machine** -- or put it back over a fresh install -- and KyprX applies
+it by itself. So does a `git pull`, a checkout, or an edit made here by hand: KyprX waits until the
+files stop moving and git has finished, keeps a copy of the desk first, and applies only what
+changed. *Go back to a copy...* on KyprX's Settings tab undoes it.
+
+Wallpapers are referred to by path, never copied in: bring your wallpaper folder along too.
+"""
+
+#: Every text of `README.md` an earlier KyprX wrote, each exactly. A file that is still one of them,
+#: byte for byte, is this app's own words that nobody has touched, and is brought up to date
+#: (`ensure_extras`); one that is anything else -- edited, or written by somebody -- is the
+#: owner's, and is left exactly as it is. The text `README` replaces goes in here each time it
+#: changes, and `README` itself never does: a file rewritten with the words it already has would
+#: wake the watch on the folder for nothing, pass after pass.
+README_BEFORE = ("""# The KyprX folder
+
+Everything KyprX controls on this desk, one file per part. KyprX writes these files itself a few
+seconds after anything changes, so they are always the desk as it is.
+
+- `settings.json` -- KyprX's own settings: notifications, colour from the wallpaper, the opacity
+  of see-through windows, what a new window gets, which key the cheatsheet shows.
+- `profiles.json` -- the profiles made on the Appearance tab.
+- `windows.json` -- the Windows tab: every window that differs from what a new window gets.
+- `decoration.json` -- the window decoration's (Klassy's) settings, and its per-window settings
+  that are not columns on the Windows tab.
 - `kwin.json` -- focus, borders, blur, the window animation, the tiling and its layout order,
   and which of those are switched on.
 - `shortcuts.json` -- the keys of the actions on the Shortcuts tab.
@@ -102,7 +157,64 @@ files stop moving and git has finished, keeps a copy of the desk first, and appl
 changed. *Go back to a copy...* on KyprX's Settings tab undoes it.
 
 Wallpapers are referred to by path, never copied in: bring your wallpaper folder along too.
-"""
+""", """# The KyprX folder
+
+Everything KyprX controls on this desk, one file per part. KyprX writes these files itself a few
+seconds after anything changes, so they are always the desk as it is.
+
+- `settings.json` -- KyprX's own settings: notifications, colour from the wallpaper, the opacity
+  of see-through windows, what a new window gets, which key the cheatsheet shows.
+- `profiles.json` -- the profiles made on the Appearance tab.
+- `windows.json` -- the Windows tab: every window that differs from what a new window gets.
+- `decoration.json` -- the window decoration's (Klassy's) settings, and its per-window settings
+  that are not columns on the Windows tab.
+- `kwin.json` -- focus, borders, the blur and the window animation, and whether those two are
+  switched on.
+- `tiling.json` -- the tiling: whether it is on and tiles windows as they open, the gaps, where a
+  new window goes, the arrangements, and the windows that float or are never tiled. A window on
+  the Windows tab says whether it floats in `windows.json` instead.
+- `shortcuts.json` -- the keys of the actions on the Shortcuts tab.
+- `colours.json` -- the mode, the colour preset, a colour of your own and how far it soaks in.
+- `wallpaper.json` -- the wallpaper on screen, by the path of its file, and the picker's choices.
+- `kyprx.json` -- which shape these files are in.
+- `snapshots/` -- copies of the desk taken before every big change. Not part of the setup.
+
+**Copy this folder to another machine** -- or put it back over a fresh install -- and KyprX applies
+it by itself. So does a `git pull`, a checkout, or an edit made here by hand: KyprX waits until the
+files stop moving and git has finished, keeps a copy of the desk first, and applies only what
+changed. *Go back to a copy...* on KyprX's Settings tab undoes it.
+
+Wallpapers are referred to by path, never copied in: bring your wallpaper folder along too.
+""", """# The KyprX folder
+
+Everything KyprX controls on this desk, one file per part. KyprX writes these files itself a few
+seconds after anything changes, so they are always the desk as it is.
+
+- `settings.json` -- KyprX's own settings: notifications, colour from the wallpaper, the opacity
+  of see-through windows, what a new window gets, which key the cheatsheet shows.
+- `profiles.json` -- the profiles made on the Appearance tab.
+- `windows.json` -- the Windows tab: every window that differs from what a new window gets.
+- `decoration.json` -- the window decoration's (Klassy's) settings, and its per-window settings
+  that are not columns on the Windows tab.
+- `kwin.json` -- focus, borders, the blur and the window animation, and whether those two are
+  switched on.
+- `tiling.json` -- the tiling: whether it is on and tiles windows as they open, the gaps, where a
+  new window goes and what it does when the arrangement is full, the zone layouts and the
+  arrangements, and the windows that float or are never tiled. A window on the Windows tab says
+  whether it floats in `windows.json` instead.
+- `shortcuts.json` -- the keys of the actions on the Shortcuts tab.
+- `colours.json` -- the mode, the colour preset, a colour of your own and how far it soaks in.
+- `wallpaper.json` -- the wallpaper on screen, by the path of its file, and the picker's choices.
+- `kyprx.json` -- which shape these files are in.
+- `snapshots/` -- copies of the desk taken before every big change. Not part of the setup.
+
+**Copy this folder to another machine** -- or put it back over a fresh install -- and KyprX applies
+it by itself. So does a `git pull`, a checkout, or an edit made here by hand: KyprX waits until the
+files stop moving and git has finished, keeps a copy of the desk first, and applies only what
+changed. *Go back to a copy...* on KyprX's Settings tab undoes it.
+
+Wallpapers are referred to by path, never copied in: bring your wallpaper folder along too.
+""",)
 
 #: Folder shapes older than `FORMAT`, each taken one step forward. Empty while there has only been
 #: one shape; the first change adds `1: step_to_2` here rather than a second reader.
@@ -168,6 +280,14 @@ def parse(texts: dict[str, str]) -> tuple[dict, int, list[str]]:
         except json.JSONDecodeError as e:
             problems.append(f"{name}, line {e.lineno}, column {e.colno}: {e.msg}")
             continue
+        except ValueError:
+            # After the clause above, which catches a subclass of this. A whole number longer than
+            # Python turns digits into (4300 by default, `sys.get_int_max_str_digits`) is refused
+            # by the reader with a plain ValueError and no line -- measured on Python 3.14 -- which
+            # stopped the folder's pass with Python's words and no file named, and went back
+            # across the bus from `PreviewFolder` as an exception.
+            problems.append(f"{name} holds a number too long to read")
+            continue
         if not isinstance(data, dict):
             problems.append(f"{name} is not an object with names in it")
             continue
@@ -192,8 +312,20 @@ def texts_of(areas: dict) -> dict[str, str]:
 #: compares equal to "absent" on another.
 _ABSENT = object()
 
+#: What `merge` takes whole rather than name by name: part by part, each value by its path inside
+#: the part. The daemon hands it to `arrival_target`, which hands each part's to `merge`.
+#:
+#: The tiling's zone layouts and arrangements are one value, `arrangements` in `tiling.json`, and
+#: no merge of its inside can be trusted. An arrangement names zone layouts of the pool by their
+#: ids, so a pool from one side under the arrangements of the other can name a zone layout that is
+#: not there, or one that changed under it: a folder that renamed a zone layout and a desk that
+#: took an arrangement out, merged name by name, would make a value neither of them wrote. And one
+#: side in version 1 and the other in version 2 are two shapes with nothing in them to merge.
+ATOMIC: dict[str, frozenset[str]] = {"tiling": frozenset({"/arrangements"})}
 
-def merge(was_theirs, theirs, was_ours, ours, path: str = "") -> tuple[object, list[str]]:
+
+def merge(was_theirs, theirs, was_ours, ours, path: str = "",
+          atomic: frozenset[str] = frozenset()) -> tuple[object, list[str]]:
     """What a part becomes when the folder changed it and the desk may have too.
 
     `was_theirs` is the folder's file as it was when the two last agreed and `theirs` as it is now;
@@ -205,7 +337,27 @@ def merge(was_theirs, theirs, was_ours, ours, path: str = "") -> tuple[object, l
     are said. Objects are merged name by name, all the way down; anything else -- a number, a
     string, a list -- is one value. A name the folder took out is taken out, unless the desk
     changed it since.
+
+    A path in `atomic` (`ATOMIC`) is one value too, and is told changed or not by `tiling.alike`
+    rather than by how it is written, pair by pair: the folder's now against its then, the desk's
+    now against its then, and the desk's now against the folder's. So the same zone layouts and
+    arrangements in version 1 on one side and version 2 on the other are no change at all -- which
+    is what a machine whose desk keeps version 1 sends with every change it makes, a gap say: that
+    alone must not undo an edit made on this one -- while two values in version 1 that differ are a
+    change, whatever their upgrades say. The absent marker and a text -- arrangements that could
+    not be read, carried as they are -- are each alike only to themselves: there is nothing in them
+    to read. The side that wins brings its own value exactly as it has it: one in version 1 stays
+    version 1, which is what the desk writes when it applies one, unless the desk already says the
+    same (`DeskPart._tiling_value_alike`).
     """
+    if path in atomic:
+        # Asked of each pair, never of one key made from each side: whether two are alike turns
+        # on both -- on whether they are in one version -- so no key of one side alone can say it.
+        if tiling.alike(theirs, was_theirs):
+            return ours, []
+        if tiling.alike(ours, was_ours) or tiling.alike(ours, theirs):
+            return theirs, []
+        return theirs, [path]
     if theirs == was_theirs:
         return ours, []
     if ours == was_ours or ours == theirs:
@@ -215,7 +367,7 @@ def merge(was_theirs, theirs, was_ours, ours, path: str = "") -> tuple[object, l
         for key in sorted(set(was_theirs) | set(theirs) | set(was_ours) | set(ours)):
             value, found = merge(was_theirs.get(key, _ABSENT), theirs.get(key, _ABSENT),
                                  was_ours.get(key, _ABSENT), ours.get(key, _ABSENT),
-                                 f"{path}/{key}")
+                                 f"{path}/{key}", atomic)
             conflicts.extend(found)
             if value is not _ABSENT:
                 out[key] = value
@@ -238,13 +390,17 @@ def arrivals(texts: dict[str, str], base: dict | None) -> list[str]:
     return sorted(n for n, t in texts.items() if t != was.get(n))
 
 
-def arrival_target(arrived: list[str], areas: dict, base: dict | None,
-                   desk: dict) -> tuple[dict, list[str], bool]:
+def arrival_target(arrived: list[str], areas: dict, base: dict | None, desk: dict, *,
+                   atomic: dict[str, frozenset[str]]) -> tuple[dict, list[str], bool]:
     """What applying an arrival writes: `(target, conflicts, whole)`.
 
     With nothing remembered, the whole folder -- a new machine. Otherwise each part whose file
-    arrived, merged three ways (`merge`) with what the desk has now; a part the desk cannot be read
-    for right now goes in as the folder has it.
+    arrived, merged three ways (`merge`) with what the desk has now, each value `atomic` names for
+    its part taken whole (`ATOMIC` is the daemon's); a part the desk cannot be read for right now
+    goes in as the folder has it.
+
+    `atomic` has no default on purpose: a caller that left it out would merge the inside of the
+    zone layouts and arrangements, quietly, and only for a folder and a desk that both changed.
     """
     if base is None:
         return {a: areas[a] for a in AREAS if a in areas}, [], True
@@ -258,7 +414,7 @@ def arrival_target(arrived: list[str], areas: dict, base: dict | None,
             target[area] = areas[area]
             continue
         merged, found = merge(before.get(area), areas[area], (base.get("desk") or {}).get(area),
-                              desk[area])
+                              desk[area], atomic=atomic.get(area, frozenset()))
         target[area] = merged
         conflicts.extend(f"{name}{path}" for path in found)
     return target, conflicts, False
@@ -272,7 +428,7 @@ def mirror_plan(texts: dict[str, str], base: dict | None, desk: dict,
     the first pass all of it. Not every part whose file differs from the desk: a part this machine
     could not apply -- a wallpaper file that is not here -- differs from its file for ever, and
     writing it back out would send it to the machine it came from, which would apply it and send
-    its own back. `scripts/dry-run.sh` step 16 has two machines prove it, and the loop the other
+    its own back. `scripts/dry-run.sh` step 15 has two machines prove it, and the loop the other
     rule makes.
 
     In a dry run nothing is written, so what is agreed is the folder as it really is beside the
@@ -357,17 +513,32 @@ def write_text(name: str, text: str, path: str = PATH) -> None:
 
 
 def ensure_extras(path: str = PATH) -> list[str]:
-    """`README.md`, `.gitignore` and `.stignore`, each written only when absent. Returns what was
-    written. In dry run, nothing."""
+    """`README.md`, `.gitignore` and `.stignore`, each written when absent -- and `README.md` also
+    when it is still an earlier KyprX's text, untouched (`README_BEFORE`), so the folder's own
+    description names the files it has now. Anything else there is the owner's and is never
+    written over. Returns what was written. In dry run, nothing."""
     wrote = []
     for name, text in (("README.md", README), (".gitignore", IGNORES), (".stignore", STIGNORE)):
-        if os.path.lexists(os.path.join(path, name)):
+        target = os.path.join(path, name)
+        if os.path.lexists(target) and not (name == "README.md" and _readme_before(target)):
             continue
         if writer.dry_run():
             continue
         write_text(name, text, path)
         wrote.append(name)
     return wrote
+
+
+def _readme_before(target: str) -> bool:
+    """Is this file, byte for byte, a `README.md` an earlier KyprX wrote? Read through a link the
+    way `write_text` writes through one; a file that cannot be read is somebody's, and is not."""
+    try:
+        with open(target, "rb") as fh:
+            found = fh.read()
+    except OSError:
+        return False
+    return found != README.encode("utf-8") and any(found == text.encode("utf-8")
+                                                   for text in README_BEFORE)
 
 
 # ---------------------------------------------------------------- what was agreed

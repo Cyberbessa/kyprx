@@ -1,17 +1,19 @@
 """The small pieces the window's tabs are built from.
 
 The warning and danger bands and a note; spin boxes and a drop-down the mouse wheel scrolls past
-instead of changing; a setting's label with the dot that says nothing has been written for it; a
-section box with the mark beside its name that holds one sentence of explanation -- most of those
-sentences are in `SECTION_HINTS` -- and a button that picks a colour. None of them talks to the
-daemon, and none builds anything at import time: a pixmap made before there is an application fails
-the import check in `scripts/dry-run.sh`.
+instead of changing; a setting's label with the dot that says nothing has been written for it, and
+the mark after it, where a page asks for one, that holds the setting's own sentence; a section box
+with the same mark beside its name, holding one sentence of explanation -- most of those sentences
+are in `SECTION_HINTS` -- and a heading in bold with the mark after it, for a part of a section;
+and a button that picks a colour. None of them talks to the daemon, and none builds anything at
+import time: a pixmap made before there is an application fails the import check in
+`scripts/dry-run.sh`.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (QColorDialog, QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout,
                                QLabel, QPushButton, QSpinBox, QStyle, QStyleOptionGroupBox,
                                QToolTip, QWidget)
@@ -40,27 +42,27 @@ SECTION_HINTS = {
     "Blur": "How the desktop behind a see-through window is blurred.",
     "Window animation": "The movement a window makes when it is moved or resized.",
     "Gaps": "The space kept around the windows and between them.",
-    "When a window moves": "What the rest of the layout does while one window is moved.",
-    "New windows": "Where a window goes when it opens.",
-    "Tiled windows": "How the windows that are tiled are drawn and what may happen to them.",
+    "Automatic tiling": "Whether windows are laid out as they open and close, and what a window "
+                        "that opens does when no zone is left for it. Off, windows stay where "
+                        "they are put until one is dropped in a zone.",
+    "Arrangements": "Which of your zone layouts automatic tiling lays a screen out by for each "
+                    "number of windows on it, and which arrangements Next Layout and Previous "
+                    "Layout walk through, in order.",
+    "Zone layouts": "The ways a screen can be divided, which the arrangements are made of. The "
+                    "ticked ones are offered when a window is dragged, in this order, and with "
+                    "automatic tiling off, Next Layout and Previous Layout walk through them.",
     "Never tiled": "The windows the tiler leaves exactly where they are put.",
     "Focus": "What it takes for a window to become the one you are typing into. These are the "
              "desktop's own settings, kept here because focus is most of what makes a tiled "
              "screen feel like one.",
-    "Layouts": "The arrangements the layout key cycles through, and the order it cycles them in.",
     "Profiles": "The whole of this tab, kept under a name. Loading one puts those colours, that "
                 "opacity and that frame back on the desktop.",
     "Colours": "The desktop's colours, windows and panel alike. Choosing a preset puts its own "
                "colours back.",
     "Title bar": "Where the title bar is changed, which is the decoration's own settings.",
-    "Notifications": "When KyprX puts something on your screen.",
-    "The window decoration": "Everything KyprX leaves to the decoration's own settings.",
-    "Backup": "Every setting there is, in one file you can keep or carry to another machine.",
     "Problems": "What KyprX found wrong on this machine.",
-    "What KyprX needs": "The five projects KyprX is built on: whether each one is installed, "
-                        "which version, and whether the desktop is running it.",
-    "Credits": "The projects KyprX is a pair of hands on. CREDITS.md has every one, with its "
-               "licence and what that licence asks of KyprX.",
+    "What KyprX needs": "A project KyprX is built on that is missing, too old or not running "
+                        "here, and what puts it right.",
     "Picker": "What the wallpaper key offers you when you press it.",
     "Layout": "What the wallpaper picker looks like when it opens.",
 }
@@ -92,8 +94,9 @@ def unavailable(data: dict, key: str) -> str:
     """What is wrong with one of the projects KyprX is built on, or "" when nothing is.
 
     `data` is what `Groups` answers, which carries the daemon's `needs`; `key` is the project's own
-    key (`"klassy"`) or the id a tab switches it by (`"krohnkite"`). A tab asks this so that a
-    switch or a page with nothing to act on says so, rather than pretending.
+    key (`"klassy"`) or the id a tab switches it by (`"better_blur_dx"`). A tab asks this so that a
+    switch or a page with nothing to act on says so, rather than pretending. The tiler is not one
+    of them -- it is KyprX's own -- so the Tiling tab asks the daemon's `tiling_state` instead.
     """
     for need in data.get("needs") or []:
         if key in (need.get("key"), need.get("plugin")) and need.get("state") != "ok":
@@ -190,17 +193,83 @@ class Dot(QWidget):
 
 
 class FieldLabel(QWidget):
-    """One setting's name, with the dot in front of it. `label` is the part that carries text."""
+    """One setting's name, with the dot in front of it and, given a hint, the mark after it.
 
-    def __init__(self, text: str, parent=None):
+    `label` is the part that carries text, and `mark` the `Hint` -- None without a hint. The name
+    is plain text, as `Heading`'s is. The sentence is the name's tooltip as well as the mark's, for
+    the reason `Section` puts its own on the whole box. After the name, as a section's mark is
+    after its title; the place in front is the dot's.
+    """
+
+    def __init__(self, text: str, hint: str = "", parent=None):
         super().__init__(parent)
         self.dot = Dot()
         self.label = QLabel(text)
+        self.label.setTextFormat(Qt.TextFormat.PlainText)
+        self.mark = Hint(hint) if hint else None
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(2)
         row.addWidget(self.dot)
         row.addWidget(self.label)
+        if self.mark is not None:
+            self.label.setToolTip(hint)
+            # Six pixels from the name, the distance a section's mark keeps from its title
+            # (`Section._place_mark`): the row's 2 and these 4. Measured offscreen: a box layout
+            # puts no spacing either side of a spacing item, so 6 here made 8.
+            row.addSpacing(4)
+            row.addWidget(self.mark)
+        # Where the row is given more room than it asks for -- the Gaps grid on the Tiling tab --
+        # the mark stays beside the words rather than at the far end of the room.
+        row.addStretch()
+
+    def set_hint(self, text: str) -> None:
+        """The sentence behind the name: its tooltip, and the mark's when it has one."""
+        self.label.setToolTip(text)
+        if self.mark is not None:
+            self.mark.set_hint(text)
+
+
+class Heading(QWidget):
+    """A line in bold that names what follows it, with the mark after it that holds one sentence
+    about it: what a section's title and mark are to a box, for a part of one.
+
+    The name is plain text, because it can be one somebody typed -- an arrangement's -- and a label
+    left to guess shows a name escaped for rich text as `Tom&#x27;s` and one with a tag in it as
+    markup. The sentence is the name's tooltip as well as the mark's, for the reason `Section` puts
+    its own on the whole box; with no sentence, there is no mark.
+    """
+
+    def __init__(self, text: str, hint: str = "", parent=None):
+        super().__init__(parent)
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.TextFormat.PlainText)
+        # Bold by the font, since a plain-text label would print the markup. Only the weight is
+        # set, so the family and the size go on following the desktop's font.
+        bold = QFont(self.label.font())
+        bold.setBold(True)
+        self.label.setFont(bold)
+        self.mark = Hint("")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)        # the distance `Section._place_mark` keeps from a title
+        row.addWidget(self.label)
+        row.addWidget(self.mark)
+        row.addStretch()
+        self.set_text(text)
+        self.set_hint(hint)
+
+    def text(self) -> str:
+        return self.label.text()
+
+    def set_text(self, text: str) -> None:
+        self.label.setText(text)
+
+    def set_hint(self, text: str) -> None:
+        """The sentence behind the heading, on its name and its mark; "" takes the mark away."""
+        self.label.setToolTip(text)
+        self.mark.set_hint(text)
+        self.mark.setVisible(bool(text))
 
 
 class Hint(QWidget):

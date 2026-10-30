@@ -30,9 +30,10 @@ class DefaultsPart:
         What it deliberately does **not** do is as much of the promise as what it does. It does not
         touch a window somebody set by hand: those choices live in the config files as facts, and a
         button called "restore defaults" that quietly undid a dozen deliberate decisions would be
-        the most expensive kind of surprise. It does not touch shortcuts either -- the tiling keys
-        belong to the tiling script, not to this app, and rebinding them is not restoring anything.
-        Nor the profiles: a look somebody kept under a name is theirs, not an opinion of this app's.
+        the most expensive kind of surprise. It does not touch shortcuts either -- a key is
+        somebody's choice, the tiling's among them, and rebinding them is not restoring anything.
+        Nor the arrangements, nor the profiles: what somebody built or kept under a name is
+        theirs, not an opinion of this app's.
 
         **A copy of the desk first**, and nothing at all without one: this writes every value this
         app has an opinion about, and *Go back* on the Settings tab is how that is undone. `preview`

@@ -14,9 +14,12 @@ The licences below are as each project's repository and its installed metadata s
 |---|---|---|---|---|
 | **Klassy** | Paul A McAuley, continuing KDE's Breeze (Martin Gräßlin, Hugo Pereira Da Costa and others) | [paulmcauley/klassy](https://github.com/paulmcauley/klassy) | Its code GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL, file by file, as KDE does; its colour schemes LGPL-2.0-or-later; its Plasma styles LGPL and its global themes LGPL 2.1, as their metadata declare | The window decoration, its dark and light global themes, and its two colour schemes, offered as presets. Two of its files are the base of files shipped here, below. See Klassy |
 | **Better Blur DX** | xarblu, continuing taj-ny's Better Blur, itself a fork of Plasma's blur effect | [xarblu/kwin-effects-better-blur-dx](https://github.com/xarblu/kwin-effects-better-blur-dx) | GPL-3.0 | The blur behind windows. See Better Blur DX |
-| **Krohnkite** | Vjatcheslav V. Kolchkov, continuing Eon S. Jeon's Kröhnkite | [anametologin/krohnkite](https://github.com/anametologin/krohnkite), archived there with a note that the project moved to [codeberg.org/anametologin/Krohnkite](https://codeberg.org/anametologin/Krohnkite) | MIT | The tiling. See Krohnkite |
 | **Geometry Change** | Peter Fajdiga | [peterfajdiga/kwin4_effect_geometry_change](https://github.com/peterfajdiga/kwin4_effect_geometry_change) | GPL-3.0 | The window animation. See Geometry Change |
-| **Smart Video Wallpaper Reborn** | Luis Bocanegra, with Rog131 and adhe | [luisbocanegra/plasma-smart-video-wallpaper-reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn) | GPL-2.0-or-later | Optional: video wallpapers. See Smart Video Wallpaper Reborn |
+| **Smart Video Wallpaper Reborn** | Luis Bocanegra, with Rog131 and adhe | [luisbocanegra/plasma-smart-video-wallpaper-reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn) | GPL-2.0-or-later | Video wallpapers. See Smart Video Wallpaper Reborn |
+
+**The tiling is KyprX's own.** Its ideas come from two projects, and none of their code: the
+zones of [KZones](https://github.com/gerritdevriese/kzones) that a window is dropped into, and the
+dwindle layout of [Hyprland](https://github.com/hyprwm/Hyprland).
 
 ## The palettes
 
@@ -80,21 +83,20 @@ fourteen keep theirs. They sit beside KyprX's own files rather than inside them,
 version 2
 itself allows any copy to be put under the ordinary GPL, version 2 or a later one (its section 3).
 
-**Nothing else here carries another project's licence.** Klassy, Better Blur DX, Krohnkite,
-Geometry Change and Smart Video Wallpaper Reborn are separate projects: KyprX writes their
-settings, applies the themes among them and opens Klassy's settings dialog, and contains none of
-their code. What it repeats from them is the names of their settings and some of their default
-values, which it needs in order to write those settings. The palettes reach this repository only
-as colour values in the scheme files, and Carl's scheme only as the colour-effect values in
-Longive's.
+**Nothing else here carries another project's licence.** Klassy, Better Blur DX, Geometry Change
+and Smart Video Wallpaper Reborn are separate projects: KyprX writes their settings, applies the
+themes among them and opens Klassy's settings dialog, and contains none of their code. What it
+repeats from them is the names of their settings and some of their default values, which it needs
+in order to write those settings. Of KZones and Hyprland it repeats nothing at all. The palettes
+reach this repository only as colour values in the scheme files, and Carl's scheme only as the
+colour-effect values in Longive's.
 
-The palettes and Krohnkite are MIT-licensed, and their notices are reproduced below.
+The palettes are MIT-licensed, and their notices are reproduced below.
 
 ## Notices
 
 The MIT licence, as it applies to each of these:
 
-- Krohnkite — Copyright (c) 2018 Eon S. Jeon; Copyright (c) 2024 Vjatcheslav V. Kolchkov
 - Catppuccin — Copyright (c) 2021 Catppuccin
 - Nord — Copyright (c) 2016-present Sven Greb
 - Gruvbox — no copyright line of its own; its README names the licence as MIT/X11, and its author

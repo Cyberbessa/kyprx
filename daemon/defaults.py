@@ -36,27 +36,40 @@ undo exactly that. *Restore defaults* is the one thing that writes them.
 
 from __future__ import annotations
 
-#: Bumped when the declarations below change in a way somebody would want to know about. It is
-#: shown beside the *Restore defaults* button, so "the defaults" is a thing with a version rather
-#: than whatever the app happened to think this week.
+#: Bumped when the declarations below change in a way somebody would want to know about, so "the
+#: defaults" is a thing with a version rather than whatever the app happened to think this week:
+#: a comment or a test can name the version a declaration arrived in. It is not shown anywhere.
 #:
 #: 5: the title bar's four opacity keys under the names the decoration actually reads -- see
 #: `TitleBarOpacity` below. The values are the ones version 4 meant; only now do they arrive.
 #: 6: Longive as default theme, corner radius 7.5, and image wallpaper directory support.
 #: 7: the strip layout without the file names and the switch that leaves KDE's own wallpapers out
 #: of the picker's list (`kde_wallpapers` below). The id `strip` builds the strip without the
-#: names from this version on -- the owner's word for the strip -- so a settings file from an
-#: earlier version that says `strip` opens it without them; the strip with the names is
-#: `strip-names`. Nothing is migrated. The picker's default layout is `pages`.
-VERSION = 7
+#: names from this version on -- the owner's word for the strip -- so a `strip` an earlier
+#: version wrote opens it without them; the strip with the names is `strip-names`. Nothing is
+#: migrated. The picker's default layout is `pages`.
+#: 8: one strip, and a switch for its text (`strip_text` below), off: the strip without the names
+#: and the strip with them became the same layout, and the switch is the difference. An old
+#: `strip-names` reads as the strip with its text on (`state.RETIRED_LAYOUTS`); nothing is
+#: migrated. The picker's default layout is still `pages`. And a wallpaper chosen in the picker goes
+#: on the screen it opened on, unless *Set for all screens* (`all_screens` below) is ticked.
+#: 9: the tiling is KyprX's own (`daemon/tiling.py`): `tiling` below is its switch, on, and the gaps
+#: and the rest are its keys in `[Script-kyprx]`. The arrangements are not declared: they are
+#: somebody's content, like a profile.
+#: 10: what a window that opens does when the screen already has one in every zone of its
+#: arrangement's last layout (`newWindowOverflow`), and where the desktop it then goes to is made
+#: (`newDesktopPosition`): a new desktop, after the last one. Nothing is migrated: absent, both
+#: read as that already (`tiling.DEFAULTS`).
+VERSION = 10
 
 #: What a window gets the first time it is seen. `state.Defaults` and `policy.Switches` both take
 #: their field values from here, so there is one place to change and no pair to keep in step.
 #:
 #: Float and "animate" are deliberately **not** here. Both are membership in a list that is global
 #: to the compositor, not a property of a window, and applying them per window would put a write
-#: to `[Script-krohnkite]` -- which restarts the tiler and re-tiles the screen -- inside the batch
-#: that runs at login. See `apply_defaults` in `daemon/kyprd_windows.py`.
+#: to one of those lists inside the batch that runs at login -- each a change something else has to
+#: act on: the geometry animation's list a reconfigure of the compositor, the tiler's the engine
+#: reading its settings again. See `apply_defaults` in `daemon/kyprd_windows.py`.
 SWITCHES = {
     "titlebar": False,       # False means hidden, which is the whole point of the app
     "outline": True,
@@ -106,7 +119,17 @@ OWN = {"paused": False, "notify": True, "auto_colour": False}
 #: every install had before the switch existed, and so the default; off, the list is the chosen
 #: pictures folder's alone, unless that folder renders nothing, where the system's wallpapers come
 #: back with a note saying why (an empty picker says nothing to anybody).
-WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages", "kde_wallpapers": True}
+#:
+#: `strip_text` is whether the strip writes anything: the selected wallpaper's name under the
+#: picture, the line with the count and the keys, a card's name when it is pointed at or has no
+#: picture yet. Off, the owner's choice: the strip is pictures and nothing else, and the one line it
+#: still shows is a problem, the same as Pages.
+#:
+#: `all_screens` is KDE's own *Set for all screens*: whether a wallpaper chosen in the picker goes
+#: on every screen of the activity, rather than on the screen the picker opened on. Off, as it is on
+#: KDE's own Wallpaper page -- the owner's choice, to work the way the desktop does.
+WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages", "strip_text": False,
+             "all_screens": False, "kde_wallpapers": True}
 
 #: The colours. Longive for dark, and no colour of your own and nothing soaking in.
 COLOURS = {"mode": "dark", "preset": "longive", "accent": "", "tint": 0.0}
@@ -354,33 +377,36 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
         "BlurNonMatching": "true",
     }},
     "geometry": {"": {"Duration": "250"}},
+    #: KyprX's own engine, in `[Script-kyprx]` (`daemon/tiling.py` holds the keys and what each
+    #: reads as when it is missing). Every value but the switch is also the engine's own default,
+    #: so on a fresh desk none of them writes a line: they are here so *Restore defaults* puts
+    #: them back after a change. Neither the arrangements nor the lists are here: the arrangements
+    #: are somebody's content, like a profile, and the lists are per-window surfaces, as the note
+    #: at the top of this module says.
     "tiling": {"": {
+        #: The switch, on, and it is not a control on the Tiling tab: this app exists to put a
+        #: tiling desktop on KDE, so "tiling off" is not one of its states. The key can still be
+        #: off -- an install from before KyprX tiled the windows itself, a hand edit -- and then
+        #: the Tiling tab says so with a button that switches it back on, and the next Apply on
+        #: the tab does too, which is the honest consequence of not having the control.
+        #: Absent, it reads as off (`tiling.DEFAULTS`), so writing it is what this does.
+        "tiling": "true",
+        #: Windows are tiled as they open. Off is manual tiling: a window goes into a zone when it
+        #: is dragged onto one.
+        "autoTiling": "true",
         "screenGapTop": "10", "screenGapBottom": "10", "screenGapLeft": "10",
         "screenGapRight": "10", "screenGapBetween": "10",
-        #: Three layouts in the cycle and no more: Spiral, then Quarter, then Binary tree -- the
-        #: owner's choice, stated as the order the layout key walks. The other nine are 0, which
-        #: the tiler reads as "not in the cycle", and they stay on the Tiling tab one number away.
-        #: The tiler also builds nothing for a layout at 0, so a key bound to one of those directly
-        #: does nothing until it is given a number again; none of the nine had one bound here.
-        #:
-        #: The order before this one lives in `migrate.PREVIOUS_LAYOUT_ORDER`, which is how a desk
-        #: that was still on it is moved across once and a desk somebody arranged is not.
-        "spiralLayoutOrder": "1", "quarterLayoutOrder": "2", "binaryTreeLayoutOrder": "3",
-        "tileLayoutOrder": "0", "monocleLayoutOrder": "0", "threeColumnLayoutOrder": "0",
-        "stackedLayoutOrder": "0", "columnsLayoutOrder": "0", "spreadLayoutOrder": "0",
-        "floatingLayoutOrder": "0", "stairLayoutOrder": "0", "cascadeLayoutOrder": "0",
-        "adjustLayout": "true", "adjustLayoutLive": "true", "keepTilingOnDrag": "true",
-        "floatUtility": "true", "preventMinimize": "false", "preventProtrusion": "true",
-        "monocleMaximize": "true", "newWindowPosition": "0", "noTileBorder": "false",
-        "limitTileWidth": "false", "limitTileWidthRatio": "1.6",
+        "floatUtility": "true", "newWindowPosition": "0", "adjustLayoutLive": "true",
+        "showOsd": "true",
+        #: A window that opens when every zone of the arrangement's last layout is taken goes to a
+        #: new desktop, made after the last one, so that the desktops a person has keep their
+        #: numbers -- and with them the keys that go to each by its number.
+        "newWindowOverflow": "0", "newDesktopPosition": "0",
     }},
-    #: All three on. The tiler's switch used to be a control on the Tiling tab and is not any
-    #: more: this app exists to put a tiling desktop on KDE, so "tiling off" is not one of its
-    #: states. Switching it off is still possible, in the desktop's own settings -- and the next
-    #: Apply on the Tiling tab turns it back on, which is the honest consequence of not having the
-    #: control.
-    "plugins": {"": {"krohnkite": True, "better_blur_dx": True,
-                     "kwin4_effect_geometry_change": True}},
+    #: Both on. The tiler is not one of these: KyprX's engine runs in KyprX's own compositor
+    #: script, which the installer or the first start switches on (`switch_the_script_on` in
+    #: `daemon/kyprd.py`), and its switch is `tiling` above.
+    "plugins": {"": {"better_blur_dx": True, "kwin4_effect_geometry_change": True}},
 }
 
 #: The per-button colour overrides, and the opinion is that there should not be any.
@@ -401,14 +427,15 @@ BUTTON_COLOURS = {
 }
 
 #: *Take KyprX off this desk*, which the owner chose to mean **pure KDE**: every key `SETTINGS`
-#: declares deleted, so each program is back on its own default rather than on one of this app's;
-#: this app's own keys taken out of every window rule and decoration override; the three plugins
-#: this app switches on switched off; and KDE's own Breeze global theme for the mode in force
-#: (`theme.PURE`). Not the desk from before KyprX -- nothing recorded that -- but a consistent one,
-#: and one step before uninstalling. The two it does not undo, because they are not this app's:
-#: the desktop's own blur effect, which somebody else may have switched off, and a key taken from
-#: another action with *Use it here*.
-TAKE_OFF_PLUGINS = ("krohnkite", "better_blur_dx", "kwin4_effect_geometry_change")
+#: declares deleted, so each program is back on its own default rather than on one of this app's --
+#: the tiling's switch among them, which absent reads as off, so nothing tiles; this app's own keys
+#: taken out of every window rule and decoration override; the two plugins this app switches on
+#: switched off; and KDE's own Breeze global theme for the mode in force (`theme.PURE`). Not the
+#: desk from before KyprX -- nothing recorded that -- but a consistent one, and one step before
+#: uninstalling. What it does not undo, because it is not this app's: the desktop's own blur
+#: effect, which somebody else may have switched off, and a key taken from another action with
+#: *Use it here*.
+TAKE_OFF_PLUGINS = ("better_blur_dx", "kwin4_effect_geometry_change")
 
 #: What each tab writes on Apply, as `(source, group, key)`. **Only settings that left the
 #: interface.** A key still on screen must never be in here, or applying one row would put back
@@ -430,8 +457,10 @@ ENFORCED: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("klassy", "Windeco", "DrawBorderOnMaximizedWindows"),
         ("klassy", "Windeco", "UseTitleBarColorForAllBorders"),
     ),
+    #: The engine's switch, which left the interface with the reasoning beside it in `SETTINGS`:
+    #: an Apply on the Tiling tab is somebody tiling, so it switches the tiling on.
     "tiling": (
-        ("plugins", "", "krohnkite"),
+        ("tiling", "", "tiling"),
     ),
 }
 

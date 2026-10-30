@@ -24,9 +24,6 @@ from client import Client
 from widgets import Choice, note
 
 
-KROHNKITE_DOCS = "https://github.com/anametologin/krohnkite#readme"
-
-
 # ---------------------------------------------------------------------- shortcuts
 
 class ShortcutBlock:
@@ -320,13 +317,11 @@ class ShortcutsTab(QWidget):
         #: The question `_bind` asks is open. See `reload`.
         self._asking = False
 
-        #: One line and the one link on this tab. What used to be here as well -- that an action
-        #: with a second key keeps it, what *Remove* takes away, what *on the card* decides -- is
-        #: on the buttons themselves, where somebody about to press one will actually read it.
-        line = note(f'Press <b>Edit</b>, then the keys you want. The tiling actions come from '
-                    f'<a href="{KROHNKITE_DOCS}">the tiling script</a>; the rest are the '
-                    f'desktop\'s own.')
-        line.setOpenExternalLinks(True)
+        #: One line on this tab. What used to be here as well -- that an action with a second key
+        #: keeps it, what *Remove* takes away, what *on the card* decides -- is on the buttons
+        #: themselves, where somebody about to press one will actually read it.
+        line = note("Press <b>Edit</b>, then the keys you want. The window keys and KRunner are "
+                    "the desktop's own; every other key here is KyprX's.")
 
         #: The one genuinely dangerous state this window can be in, and nothing on screen used to
         #: say so: while a row is listening, every shortcut on the desktop is suspended.

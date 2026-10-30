@@ -12,11 +12,16 @@
       side, with no title bars, an outline, a see-through background and blur behind them.
     </p>
     <p>
-      It gathers in one window what five other programs keep in separate settings: Klassy for the
-      window decoration, Better Blur DX for the blur, Krohnkite for tiling, Geometry Change for the
-      animation of windows moving, and Smart Video Wallpaper Reborn for video wallpapers. On top of
-      them it adds colour presets for the whole desktop, profiles, a wallpaper picker and a
-      cheatsheet of the keyboard shortcuts.
+      It tiles the windows itself, from inside KWin: a layout for each number of windows, drawn in
+      percentages or picked from the ones it comes with, filled automatically or zone by zone as
+      you drop windows into it, with rules for the windows that float.
+    </p>
+    <p>
+      It gathers in one window what four other programs keep in separate settings: Klassy for the
+      window decoration, Better Blur DX for the blur, Geometry Change for the animation of windows
+      moving, and Smart Video Wallpaper Reborn for video wallpapers. On top of them it adds colour
+      presets for the whole desktop, profiles, a wallpaper picker and a cheatsheet of the keyboard
+      shortcuts.
     </p>
   </description>
   <launchable type="desktop-id">kyprx.desktop</launchable>
@@ -35,6 +40,7 @@
   </requires>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-10-30"/>
     <release version="0.1.4" date="2026-10-20"/>
     <release version="0.1.3" date="2026-10-20"/>
     <release version="0.1.2" date="2026-10-04"/>

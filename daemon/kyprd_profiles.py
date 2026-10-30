@@ -29,9 +29,7 @@ class ProfilesPart:
 
         Every value is the effective one -- `daemon/profiles.py` says why -- and a key with no
         value anywhere is left out rather than kept as nothing. Read off a throwaway transaction
-        the way `Groups()` reads, and never through `export_settings()`: that walks every window
-        ever seen and asks the shortcut registry about every action, and this is called to draw a
-        list that every `Changed` redraws.
+        the way `Groups()` reads: this is called to draw a list that every `Changed` redraws.
         """
         tx = writer.Transaction()
         shipped = shipped_defaults()

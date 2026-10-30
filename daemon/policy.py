@@ -85,9 +85,10 @@ class Switches:
     rather than a property attached to one window, and the difference is not academic: the values
     below are what `apply_defaults` in `daemon/kyprd_windows.py` applies, in one batch, to every
     window it has never seen — which at the first login is all of them. A list write inside that
-    batch would make the tiling script re-read itself and tile the screen from scratch, at the
-    busiest moment of the session. They go through `set_window_lists` instead, one transaction
-    for a batch of rows.
+    batch would put a desktop-wide change at the busiest moment of the session: the animation's
+    list costs a reconfigure of the compositor, and the tiler's has the tiling read its settings
+    again and lay the screen out by them. They go through `set_window_lists` instead, one
+    transaction for a batch of rows.
 
     The values come from `daemon/defaults.py`; this dataclass carries the shape, not the opinion.
     """
@@ -276,7 +277,7 @@ def set_titlebar(tx, window: Window, shown: bool) -> None:
     if window.needs_rule():
         existing = rules.find_for_class(tx.rules, window_class, window.resource_name)
         if existing is None:
-            rules.create(tx.rules, rules.force_titlebar(window_class))
+            rules.create(tx.rules, rules.force_titlebar(tx.rules, window_class))
             tx.reload_kwin = True
         elif rules.adopt(tx.rules, existing, window_class):
             # Somebody else's rule was already forcing the title bar for this window. Put this
@@ -332,6 +333,14 @@ def set_transparency(tx, window: Window, on: bool, strength: int,
     re-applying the tick wrote 92 over it -- the helper on screen at 92%, and a batch that changed
     nothing reported as a write by the simulation.
 
+    **And a window drawn at 0 % is left at it whoever's rule holds the 0, this app's own
+    included.** Measured on this desk too: a rule of this app's, `KyprX: xwaylandvideobridge`,
+    forced the helper's 0 itself, and the line above, which asks for somebody else's rule, let the
+    strength through -- re-applying the tick still wrote 92 over it. Nobody draws a window at 0 by
+    accident: it is a window hidden on purpose, and the strength, re-applied or moved, never
+    reaches it. A number chosen for this window by name (`claim`) still does, and so does
+    unticking it, which is somebody asking for it opaque.
+
     **`claim` is the one exception, and it is somebody asking.** A number of this window's own,
     chosen for this class on the Windows tab, is not this app's strength arriving at a window that
     happened to be see-through for another reason: it is a person naming this window and this
@@ -342,7 +351,7 @@ def set_transparency(tx, window: Window, on: bool, strength: int,
     window_class = window.window_class
     target = max(1, min(rules.FULLY_OPAQUE, int(strength))) if on else rules.FULLY_OPAQUE
     current = opacity_of(tx, window_class, window.resource_name)
-    if current == target:
+    if current == target or (on and not claim and current == 0):
         return True
     uuid = rules.find_owned(tx.rules, window_class, window.resource_name)
     if (on and not claim and uuid is None and current < rules.FULLY_OPAQUE
@@ -402,16 +411,17 @@ def normalize_rule_names(tx) -> list[tuple[str, str]]:
     return renamed
 
 
-def diagnostics(tx) -> dict:
+def diagnostics(tx, tiling_enabled: bool) -> dict:
+    """What the files say about the rules, the overrides and the effects, for `Diagnostics`.
+
+    `tiling_enabled` is the caller's to say: whether KyprX's tiling runs is not in any one file --
+    its switch is, but KyprX being off the desk is in `state.json` (`TilingPart.tiling_on_now`)."""
     return {
-        "overrides": len(klassy.read(tx.klassy)),
-        "orphan_overrides": klassy.orphans(tx.klassy),
-        "rules": len(rules.read(tx.rules)),
         "orphan_rules": rules.orphans(tx.rules),
         "renamable": [c for _, c, _ in rules.adoptable(tx.rules)],
         "blur_mode": effects.blur_mode(tx.kwin),
         "blur_enabled": effects.plugin_enabled(tx.kwin, effects.BLUR_PLUGIN),
-        "tiling_enabled": effects.plugin_enabled(tx.kwin, effects.TILING_PLUGIN),
+        "tiling_enabled": bool(tiling_enabled),
         "geometry_enabled": effects.plugin_enabled(tx.kwin, effects.GEOMETRY_PLUGIN),
     }
 
@@ -421,8 +431,8 @@ def diagnostics(tx) -> dict:
 #: at best useless and at worst disruptive. They stay listed and stay editable by hand; what they
 #: do not get is the default applied to them unasked.
 #:
-#: The list is close to the one the tiling script keeps for the same reason, which is a decent
-#: sign it is the right shape.
+#: KyprX's own tiling never tiles any of these either (`tiling.BUILTIN_IGNORE` starts from this
+#: list).
 AUTO_SKIP = [
     "krunner", "plasmashell", "org.kde.plasmashell", "ksplashqml", "spectacle",
     "org.kde.spectacle", "xwaylandvideobridge", "kwin_wayland", "ksmserver-logout-greeter",

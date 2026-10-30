@@ -1,45 +1,46 @@
 """The `kwinrc` groups this app manages: blur, the geometry animation, tiling, and the plugin
-switches that turn each of them on.
+switches that turn the first two on.
 
 **Blur.** Its per-window half is the `WindowClasses` key — a string with **one class per line**
 (`kconfig.py` escapes the newline as `\\n`) — read together with `BlurMatching` and
 `BlurNonMatching`. Those two booleans decide which way the list points, which is why `blur_mode()`
 exists: under one setting a name in the list turns blur on, under the other it turns blur off.
 
-**Tiling.** Krohnkite keeps list values comma-separated. `floatingClass` is where a window class
-goes to be left alone by the tiler. It is edited a row at a time on the Windows tab, through
-`set_window_lists` in `daemon/kyprd_windows.py` and never through the batch that runs at login:
-writing it makes the script re-read itself, and a script that has just started tiles the screen
-from scratch.
+**Tiling.** KyprX's own engine keeps its settings in `[Script-kyprx]`, under the keys
+`daemon/tiling.py` names, with lists comma-separated. The daemon is the only reader: the compositor
+script asks the daemon for them resolved, and the daemon tells it to ask again after a write
+(`tiling.py` says why), so a write here reloads nothing in the compositor. `floatingClass` is where
+a window class goes to float rather than be tiled. It is edited a row at a time on the Windows tab,
+through `set_window_lists` in `daemon/kyprd_windows.py`, and never through the batch that runs at
+login: it is one list for the whole desktop rather than something a window has.
 """
 
 from __future__ import annotations
 
+import tiling
+
 BLUR_GROUP = "Effect-better-blur-dx"
 GEOMETRY_GROUP = "Effect-kwin4_effect_geometry_change"
-TILING_GROUP = "Script-krohnkite"
+TILING_GROUP = "Script-kyprx"
 PLUGINS_GROUP = "Plugins"
 
 BLUR_PLUGIN = "better_blur_dx"
 GEOMETRY_PLUGIN = "kwin4_effect_geometry_change"
-TILING_PLUGIN = "krohnkite"
 
 #: Where each one is installed, which is how `daemon/requirements.py` finds it. The blur is compiled,
-#: a file in the folder Qt looks for plugins in; the other two are packages of scripts, each a
+#: a file in the folder Qt looks for plugins in; the geometry animation is a package of scripts, a
 #: folder under a data folder, whose `metadata.json` also carries its version.
 BLUR_PLUGIN_FILE = f"kwin/effects/plugins/{BLUR_PLUGIN}.so"
 GEOMETRY_METADATA = f"kwin/effects/{GEOMETRY_PLUGIN}/metadata.json"
-TILING_METADATA = f"kwin/scripts/{TILING_PLUGIN}/metadata.json"
 
-#: The one per-window list in each plugin's group that the Windows tab edits a row at a time: the
-#: windows the blur is for (newline-separated), the ones the geometry animation leaves out, and
-#: the ones the tiler leaves where they are put (both comma-separated).
+#: The one per-window list in each group that the Windows tab edits a row at a time: the windows
+#: the blur is for (newline-separated), the ones the geometry animation leaves out, and the ones
+#: the tiler leaves floating (both comma-separated).
 BLUR_LIST = "WindowClasses"
 GEOMETRY_LIST = "ExcludedWindowClasses"
 TILING_FLOAT_LIST = "floatingClass"
 
-#: Defaults from Better Blur DX's own schema, so the interface can say what is untouched and the
-#: exported settings file need not carry a key nobody changed.
+#: Defaults from Better Blur DX's own schema, so the interface can say what is untouched.
 BLUR_DEFAULTS = {
     "BlurStrength": "15", "NoiseStrength": "5", "Brightness": "100", "Saturation": "150",
     "Contrast": "100", "ForceContrastParams": "false", "CornerRadius": "0",
@@ -49,42 +50,10 @@ BLUR_DEFAULTS = {
 
 GEOMETRY_DEFAULTS = {"Duration": "250", "ExcludedWindowClasses": "krunner,yakuake"}
 
-#: Krohnkite's own defaults for the keys the interface exposes.
-TILING_DEFAULTS = {
-    "screenGapTop": "0", "screenGapBottom": "0", "screenGapLeft": "0", "screenGapRight": "0",
-    "screenGapBetween": "0", "tileLayoutOrder": "1", "monocleLayoutOrder": "2",
-    "threeColumnLayoutOrder": "3", "spiralLayoutOrder": "4", "quarterLayoutOrder": "5",
-    "stackedLayoutOrder": "6", "columnsLayoutOrder": "7", "spreadLayoutOrder": "8",
-    "floatingLayoutOrder": "9", "stairLayoutOrder": "10", "binaryTreeLayoutOrder": "11",
-    "cascadeLayoutOrder": "12", "adjustLayout": "true", "adjustLayoutLive": "true",
-    "keepTilingOnDrag": "true", "floatUtility": "true", "preventMinimize": "false",
-    "preventProtrusion": "true", "monocleMaximize": "true", "newWindowPosition": "0",
-    "limitTileWidth": "false", "limitTileWidthRatio": "1.6", "noTileBorder": "false",
-    "floatingClass": "", "floatingTitle": "", "ignoreClass": "", "ignoreTitle": "",
-    "ignoreScreen": "", "tilingClass": "",
-}
-
-#: The layouts Krohnkite can rotate through, in the order the Tiling tab shows their boxes: the
-#: three KyprX puts in the cycle first, in that order, and the rest after them in the order the
-#: tiler names them. Order value 0 takes a layout out of the rotation.
-#:
-#: This is where a box sits and nothing more. Which of two layouts sharing a number comes first is
-#: the tiler's own list order -- the numbers in `TILING_DEFAULTS` above, which count along it --
-#: and the tab breaks ties by those, not by this.
-LAYOUTS = [
-    ("spiralLayoutOrder", "Spiral"), ("quarterLayoutOrder", "Quarter"),
-    ("binaryTreeLayoutOrder", "Binary tree"),
-    ("tileLayoutOrder", "Tile"), ("monocleLayoutOrder", "Monocle"),
-    ("threeColumnLayoutOrder", "Three column"), ("stackedLayoutOrder", "Stacked"),
-    ("columnsLayoutOrder", "Columns"), ("spreadLayoutOrder", "Spread"),
-    ("floatingLayoutOrder", "Floating"), ("stairLayoutOrder", "Stair"),
-    ("cascadeLayoutOrder", "Cascade"),
-]
-
-#: The highest order number the tiler accepts. Anything above it, or anything that is not a whole
-#: number, the tiler throws away and uses its own default for that layout instead (Krohnkite's
-#: `validateNumber(…, 0, 12)`).
-LAYOUT_ORDER_MAX = 12
+#: What each key of the tiling group reads as when it is missing: the engine's own defaults, which
+#: `daemon/tiling.py` holds, under the name the interface and `declared.py` read every program's
+#: defaults by. The same dict, not a copy.
+TILING_DEFAULTS = tiling.DEFAULTS
 
 INCLUDE_LIST = "include"   # BlurMatching=true,  BlurNonMatching=false — the list turns blur ON
 EXCLUDE_LIST = "exclude"   # BlurMatching=false, BlurNonMatching=true  — the list turns blur OFF
@@ -94,6 +63,25 @@ BLUR_NOTHING = "none"
 
 # ---------------------------------------------------------------- plugins
 
+#: Two rules read a switch in `[Plugins]`, and they differ on a value written by hand; every KDE
+#: tool writes `true` or `false`, which both read alike. `plugin_enabled` reads the word `true`
+#: alone as on (`kconfig.get_bool`), and so is stricter than either (KNOWN-ISSUES has what that
+#: costs).
+#:
+#: KConfig's own rule (`KConfigGroup::readEntry` for a bool), which an effect's switch is read
+#: through: `false`, `no`, `off` and `0` are off, in any case and with spaces either side, and any
+#: other text is on, an empty value included. Measured with `kreadconfig6 --type bool` on files
+#: written for it: `yes`, `on`, `1`, `2`, `maybe` and a key with nothing after its `=` read on;
+#: `false`, `FALSE`, `No`, `Off` and ` 0` read off; and a key that is absent, or `[$d]`, reads as
+#: the default the reader asked for. Not measured on an effect itself.
+#:
+#: And how the compositor decides whether to load a script, `kyprxEnabled` among them: KWin 6.7.5's
+#: `Scripting::queryScriptsToLoad` loads a script whose `<id>Enabled` text gives true to
+#: `QVariant(value).toBool()`, and goes by the script's metadata when the key is absent. Measured in
+#: this system's own Qt 6.11, through its library: only an empty text, `0` and `false` in any case
+#: give false -- `no`, `off`, `00`, `2` and `maybe` give true -- and the text is not trimmed: ` 0`
+#: gives true. KConfig trims a value before the compositor sees it (measured with `kreadconfig6`:
+#: ` 0 ` in the file reads back as `0`).
 def plugin_enabled(cfg, plugin: str, default: bool = False) -> bool:
     return cfg.get_bool(PLUGINS_GROUP, f"{plugin}Enabled", default)
 
@@ -178,8 +166,10 @@ def set_geometry_excluded(cfg, classes: list[str]) -> None:
 # ---------------------------------------------------------------- tiling
 
 def tiling_list(cfg, key: str) -> list[str]:
-    raw = cfg.get(TILING_GROUP, key, "") or ""
-    return [x.strip() for x in raw.split(",") if x.strip()]
+    """One of the tiling group's comma-separated lists, read the way the engine reads it
+    (`tiling.entries`). A key with no value (`[$d]`) is an empty list: read as text, the marker
+    it is held as stopped this at its first `split`."""
+    return tiling.entries(cfg.get(TILING_GROUP, key))
 
 
 def set_tiling_list(cfg, key: str, values: list[str]) -> None:
@@ -189,35 +179,16 @@ def set_tiling_list(cfg, key: str, values: list[str]) -> None:
         cfg.delete_key(TILING_GROUP, key)
 
 
-def layout_order(cfg) -> dict[str, int]:
-    """Every layout's order number as the tiler will read it, key by key.
-
-    The file's value where it has a usable one, and the tiler's own default everywhere else: a key
-    that is absent, empty (`[$d]`, which reads back as something other than a string), not a whole
-    number, or outside 0..12. That is the tiler's rule rather than a tidier one of this app's, and
-    it has to be, because the answer is compared against orders the tiler would actually walk.
-    """
-    out = {}
-    for key, _ in LAYOUTS:
-        shipped = int(TILING_DEFAULTS[key])
-        raw = cfg.get(TILING_GROUP, key)
-        try:
-            value = int(raw.strip()) if isinstance(raw, str) else shipped
-        except ValueError:
-            value = shipped
-        out[key] = value if 0 <= value <= LAYOUT_ORDER_MAX else shipped
-    return out
-
-
 def ensure_tiling_list_entry(cfg, key: str, value: str) -> bool:
     """Make sure a comma-separated tiling list contains this entry. True if it had to be added.
 
     Used for each overlay's window class -- the cheatsheet's and the wallpaper picker's -- and it
-    is deliberately a belt as well as braces. An overlay already floats without any config at all:
-    it is fixed-size, and the tiler floats anything it cannot resize. This entry is what keeps it
-    floating on the day someone takes the fixed size away — or swaps the tiler for one that reads
-    the same list. Written only when missing, because writing this group at all makes the tiler
-    re-read itself and rearrange every window on screen.
+    is deliberately a belt as well as braces. An overlay already stays out of the tiling without any
+    config at all, twice over: its class is in the list the engine never tiles
+    (`tiling.BUILTIN_IGNORE`, through `policy.AUTO_SKIP`), and it is fixed-size, which the engine
+    never tiles either. This entry is what keeps it floating on the day someone takes both of those
+    away. Written only when missing, because every write to this group has the daemon tell the
+    engine to read its settings again.
     """
     values = tiling_list(cfg, key)
     if value in values:

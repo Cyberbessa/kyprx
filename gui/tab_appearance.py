@@ -192,6 +192,7 @@ class AppearancePage(SettingsPage):
         # Which ends in `reloaded`, and that is where the two things this page keeps in step with
         # the box are done -- here they would be done on a page load and nowhere else.
         self.colours.load(self.c.theme())
+        self.colours.reload_screens()
         self.transparency.reload()
         self.profiles.reload()
         self._follow_outline()

@@ -3,7 +3,8 @@
 Far less than you would expect, and that is the point: **the config files are the state**. Whether
 a window hides its title bar, keeps the outline or gets blurred is read back out of
 the decoration and compositor config every time, so a change made anywhere else — by hand, by the
-theme's own settings app, by a restored backup — shows up here as fact rather than as drift.
+theme's own settings app, by a copy of the desk put back — shows up here as fact rather than as
+drift.
 
 Only what cannot be read back out of a file is stored. About windows, three things:
 
@@ -18,7 +19,7 @@ Only what cannot be read back out of a file is stored. About windows, three thin
 
 Beside those, this app's own settings (`Config`: paused, notifications, the colour from the
 wallpaper, the shared strength, what a new window gets, the cheatsheet's chosen keys, the
-picker's folder and layout), and, while KyprX is taken off the desk, which copy of the desk *Put
+picker's folder and layout); and, while KyprX is taken off the desk, which copy of the desk *Put
 my setup back* restores (`State.off`).
 
 Both files are held to the same promise the config files are: **in dry run nothing here is
@@ -33,6 +34,7 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 
+import shortcuts
 import writer
 from defaults import SWITCHES as _DEFAULT_SWITCHES
 from defaults import TRANSPARENCY as _DEFAULT_TRANSPARENCY
@@ -57,16 +59,16 @@ LEGACY_CONFIG_PATH = os.path.expanduser("~/.config/kyprx/config.json")
 #: to date — a name written into somebody else's config, say — never for a change to their own
 #: contents, which are read back field by field and need no version at all.
 #:
-#: 4 is the tiling script's layout order moving to KyprX's own, once, where nobody had chosen one
-#: -- see `migrate.new_layout_order`. 5 is the title bar's opacity keys moving to the names the
-#: decoration reads -- see `migrate.rename_title_bar_keys`. 6 is this app's own two files moving
-#: out of what became the KyprX folder -- see `migrate.move_working_copies`. 7 is Longive as default
-#: theme, corner radius 7.5, and image wallpaper directory support.
+#: 5 is the title bar's opacity keys moving to the names the decoration reads -- see
+#: `migrate.rename_title_bar_keys`. 6 is this app's own two files moving out of what became the
+#: KyprX folder -- see `migrate.move_working_copies`. 7 is Longive as default theme, corner radius
+#: 7.5, and image wallpaper directory support. 4 and 8 have no pass: an install below either is
+#: only stamped, and the number stays 8 so that a file stamped 8 reads as up to date.
 #:
 #: Only `migrate._stamp_version` ever raises the number. `State.save` writes back the one it read,
 #: which is what lets a pass that failed run again at the next start: saving used to stamp this
 #: constant, so the first window seen after a failed pass marked it done.
-STATE_VERSION = 7
+STATE_VERSION = 8
 
 #: What the wallpaper picker's choices may be. Neither the mode nor the layout is stored anywhere
 #: else -- which one is on is read from the shell, by `wallpaper.mode_of`, and the layout is
@@ -74,10 +76,19 @@ STATE_VERSION = 7
 #: than a list of stored values. Still declared once, for the same reason: spelled out at each
 #: site, they were already in five places and one of them was about to disagree.
 #:
-#: Which of the three a fresh install gets is not here but in `defaults.WALLPAPER`, beside every
+#: Which of the two a fresh install gets is not here but in `defaults.WALLPAPER`, beside every
 #: other opinion this app has, because that is what *Restore defaults* puts back.
 WALLPAPER_MODES = ("image", "video")
-WALLPAPER_LAYOUTS = ("pages", "strip", "strip-names")
+WALLPAPER_LAYOUTS = ("pages", "strip")
+
+#: Layout ids this app wrote once and reads still, with what each one meant, spelled in the new
+#: terms. `strip-names` was the strip with the file name under the picture, from 0.1.2 to 0.1.4;
+#: it is the strip with its text switched on now (`strip_text`). Kept here rather than migrated,
+#: because the id lives in more places than this app's own file -- the KyprX folder on another
+#: machine, a copy of the desk -- and every one of them reaches
+#: `wallpaper_layout` and `strip_text` below on its way in. Without this an old `strip-names`
+#: would open Pages, the default for a name nobody knows.
+RETIRED_LAYOUTS = {"strip-names": {"layout": "strip", "strip_text": True}}
 
 
 #: The range a window's own number may take. See `Config.own_transparency` for why it stops short of
@@ -116,14 +127,35 @@ def own_strengths(listed) -> dict:
 def wallpaper_layout(value) -> str:
     """A picker layout as this app holds it: the name when it is one, the default otherwise.
 
-    The one normaliser every layout handed in from outside goes through -- a settings file, a
-    settings file being imported, the KyprX folder, a call over the bus. An unknown name reaching
+    The one normaliser every layout handed in from outside goes through -- the settings file, the
+    KyprX folder, a call over the bus. An unknown name reaching
     the picker would open nothing, and a fallback spelled again at each site is how a renamed
     default leaves the sites disagreeing; the guard in `tests/test_picker_layouts.py` keeps the
-    names out of every daemon module but this one and `defaults`.
+    names out of every daemon module but this one and `defaults`. A retired id reads as the layout
+    it became (`RETIRED_LAYOUTS`).
     """
     text = str(value) if value is not None else ""
+    text = RETIRED_LAYOUTS.get(text, {}).get("layout", text)
     return text if text in WALLPAPER_LAYOUTS else _DEFAULT_WALLPAPER["layout"]
+
+
+def strip_text(paper, fallback=None) -> bool:
+    """Whether the strip writes its text -- the selected wallpaper's name under the picture, how
+    many there are and which keys do what, and a card's name -- as a block of picker settings
+    carries it.
+
+    Read like `kde_wallpapers` below, with one step between the key and the fallback: a block
+    whose layout is a retired id says what that id meant (`RETIRED_LAYOUTS`), so an old
+    `strip-names` opens the strip with its text on rather than the bare one. A true or false in the
+    key itself wins over that, because it was written by something that knew the switch.
+    """
+    paper = paper if isinstance(paper, dict) else {}
+    value = paper.get("strip_text")
+    if not isinstance(value, bool):
+        value = RETIRED_LAYOUTS.get(str(paper.get("layout") or ""), {}).get("strip_text")
+    if not isinstance(value, bool):
+        value = fallback if isinstance(fallback, bool) else None
+    return bool(_DEFAULT_WALLPAPER["strip_text"] if value is None else value)
 
 
 def kde_wallpapers(paper, fallback=None) -> bool:
@@ -133,9 +165,9 @@ def kde_wallpapers(paper, fallback=None) -> bool:
     `"no"` would read as true were it taken at face value.
 
     The one normaliser the switch is read through, for the reason `wallpaper_layout` above is the
-    one normaliser of layouts. Who hands in what decides what a missing key means: the settings
-    file being loaded or imported and the KyprX folder being applied pass the value held now, so
-    a block written before the switch existed leaves it alone; a config being loaded passes
+    one normaliser of layouts. Who hands in what decides what a missing key means: a call over
+    the bus and the KyprX folder being applied pass the value held now, so a block written
+    before the switch existed leaves it alone; a config being loaded passes
     nothing, and reads as the declared default -- which is what the switch meant before it
     existed.
     """
@@ -143,6 +175,54 @@ def kde_wallpapers(paper, fallback=None) -> bool:
     if not isinstance(value, bool):
         value = fallback if isinstance(fallback, bool) else None
     return bool(_DEFAULT_WALLPAPER["kde_wallpapers"] if value is None else value)
+
+
+def colour_screen(value) -> str:
+    """The screen the colour from the wallpaper comes from, as this app holds it: an output's name,
+    such as `HDMI-A-1`, or "" for the primary screen -- whichever monitor is the primary then.
+    Anything that is not text reads as the primary."""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def all_screens(paper, fallback=None) -> bool:
+    """Whether a wallpaper chosen in the picker goes on every screen of the activity, as a block of
+    picker settings carries it -- KDE's own *Set for all screens*. Off, it goes on the screen the
+    picker opened on, which is what KDE's own Wallpaper page does. Read the way `kde_wallpapers`
+    above is, and for its reasons."""
+    value = (paper or {}).get("all_screens") if isinstance(paper, dict) else None
+    if not isinstance(value, bool):
+        value = fallback if isinstance(fallback, bool) else None
+    return bool(_DEFAULT_WALLPAPER["all_screens"] if value is None else value)
+
+
+def owed_of(saved) -> dict[str, list[list[int]]]:
+    """`state.json`'s owed keys as `State` holds them: a name for each action, and for each a list
+    of key sequences, each a list of whole numbers. Anything else in the file reads as nothing owed
+    -- a hand edit must not stop the daemon, and an entry that cannot be read cannot be put on."""
+    if not isinstance(saved, dict):
+        return {}
+    out = {}
+    for name, sequences in saved.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(sequences, list):
+            continue
+        if all(isinstance(s, list) and s and all(isinstance(k, int) and not isinstance(k, bool)
+                                                 for k in s) for s in sequences):
+            out[name] = [list(s) for s in sequences]
+    return out
+
+
+def off_of(saved: dict) -> dict:
+    """While KyprX is taken off the desk, what `state.json` keeps about it -- the copy of the desk
+    *Put my setup back* restores -- and an empty dict otherwise, or for anything else in its place.
+    The one reading of the field, for `State` and for whoever has to know what the file says rather
+    than what the daemon holds (`TilingPart`, which answers from disk even in a dry run)."""
+    off = saved.get("off") if isinstance(saved, dict) else None
+    return off if isinstance(off, dict) and off.get("copy") else {}
+
+
+def saved_off() -> dict:
+    """`off_of` the file on disk: what this desk's `state.json` says, whatever a dry run holds."""
+    return off_of(read_json(STATE_PATH, {}))
 
 
 def read_json(path: str, default: dict) -> dict:
@@ -199,9 +279,9 @@ class Defaults:
     def from_dict(cls, given) -> "Defaults":
         """The fields a mapping names, each read as a switch; anything else in it is passed over.
 
-        The one way in from outside -- the settings file, a settings file being imported, a call
-        over the bus. Handed straight to the constructor, a key this version has never heard of
-        stopped an import half way, with its config files already written."""
+        The one way in from outside -- the settings file, a call over the bus. Handed straight to
+        the constructor, a key this version has never heard of would raise rather than be passed
+        over."""
         if not isinstance(given, dict):
             return cls()
         return cls(**{k: bool(v) for k, v in given.items() if k in cls.__dataclass_fields__})
@@ -215,6 +295,25 @@ def key_sequence(value) -> list[int] | None:
         return [int(x) for x in value]
     except (TypeError, ValueError):
         return None
+
+
+def chosen_keys(chosen) -> dict:
+    """The cheatsheet's chosen keys as read from a file somebody may have edited by hand -- every
+    entry whose value is not a key sequence passed over.
+
+    Each is held under the one name `shortcuts.qualified` spells its action by; where a file names
+    the same action both ways, with its component and without, the entry already spelt so wins.
+    """
+    if not isinstance(chosen, dict):
+        return {}
+    out = {}
+    for name, value in chosen.items():
+        keys = key_sequence(value)
+        now = shortcuts.qualified(*shortcuts.unqualified(str(name)))
+        if keys is None or (now != str(name) and now in chosen):
+            continue
+        out[now] = keys
+    return out
 
 
 @dataclass
@@ -232,6 +331,16 @@ class Config:
     #: settings: the picker behaves identically either way, and the switch is on the Appearance tab
     #: beside the colour it feeds.
     auto_colour: bool = False
+    #: Which screen's wallpaper that colour comes from: an output's name, such as `DP-1`, or "" for
+    #: the primary screen, whichever monitor is the primary at the time. A name that is not
+    #: connected falls back on the primary (`wallpaper.colour_view`).
+    #:
+    #: Beside `auto_colour` rather than in `wallpaper` below, and that is what keeps it on this
+    #: computer: an output's name is this machine's, so the KyprX folder, which carries the
+    #: picker's block to other machines, never sees it. *Restore defaults* copies
+    #: the settings and puts back only what is declared, so it leaves this as it leaves the
+    #: cheatsheet's keys, and going back to a copy of the desk leaves it too (`restore_desk`).
+    colour_screen: str = ""
     #: How see-through a window is when its Transparency is ticked, in per cent. One number for
     #: every ticked window that has none of its own -- see `own_transparency` below. The question
     #: the table asks is still "is this window see-through", not "how much".
@@ -277,8 +386,11 @@ class Config:
     #: would be a second truth that goes stale on its own.
     cheatsheet_keys: dict = field(default_factory=dict)
     #: The wallpaper picker's settings: which folder the videos are in, and which of its layouts
-    #: the key opens. `{"video_dir": "...", "image_dir": "...",
-    #: "layout": "pages" | "strip" | "strip-names", "kde_wallpapers": bool}`.
+    #: the key opens. `{"video_dir": "...", "image_dir": "...", "layout": "pages" | "strip",
+    #: "strip_text": bool, "all_screens": bool, "kde_wallpapers": bool}`. `strip_text` is whether the
+    #: strip writes its text, and `all_screens` whether a wallpaper chosen goes on every screen
+    #: rather than the picker's own, each read through its reader above for the reason
+    #: `kde_wallpapers` is.
     #:
     #: **Which kind of wallpaper it lists is deliberately not here.** That is the wallpaper plugin
     #: the activity in use is wearing, which lives in the shell's config and is a choice made per
@@ -322,8 +434,6 @@ class Config:
         is."""
         d = d if isinstance(d, dict) else {}
         defaults = Defaults.from_dict(d.get("defaults"))
-        chosen = d.get("cheatsheet_keys")
-        chosen = chosen if isinstance(chosen, dict) else {}
         paper = d.get("wallpaper")
         paper = paper if isinstance(paper, dict) else {}
         try:
@@ -342,17 +452,19 @@ class Config:
         return cls(paused=bool(d.get("paused", False)),
                    notify=bool(d.get("notify", True)),
                    auto_colour=bool(d.get("auto_colour", False)),
+                   colour_screen=colour_screen(d.get("colour_screen")),
                    transparency=strength,
                    own_transparency=own_strengths(d.get("own_transparency")),
                    ticked_at_100=ticks if strength >= 100 else [],
                    defaults=defaults,
-                   cheatsheet_keys={str(k): keys for k, v in chosen.items()
-                                    if (keys := key_sequence(v)) is not None},
+                   cheatsheet_keys=chosen_keys(d.get("cheatsheet_keys")),
                    wallpaper={"video_dir": str(paper.get("video_dir",
                                                           _DEFAULT_WALLPAPER["video_dir"])),
                               "image_dir": str(paper.get("image_dir",
                                                           _DEFAULT_WALLPAPER.get("image_dir", ""))),
                               "layout": wallpaper_layout(paper.get("layout")),
+                              "strip_text": strip_text(paper),
+                              "all_screens": all_screens(paper),
                               "kde_wallpapers": kde_wallpapers(paper)})
 
     def save(self) -> None:
@@ -376,11 +488,18 @@ class State:
         #: Set while KyprX is taken off the desk: the copy of the desk kept before, which *Put my
         #: setup back* restores. Empty otherwise. Here, and not in the KyprX folder, because it is
         #: a fact about this desk: the folder is exactly what it leaves alone while it lasts.
-        off = d.get("off")
-        self.off: dict = off if isinstance(off, dict) and off.get("copy") else {}
+        self.off: dict = off_of(d)
         #: The version of KyprX that ran here last, so that the first start of another one knows
         #: it is one -- see `InstallationPart.note_the_version`. Not the format's `version` above.
         self.app_version = str(d.get("app_version") or "")
+        #: Keys a KyprX folder or a copy of the desk brought for actions the shortcut registry did
+        #: not have yet, by `shortcuts.qualified` name, each action's whole list of sequences --
+        #: KyprX's own above all, which exist only once its compositor script has registered them
+        #: (`CopiesPart._restore_shortcuts`, `FolderPart.pay_owed_keys`). Kept here, and not only
+        #: in memory, because by the next login the script registers its actions at their
+        #: defaults before this daemon starts, and a daemon that had forgotten them would write
+        #: those defaults out into the folder.
+        self.owed_keys: dict[str, list[list[int]]] = owed_of(d.get("owed_keys"))
 
     @staticmethod
     def _names(listed) -> set[str]:
@@ -395,6 +514,8 @@ class State:
             data["off"] = dict(self.off)
         if self.app_version:
             data["app_version"] = self.app_version
+        if self.owed_keys:
+            data["owed_keys"] = {k: [list(s) for s in v] for k, v in sorted(self.owed_keys.items())}
         write_json(STATE_PATH, data)
 
     def mark_seen(self, window_class: str) -> bool:

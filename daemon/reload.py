@@ -1,5 +1,7 @@
-"""Making the compositor, the decoration, the blur effect and the tiling script re-read config,
-without a logout.
+"""Making the compositor, the decoration and the blur effect re-read config, and KyprX's tiling
+re-read its settings, without a logout -- and the things the compositor is asked and only answers:
+which decoration it draws with, which screen is the active one, which version it is, and whether a
+script is running.
 
 What was measured here is worth recording, because it is not what reading the sources suggests:
 
@@ -9,20 +11,32 @@ What was measured here is worth recording, because it is not what reading the so
   broadcast add nothing.
 - **The blur effect has a cheaper reload of its own**, which leaves the rest of the compositor
   alone.
-- **A KWin script re-reads itself only when it is unloaded and loaded again**, and the way to do
-  that is `unloadScript` — *not* flipping its `Enabled` key. Measured, because this file said the
-  opposite for a long time and was wrong: with the script running, writing `krohnkiteEnabled=false`
-  and calling `reconfigure` leaves `isScriptLoaded` **true**. The compositor loads a script that
-  has become enabled; it does not unload one that has become disabled. So the old off-on wrote a
-  contended config file twice, slept for over a second, and reloaded nothing at all — which is why
-  a changed gap only took effect at the next login. `unloadScript` followed by one `reconfigure`
-  does it, writes nothing, and needs no sleep.
+- **A KWin script is loaded again only when it is unloaded first**, and the way to do that is
+  `unloadScript`, which does it at once -- *not* flipping its `Enabled` key. The compositor acts on
+  the key only in `Scripting::start` (KWin 6.7.5), which unloads every script switched off and
+  loads every one switched on that is not loaded: when something calls `start` on `/Scripting`,
+  as System Settings' KWin Scripts page does, and when a reconfigure runs -- 200 ms after it is
+  asked (`Workspace::reconfigure`), on `configChanged`. So a key flipped off and on again before a
+  reconfigure runs reloads nothing, and `isScriptLoaded` asked straight after the call still says
+  true. Measured in a nested KWin: a tiling script switched off stayed loaded for ten
+  seconds, until a reconfigure unloaded it. KyprX reloads no script for its settings: its own
+  tiling asks the daemon for them (`tell_tiler`).
+- **And an unloaded declarative script can go on running.** `unloadScript` on a declarative tiling
+  script leaves `isScriptLoaded` false and its keys dead, and it goes on tiling every new window
+  until the compositor itself restarts: what its QML connected to the compositor's signals outlives
+  the unload. Measured in a nested KWin, and the same after its `Enabled` key was written false and
+  a reconfigure ran. So `script_loaded` saying false is not proof that a declarative script has
+  stopped.
 """
 
 from __future__ import annotations
 
+import re
+
 import dbus
 import dbus.lowlevel
+
+import shortcuts
 
 KWIN = "org.kde.KWin"
 
@@ -37,6 +51,23 @@ def reconfigure_effect(name: str) -> None:
     """Reload a single effect — for blur, this beats reconfiguring everything."""
     obj = dbus.SessionBus().get_object(KWIN, "/Effects")
     dbus.Interface(obj, "org.kde.kwin.Effects").reconfigureEffect(name)
+
+
+def tell_tiler() -> None:
+    """Have KyprX's tiling read its settings again: its `KyprXTiling` action invoked by name, the
+    same channel the window list is asked for by (`shortcuts.invoke`). The compositor script
+    answers it by asking the daemon for its settings (`Tiling()` on `/Windows`), and applies the
+    answer when it differs from the last one it applied.
+
+    This is the whole of a tiling reload, and the compositor is asked for nothing else. A tiling
+    script that reads `kwinrc` has to be unloaded and the compositor reconfigured for each change,
+    and the screen stopped for 558 ms and 656 ms on two gap changes made that way, measured by the
+    gap between frames
+    (`scripts/stall.py`) -- the reason `daemon/tiling.py` gives for the engine asking the daemon
+    rather than reading `kwinrc`. What this costs on the screen has not been measured yet. A
+    `dbus.DBusException` is the caller's: no compositor script there to tell.
+    """
+    shortcuts.invoke(shortcuts.TILING_ACTION)
 
 
 def effect_loaded(name: str) -> bool:
@@ -79,6 +110,47 @@ def decoration_running() -> str | None:
     return decoration_in(info)
 
 
+def kwin_version() -> tuple[int, ...] | None:
+    """The version of the compositor running now, as numbers -- `(6, 8, 1)` -- or None when it
+    cannot be asked. From `supportInformation`, whose first section says `KWin version: 6.8.1`:
+    the one running, not the one installed, which an update replaces under a session that goes
+    on running the old one."""
+    try:
+        obj = dbus.SessionBus().get_object(KWIN, "/KWin")
+        info = str(dbus.Interface(obj, KWIN).supportInformation())
+    except dbus.DBusException:
+        return None
+    return version_in(info)
+
+
+def version_in(info: str) -> tuple[int, ...] | None:
+    """The version the compositor's support information names, or None when it names none."""
+    for line in info.splitlines():
+        if line.startswith("KWin version:"):
+            numbers = re.findall(r"\d+", line.split(":", 1)[1])
+            return tuple(int(n) for n in numbers[:3]) or None
+    return None
+
+
+def active_output() -> str:
+    """The name of the screen the compositor counts as active, such as `HDMI-A-1`, or "" when it
+    cannot be asked.
+
+    **Where an overlay opens.** The rule that places KyprX's overlays centres them
+    (`rules.overlay_placement`), and the compositor centres a window on this same screen -- the one
+    under the pointer, or the active window's, as KWin is set -- so this is the screen the
+    wallpaper picker is about to open on, asked before it is built. The window itself cannot know:
+    a Wayland client learns its screen only once it is on it, and by then its size is fixed.
+    Measured: `activeOutputName` and Qt's `QScreen.name()` both answered `HDMI-A-1` here. A read,
+    so a dry run asks it too (`scripts/buswatch.py` allows it).
+    """
+    try:
+        obj = dbus.SessionBus().get_object(KWIN, "/KWin")
+        return str(dbus.Interface(obj, KWIN).activeOutputName(timeout=2))
+    except dbus.DBusException:
+        return ""
+
+
 def decoration_in(info: str) -> str:
     """The plugin named in the `Decoration` section of the compositor's support information."""
     lines = info.splitlines()
@@ -115,12 +187,10 @@ def script_loaded(plugin: str) -> bool:
 def reload_script(plugin: str) -> None:
     """Make a KWin script re-read itself: unload it, then let one reconfigure load it back.
 
-    **This writes nothing**, which is the whole difference from what it used to do. The old version
-    flipped the script's `Enabled` key off and on through the config CLI, with sleeps either side
-    and a `finally` to make sure it could not be left off on disk — and none of it worked:
-    measured, `reconfigure` does not unload a script that has become disabled, so the key went
-    false, the script kept running, the key went true, and the caller was told its settings had
-    been re-read when nothing had happened.
+    **This writes nothing.** Flipping the script's `Enabled` key off and on is not a reload: a
+    reconfigure acts on the key only once it runs, 200 ms after it is asked, so a key back on by
+    then changes nothing (the module's docstring has the finding) -- and each flip is a write to a
+    config file other programs write too.
 
     Unloading is the part the compositor only does when asked. Loading is the part it does on its
     own for every enabled script, which is why one `reconfigure` finishes the job.

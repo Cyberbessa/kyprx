@@ -5,8 +5,9 @@ reads it line by line, and so does anybody who wants the bytes. It is also close
 anyone who does not know KConfig. A section header falls three lines outside the hunk, so a key
 shows up with no group. A window rule is named by a random UUID. A decoration override added at
 the head renumbers every override after it, so adding one window reads as the whole list changing.
-And the diff never says what the desktop would do *after* the write -- stop the screen, lay out
-every tiled window again -- because none of that is in a file.
+KyprX's zone layouts and arrangements are one long line of JSON, in either of two versions. And the
+diff never says what the desktop would do *after* the write -- stop the screen, have the tiling read
+its settings again -- because none of that is in a file.
 
 So a dry run says the same thing first in these words: which file, which setting, what it was and
 what it would be, and then what the desktop would do next. `writer.Transaction.commit` prints it
@@ -39,6 +40,8 @@ import re
 import effects
 import kconfig
 import klassy
+import rules
+import tiling
 
 INDENT = "  "
 
@@ -77,7 +80,7 @@ FILES = {
 
 #: `kwinrc`'s groups this app writes.
 KWIN_GROUPS = {
-    effects.TILING_GROUP: "Tiling (Krohnkite)",
+    effects.TILING_GROUP: "Tiling",
     effects.BLUR_GROUP: "Blur",
     effects.GEOMETRY_GROUP: "Window animation",
     effects.PLUGINS_GROUP: "Effects and scripts",
@@ -100,6 +103,9 @@ KLASSY_GROUPS = {
 #: theory; in practice every name below means one thing wherever this app writes it.
 KEYS = {
     # tiling
+    "tiling": "KyprX's tiling",
+    "autoTiling": "windows are tiled as they open",
+    "showOsd": "names are shown on screen",
     "screenGapTop": "gap at the top of the screen",
     "screenGapBottom": "gap at the bottom of the screen",
     "screenGapLeft": "gap at the left of the screen",
@@ -107,21 +113,14 @@ KEYS = {
     "screenGapBetween": "gap between windows",
     "floatingClass": "windows that always float",
     "floatingTitle": "window titles that always float",
-    "ignoreClass": "windows the tiler ignores",
-    "ignoreTitle": "window titles the tiler ignores",
-    "ignoreScreen": "screens the tiler ignores",
-    "tilingClass": "windows that are always tiled",
-    "adjustLayout": "resizing a window adjusts the layout",
-    "adjustLayoutLive": "the layout follows the resize as it happens",
-    "keepTilingOnDrag": "a dragged window stays tiled",
-    "floatUtility": "utility windows float",
-    "preventMinimize": "tiled windows cannot be minimised",
-    "preventProtrusion": "windows are kept inside their tile",
-    "monocleMaximize": "the monocle layout maximises",
+    "ignoreClass": "windows that are never tiled",
+    "ignoreTitle": "window titles that are never tiled",
+    "ignoreScreen": "screens that are never tiled",
+    "adjustLayoutLive": "neighbours follow while an edge is dragged",
+    "floatUtility": "dialogs and utility windows float",
     "newWindowPosition": "where a new window goes",
-    "limitTileWidth": "tile width is limited",
-    "limitTileWidthRatio": "tile width limit",
-    "noTileBorder": "tiles have no border",
+    "newWindowOverflow": "a new window when the arrangement is full",
+    "newDesktopPosition": "where a new desktop goes",
     # blur
     "BlurStrength": "strength",
     "NoiseStrength": "noise",
@@ -191,7 +190,6 @@ KEYS = {
 
 #: The plugins `[Plugins]` switches, by the name before `Enabled`.
 PLUGINS = {
-    effects.TILING_PLUGIN: "the tiling script",
     effects.BLUR_PLUGIN: "the blur effect",
     effects.GEOMETRY_PLUGIN: "the window animation",
     "kyprx": "KyprX's watcher inside the compositor",
@@ -200,12 +198,27 @@ PLUGINS = {
 
 #: The keys that hold a list, and what separates the items.
 LISTS = {
-    (effects.TILING_GROUP, "floatingClass"): ",", (effects.TILING_GROUP, "floatingTitle"): ",",
-    (effects.TILING_GROUP, "ignoreClass"): ",", (effects.TILING_GROUP, "ignoreTitle"): ",",
-    (effects.TILING_GROUP, "ignoreScreen"): ",", (effects.TILING_GROUP, "tilingClass"): ",",
+    **{(effects.TILING_GROUP, key): "," for key in ("floatingClass", "floatingTitle",
+                                                     "ignoreClass", "ignoreTitle",
+                                                     "ignoreScreen")},
     (effects.BLUR_GROUP, "WindowClasses"): "\n",
     (effects.GEOMETRY_GROUP, "ExcludedWindowClasses"): ",",
 }
+
+#: Where KyprX's tiling puts a new window, by `newWindowPosition` in its own group.
+NEW_WINDOW_PLACES = {"0": "at the end of the layout", "1": "as the master",
+                     "2": "before the focused window", "3": "after the focused window"}
+
+#: What a window that opens does when its screen already has a window in every zone of the
+#: arrangement's last layout, by `newWindowOverflow`; and where the desktop it then opens on is
+#: made, by `newDesktopPosition`. Both are KyprX's alone, and said by what they do, as the place for
+#: new windows is (`tiling.RANGES` has the numbers).
+NEW_WINDOW_OVERFLOW = {"0": "opens on a new desktop", "1": "floats over the others",
+                       "2": "squeezes in by splitting the last zone"}
+NEW_DESKTOP_PLACES = {"0": "after your desktops", "1": "right after the one it came from"}
+
+#: The two by their key, for `_key_line`.
+CHOICES = {"newWindowOverflow": NEW_WINDOW_OVERFLOW, "newDesktopPosition": NEW_DESKTOP_PLACES}
 
 #: The outline's seven styles, as the decoration's own dialog names them. Their raw spelling
 #: carries `WindowOutline`, which the driver reads as the outline having been written.
@@ -218,8 +231,6 @@ OUTLINE_STYLES = {
     "WindowOutlineCustomColor": "a colour of your own",
     "WindowOutlineCustomWithContrast": "a colour of your own, with contrast",
 }
-
-LAYOUT_NAMES = dict(effects.LAYOUTS)
 
 
 def value_text(value) -> str:
@@ -244,6 +255,21 @@ def _change(label: str, before, after) -> str:
     return f"{label}: {value_text(before)} → {value_text(after)}"
 
 
+def _choice(key: str, value) -> str:
+    """One of the tiling's `CHOICES`, said by what it does. Read the way the engine reads it
+    (`tiling.value_of`), so that a text spelt by hand, or one outside the choices, is said as what
+    the desktop will do -- with the text beside it, because the file holds that and not a number
+    somebody chose."""
+    if value in (None, kconfig.NO_VALUE):
+        return "not set"
+    text = str(value).strip()
+    said = CHOICES[key][str(tiling.value_of({key: str(value)}, key))]
+    if text in CHOICES[key]:
+        return said
+    shown = text if len(text) <= 60 else text[:57] + "..."
+    return f"{said} (written as {shown!r})"
+
+
 def _list_change(label: str, before, after, sep: str) -> str:
     def items(v):
         return [x.strip() for x in str(v or "").split(sep) if x.strip()] if v not in (
@@ -265,14 +291,14 @@ def _key_line(group: str, key: str, before, after) -> str:
     if group == effects.PLUGINS_GROUP and key.endswith("Enabled"):
         plugin = key[:-len("Enabled")]
         return _change(f"switched on: {PLUGINS.get(plugin, _words(plugin))}", before, after)
-    if key.endswith("LayoutOrder"):
-        name = LAYOUT_NAMES.get(key, _words(key[:-len("LayoutOrder")]))
-
-        def place(v):
+    if group == effects.TILING_GROUP and key == "newWindowPosition":
+        def where(v):
             if v in (None, kconfig.NO_VALUE):
-                return "the tiler's own place"
-            return "out of the cycle" if str(v).strip() == "0" else f"place {v}"
-        return f"{name} in the layout cycle: {place(before)} → {place(after)}"
+                return "not set"
+            return NEW_WINDOW_PLACES.get(str(v).strip(), f"place {v}")
+        return f"{KEYS[key]}: {where(before)} → {where(after)}"
+    if group == effects.TILING_GROUP and key in CHOICES:
+        return f"{KEYS[key]}: {_choice(key, before)} → {_choice(key, after)}"
     if key.startswith("ButtonOverrideColors"):
         rest = key[len("ButtonOverrideColors"):]
         state = "focused window" if rest.startswith("Active") else "other windows"
@@ -297,8 +323,177 @@ def _group_lines(group: str, old: dict, new: dict) -> list[str]:
         before, after = old.get(key), new.get(key)
         if before == after:
             continue
-        lines.append(_key_line(group, key, before, after))
+        if group == effects.TILING_GROUP and key == "arrangements":
+            lines.extend(arrangement_lines(before, after))
+        else:
+            lines.append(_key_line(group, key, before, after))
     return lines
+
+
+# ---------------------------------------------------------------- the zone layouts and arrangements
+
+def _absent(value) -> bool:
+    """Nothing stored: no key, or a key with no value (`[$d]`), which reads as no key at all."""
+    return value is None or value is kconfig.NO_VALUE
+
+
+def _meaning(value) -> tuple[dict | None, dict | None]:
+    """What a stored value means, in version 2, and the value as it is written, in its own
+    version. KyprX's own when nothing is stored (`tiling.DEFAULT_VALUE`), and nothing written
+    beside it; `(None, None)` when the text cannot be read. A version-1 value is upgraded first
+    (`tiling.upgrade`), so that both sides of a change are said in one vocabulary whatever each
+    is written in -- the zone layouts and arrangements the Tiling tab shows."""
+    if _absent(value):
+        return tiling.DEFAULT_VALUE, None
+    try:
+        held = tiling.parse(str(value))
+    except tiling.ArrangementsError:
+        return None, None
+    return tiling.upgrade(held), held
+
+
+def _windows(count: int) -> str:
+    return f"{count} window" + ("" if count == 1 else "s")
+
+
+def _named(names: list[str]) -> str:
+    """`'A'`, `'A' and 'B'`, `'A', 'B' and 'C'`."""
+    quoted = [repr(name) for name in names]
+    return quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " and " + quoted[-1]
+
+
+def _layout_lines(was: dict, now: dict) -> list[str]:
+    """The pool's changes: a zone layout added, renamed, offered on a drag or no longer, removed;
+    one whose zones change, with every arrangement that uses it, because each of them changes
+    with it; and the order, which is the order a drag offers them in."""
+    old = {held["id"]: held for held in was["layouts"]}
+    ids = {held["id"] for held in now["layouts"]}
+    lines = []
+    for held in now["layouts"]:
+        name = repr(held["name"])
+        prior = old.get(held["id"])
+        if prior is None:
+            lines.append(f"the zone layout {name} is added")
+            continue
+        if prior["name"] != held["name"]:
+            lines.append(f"the zone layout {prior['name']!r} is renamed {name}")
+        if prior["tree"] != held["tree"]:
+            users = [a["name"] for a in now["arrangements"] if held["id"] in a["windows"].values()]
+            lines.append(f"the zone layout {name} changes"
+                         + (f", and with it {_named(users)}" if users else ""))
+        if prior["drag"] != held["drag"]:
+            lines.append(f"the zone layout {name} is "
+                         f"{'offered' if held['drag'] else 'no longer offered'} when a window is "
+                         f"dragged")
+    lines += [f"the zone layout {held['name']!r} is removed" for held in was["layouts"]
+              if held["id"] not in ids]
+    kept = [held["id"] for held in was["layouts"] if held["id"] in ids]
+    if kept != [held["id"] for held in now["layouts"] if held["id"] in old]:
+        lines.append("the zone layouts change order")
+    return lines
+
+
+def _manual_changes(was: dict | None, now: dict | None) -> dict[str, tuple[int, int]]:
+    """Between two values written in version 1, each arrangement on both sides whose `manual` --
+    the layout manual tiling shows, which an earlier KyprX's window calls *Zones for manual
+    tiling* -- moved: `{id: (windows before, windows after)}`. Nothing for any other pair: version
+    2 has no such choice, and a value in it is said by its own words.
+
+    Said beside what the upgrade makes of the two, because the upgrade keeps nothing of a `manual`
+    whose zone layout a drag offers already (`tiling.alike` has why that matters): KyprX's own
+    arrangements with Balanced's moved from its layout for four windows to its layout for two are
+    one value once upgraded, and without this a dry run said nothing at all of a change an earlier
+    KyprX sharing the folder acts on."""
+    if not (was and now and was["version"] == now["version"] == tiling.FIRST_FORMAT):
+        return {}
+    old = {entry["id"]: entry["manual"] for entry in was["arrangements"]}
+    return {entry["id"]: (old[entry["id"]], entry["manual"]) for entry in now["arrangements"]
+            if entry["id"] in old and old[entry["id"]] != entry["manual"]}
+
+
+def _arrangement_change_lines(was: dict, now: dict,
+                              manual: dict[str, tuple[int, int]]) -> list[str]:
+    """The arrangements' changes: added, renamed, into the rotation or out of it, removed; for
+    each number of windows, a zone layout added, taken out, or another in its place -- by the
+    names the zone layouts have on each side; between two values in version 1, the layout manual
+    tiling shows, by its number of windows (`manual`, from `_manual_changes`); and the order,
+    which is the rotation's."""
+    pool_was = {held["id"]: held["name"] for held in was["layouts"]}
+    pool_now = {held["id"]: held["name"] for held in now["layouts"]}
+    old = {a["id"]: a for a in was["arrangements"]}
+    lines = []
+    for entry in now["arrangements"]:
+        name = repr(entry["name"])
+        prior = old.get(entry["id"])
+        if prior is None:
+            lines.append(f"the arrangement {name} is added")
+            continue
+        if prior["name"] != entry["name"]:
+            lines.append(f"the arrangement {prior['name']!r} is renamed {name}")
+        if prior["cycle"] != entry["cycle"]:
+            lines.append(f"{name} {'goes into' if entry['cycle'] else 'comes out of'} the "
+                         f"rotation")
+        slots_was, slots_now = prior["windows"], entry["windows"]
+        for count in range(2, max(len(slots_was), len(slots_now)) + 2):
+            key = str(count)
+            if key not in slots_was:
+                lines.append(f"{name}: {pool_now[slots_now[key]]!r} for {_windows(count)} is "
+                             f"added")
+            elif key not in slots_now:
+                lines.append(f"{name}: the layout for {_windows(count)} is taken out")
+            elif slots_was[key] != slots_now[key]:
+                lines.append(f"{name}: {pool_now[slots_now[key]]!r} for {_windows(count)}, in "
+                             f"place of {pool_was[slots_was[key]]!r}")
+        if entry["id"] in manual:
+            shown_was, shown_now = manual[entry["id"]]
+            lines.append(f"{name}: the zones for manual tiling are the layout for "
+                         f"{_windows(shown_now)}, in place of the layout for "
+                         f"{_windows(shown_was)}")
+    ids = [entry["id"] for entry in now["arrangements"]]
+    lines += [f"the arrangement {entry['name']!r} is removed" for entry in was["arrangements"]
+              if entry["id"] not in ids]
+    kept = [entry["id"] for entry in was["arrangements"] if entry["id"] in ids]
+    if kept != [i for i in ids if i in old]:
+        lines.append("the arrangements change order")
+    return lines
+
+
+def arrangement_lines(before, after) -> list[str]:
+    """A change to the zone layouts and arrangements, said by their names and in the words the
+    Tiling tab uses: the zone layouts first, then the arrangements (`_layout_lines`,
+    `_arrangement_change_lines`). Compared by id, which a rename keeps, in the order each list
+    has afterwards, and between what the two sides mean in version 2 -- a version-1 side is
+    upgraded first, so a change written in another version than the one before it is said as
+    what it changes, and a change of version alone as that and nothing more. Two sides in
+    version 1 also say the layout manual tiling shows, which the upgrade may keep nothing of
+    (`_manual_changes`). The key taken away -- or left with no value, `[$d]`, which reads the
+    same -- is "KyprX's zone layouts and arrangements are back", which is what it means to the
+    engine, and the words the Tiling tab says *Put KyprX's zone layouts and arrangements back*
+    in; with nothing stored on either side, nothing changes."""
+    if _absent(after):
+        # Both kinds of nothing, here: a key with no value afterwards, left to the version
+        # sentence below, named the version of a value that is not there -- "written as version
+        # None in place of version 1", reproduced through the preview of a copy of the desk put
+        # back with that key bare.
+        return [] if _absent(before) else ["KyprX's zone layouts and arrangements are back"]
+    was, held_was = _meaning(before)
+    now, held_now = _meaning(after)
+    if now is None:
+        return ["the zone layouts and arrangements are replaced by a text KyprX cannot read"]
+    if was is None:
+        # Not "could not be read": `scripts/simulate.sh` reads those words as the daemon in trouble.
+        return ["the zone layouts and arrangements stored were unreadable, and are now the "
+                "arrangements " + ", ".join(repr(a["name"]) for a in now["arrangements"])]
+    lines = _layout_lines(was, now) + _arrangement_change_lines(
+        was, now, _manual_changes(held_was, held_now))
+    if lines:
+        return lines
+    if held_was is None:
+        return ["KyprX's zone layouts and arrangements are written out as they are"]
+    if held_now["version"] != held_was["version"]:
+        return [f"the zone layouts and arrangements are written as version {held_now['version']} "
+                f"in place of version {held_was['version']}, with nothing in them changed"]
+    return []
 
 
 # ---------------------------------------------------------------- per file
@@ -306,7 +501,14 @@ def _group_lines(group: str, old: dict, new: dict) -> list[str]:
 def _generic(old: dict, new: dict, names: dict) -> list[str]:
     out = []
     for group in sorted(set(old) | set(new)):
-        lines = _group_lines(group, old.get(group, {}), new.get(group, {}))
+        if group == effects.TILING_GROUP and old.get(group) and group not in new:
+            # The whole group taken away -- KyprX removed from this computer -- is one fact, and
+            # said key by key it would read as KyprX's own zone layouts and arrangements coming
+            # back.
+            lines = ["every setting of KyprX's tiling is taken away, the zone layouts and "
+                     "arrangements with them"]
+        else:
+            lines = _group_lines(group, old.get(group, {}), new.get(group, {}))
         if not lines:
             continue
         title = names.get(group) or _words(group.replace(kconfig.SEP, " "))
@@ -415,6 +617,11 @@ def _rule_facts(entries: dict) -> dict[str, str]:
         facts["title bar"] = ("forces a title bar"
                               if str(entries.get("noborder", "false")).lower() == "false"
                               else "forces no title bar")
+    elif str(entries.get("decorationpolicyrule", "")) in ("2", "6"):
+        policy = str(entries.get("decorationpolicy", "")).strip().lower()
+        facts["title bar"] = {"server": "forces a title bar", "2": "forces a title bar",
+                              "none": "forces no title bar", "0": "forces no title bar"}.get(
+            policy, f"decoration policy {policy or 'unset'}")
     for key, label in (("opacityactive", "focused"), ("opacityinactive", "not focused")):
         if key in entries and str(entries.get(key + "rule", "")) in ("2", "6"):
             facts[f"opaque when {label}"] = f"{entries[key]} % opaque when {label}"
@@ -451,8 +658,7 @@ def _rules(old: dict, new: dict) -> list[str]:
     uuid = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
     def order(groups):
-        return [u for u in str((groups.get("General") or {}).get("rules", "") or "").split(",")
-                if u]
+        return rules.order_of(groups)
 
     def name(entries):
         return str(entries.get("Description") or entries.get("wmclass") or "a rule with no name")
@@ -540,13 +746,17 @@ def _step(description: str, plain: str) -> str:
     return lines[0].lstrip("-+ ").strip() if lines else ""
 
 
+#: What each reload does, in the order `writer.Transaction.commit` asks for them. The tiling's is
+#: last there, and is nothing but the tiling told to read its settings again (`reload.tell_tiler`),
+#: with no reconfigure of the compositor. What that costs on the screen has not been measured, so
+#: its words say neither a stop nor the absence of one.
 RELOADS = (
-    ("reload_tiling", "restart the tiling script -- every tiled window is laid out again"),
     ("reload_kwin", "re-read its window rules and the decoration -- the screen stops for about "
                     "0.6 s"),
     ("reload_colours", "rebuild the colours the decoration keeps -- about 0.65 s more with the "
                        "screen stopped"),
     ("reload_blur", "reload the blur effect"),
+    ("reload_tiling", "have the tiling re-read its settings -- nothing else is reloaded for it"),
 )
 
 
@@ -560,11 +770,7 @@ def transaction(tx) -> str:
     if steps:
         lines.append(FILE + "The desktop would be asked to:")
         lines.extend(CHANGE + s for s in steps)
-    # The tiler's reload carries the compositor's with it (`writer.Transaction.commit`), so both
-    # sentences are said when either flag asks for the second.
-    flags = {name: bool(getattr(tx, name, False)) for name, _ in RELOADS}
-    flags["reload_kwin"] = flags["reload_kwin"] or flags["reload_tiling"]
-    after = [said for name, said in RELOADS if flags[name]]
+    after = [said for name, said in RELOADS if getattr(tx, name, False)]
     if after:
         lines.append(FILE + "Then the desktop would:")
         lines.extend(CHANGE + s for s in after)
@@ -617,6 +823,11 @@ def _config_changes(before: dict, after: dict) -> list[str]:
                 out.append(f"{label}: {before.get(key, 'not set')} % → {after.get(key)} %")
             else:
                 out.append(_change(label, before.get(key), after.get(key)))
+    # A file without the key is one written before it existed, and it meant the primary then too.
+    source_b = str(before.get("colour_screen") or "") or "the primary screen"
+    source_a = str(after.get("colour_screen") or "") or "the primary screen"
+    if source_b != source_a:
+        out.append(f"the screen the colour from the wallpaper comes from: {source_b} → {source_a}")
     own_b, own_a = before.get("own_transparency") or {}, after.get("own_transparency") or {}
     for cls in sorted(set(own_b) | set(own_a)):
         if own_b.get(cls) != own_a.get(cls):
@@ -648,9 +859,24 @@ def _config_changes(before: dict, after: dict) -> list[str]:
                            f"{shortcuts.key_text(keys_b.get(action) or [])} → "
                            f"{shortcuts.key_text(keys_a.get(action) or [])}")
     paper_b, paper_a = before.get("wallpaper") or {}, after.get("wallpaper") or {}
-    for key, label in (("video_dir", "video folder"), ("image_dir", "pictures folder"), ("layout", "wallpaper picker layout")):
+    for key, label in (("video_dir", "video folder"), ("image_dir", "pictures folder")):
         if paper_b.get(key) != paper_a.get(key):
             out.append(_change(label, paper_b.get(key) or "none", paper_a.get(key) or "none"))
+    # The layout and the strip's text through the readers every road in uses, on both sides. The
+    # file on disk is "before" in a dry run, and one written by 0.1.4 can say `strip-names` with no
+    # switch: read raw, that was a change of layout on every save that changed nothing at all.
+    import state
+    layout_b, layout_a = state.wallpaper_layout(paper_b.get("layout")), state.wallpaper_layout(
+        paper_a.get("layout"))
+    if layout_b != layout_a:
+        out.append(_change("wallpaper picker layout", layout_b, layout_a))
+    text_b, text_a = state.strip_text(paper_b), state.strip_text(paper_a)
+    if text_b != text_a:
+        out.append(f"the wallpaper picker's strip shows its text: {_yes(text_b)} → {_yes(text_a)}")
+    every_b, every_a = state.all_screens(paper_b), state.all_screens(paper_a)
+    if every_b != every_a:
+        out.append(f"a wallpaper chosen in the picker goes on every screen: {_yes(every_b)} → "
+                   f"{_yes(every_a)}")
     # A key the file does not carry reads as yes: listing KDE's own wallpapers is what the picker
     # did before the switch existed, so that is what "before" says. A key that is there but not
     # true -- an explicit false -- reads as no, which is what it means.

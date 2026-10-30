@@ -10,19 +10,21 @@ of the new ones", it is the files as they were, for the part of them this app wr
 disk, not this app's reading of them. A reading is what the KyprX folder carries -- one fact per
 window, readable, portable -- and a reading has to be applied through the same logic that decides
 where a rule goes and whether a window needs one; putting that back cannot be exact, because the
-logic is making choices. The raw groups make no choice, so they come back byte for byte.
+logic is making choices. The raw groups make no choice, so they come back byte for byte -- the
+tiling's zone layouts and arrangements too, in the version the copy holds them: version 1 from a
+copy taken before there was a version 2, which KyprX reads for good (`daemon/tiling.py`).
 
 **Which part is this app's**, file by file, and the lines are drawn where the rest of the app
 already draws them:
 
 * `klassyrc` -- every group but `[Global]`, which is the decoration's bookkeeping about this
-  machine (the settings file has always left it out for that reason). The whole file is otherwise
+  machine (the KyprX folder leaves it out for that reason). The whole file is otherwise
   what the Appearance tab and the per-window overrides write.
 * `windecopresetsrc` -- the preset groups. Every one in the copy comes back as it was; one that
   appeared since is removed only if it is this app's own, because the decoration re-imports its
   bundled presets on an upgrade and records that in `[Global]`, and a bundled preset removed here
   would never come back.
-* `kwinrc` -- the five groups this app has controls in, whole, and the three plugin switches it
+* `kwinrc` -- the five groups this app has controls in, whole, and the two plugin switches it
   turns on. Nothing else: that file belongs to the whole desktop.
 * `kwinrulesrc` -- **a rule is put back when it is this app's in the copy or now**, and otherwise
   left exactly as it is. That one sentence covers every case that matters: a rule this app made
@@ -35,6 +37,11 @@ The rest of a copy is not in a config file: this app's own settings, profiles an
 windows, the colours, the keys of the fixed shortcut list, and the wallpaper. Those are put back by
 the daemon, through the same doors that write them normally -- see `restore_desk` in
 `daemon/kyprd_copies.py`.
+
+**A copy of an earlier shape** is put back whole for every group it knew, and a group that came
+after it stays as it is (`SINCE`): one taken before KyprX tiled the windows itself (shape 1) has no
+`[Script-kyprx]`, and read as it is it would delete KyprX's own group -- the zone layouts and
+arrangements with it -- for not having it.
 
 **Where copies live** is the KyprX folder's `snapshots/`, one directory each, named by when and
 why, so a copy can be read, copied elsewhere or deleted by hand. The twenty newest are kept, plus
@@ -51,12 +58,21 @@ import os
 import re
 import shutil
 
+import effects
 import kconfig
 import klassy
+import rules
 
 #: Bumped when the shape of a copy changes. A copy of a later shape is refused rather than half
-#: read: putting back half a desk is exactly what a copy exists to prevent.
-FORMAT = 1
+#: read: putting back half a desk is exactly what a copy exists to prevent. One of an earlier shape
+#: is put back for what it knew (`SINCE`). 2 is the tiling becoming KyprX's own, `[Script-kyprx]`
+#: among the compositor's groups.
+FORMAT = 2
+
+#: The shape each of the compositor's groups a copy carries first came in, for the ones that did
+#: not come with the first: a copy of an earlier shape says nothing of such a group -- it is not
+#: empty there, it is unknown -- so `restore_files` leaves it as the desk holds it.
+SINCE = {effects.TILING_GROUP: 2}
 
 #: The KyprX folder. `KYPRX_FOLDER`, when set in the environment of the process that imports this,
 #: puts the folder -- and the copies of the desk in its `snapshots/` -- somewhere else. Nothing in
@@ -116,7 +132,7 @@ def ours(entries: dict) -> bool:
 def capture_files(tx) -> dict:
     """The part of the four config files this app writes, raw. A read."""
     kwin = tx.kwin
-    order = [u for u in (tx.rules.get("General", "rules", "") or "").split(",") if u]
+    order = rules.order_of(tx.rules.groups)
     return {
         "klassyrc": _groups(tx.klassy, lambda g: g not in KLASSY_SKIP),
         "windecopresetsrc": _groups(tx.presets, lambda g: g.startswith(klassy.PRESET_PREFIX)),
@@ -141,12 +157,13 @@ def _set_group(cfg, group: str, entries: dict) -> bool:
     return True
 
 
-def restore_files(tx, files: dict, colour_groups=frozenset()) -> list[str]:
+def restore_files(tx, files: dict, colour_groups=frozenset(), shape: int = FORMAT) -> list[str]:
     """Put the copied part of the four files back, exactly, into a transaction somebody else
     commits. Returns what moved, as short phrases, and sets the reloads the change needs.
 
     `colour_groups` are the decoration's groups kept in the colour cache the ordinary reconfigure
-    does not touch -- `declared.COLOUR_CACHED_GROUPS`, with the measurement beside it.
+    does not touch -- `declared.COLOUR_CACHED_GROUPS`, with the measurement beside it. `shape` is
+    the copy's (`shape_of`): a group that came after it is left as it is (`SINCE`).
     """
     moved: list[str] = []
 
@@ -181,11 +198,13 @@ def restore_files(tx, files: dict, colour_groups=frozenset()) -> list[str]:
         moved.append("the decoration's presets")
         tx.reload_kwin = True
 
-    # The compositor: this app's groups whole, and its three plugin switches.
+    # The compositor: this app's groups whole, and its two plugin switches.
     cfg = tx.kwin
     wanted = files.get("kwinrc") or {}
     reloads: set[str] = set()
     for group in KWIN_GROUPS:
+        if SINCE.get(group, 1) > shape:
+            continue
         if group in wanted:
             if _set_group(cfg, group, wanted[group]):
                 reloads.add(group)
@@ -202,13 +221,18 @@ def restore_files(tx, files: dict, colour_groups=frozenset()) -> list[str]:
         elif now is not None:
             cfg.delete_key(PLUGINS_GROUP, key)
             reloads.add(PLUGINS_GROUP)
-    if reloads:
+    # The tiling's group asks the compositor for nothing: KyprX's engine is told to read its
+    # settings again (`reload_tiling`), and a reconfigure on top of that would stop the screen for
+    # a change it does not read (`daemon/tiling.py` says why). So it is the one group whose
+    # moving alone reloads nothing else, and the switches are not the tiler's any more.
+    if effects.TILING_GROUP in reloads:
+        moved.append("the tiling's settings")
+        tx.reload_tiling = True
+    if reloads - {effects.TILING_GROUP}:
         moved.append("the window manager's settings")
         tx.reload_kwin = True
         if any("blur" in g for g in reloads) or PLUGINS_GROUP in reloads:
             tx.reload_blur = True
-        if any("krohnkite" in g for g in reloads) or PLUGINS_GROUP in reloads:
-            tx.reload_tiling = True
 
     # The window rules: this app's in the copy or now, exactly; everybody else's, untouched.
     if _restore_rules(tx.rules, files.get("kwinrulesrc") or {}):
@@ -220,9 +244,10 @@ def restore_files(tx, files: dict, colour_groups=frozenset()) -> list[str]:
 def _restore_rules(cfg, copied: dict) -> bool:
     copied_order = [str(u) for u in copied.get("order") or []]
     copied_rules = {str(u): e for u, e in (copied.get("rules") or {}).items()}
-    now_order = [u for u in (cfg.get("General", "rules", "") or "").split(",") if u]
+    now_order = rules.order_of(cfg.groups)
     changed = False
     keep: set[str] = set()
+    gone: set[str] = set()
     for uuid in set(copied_rules) | set(now_order):
         was = copied_rules.get(uuid)
         now = cfg.groups.get(uuid) if uuid in now_order else None
@@ -231,14 +256,14 @@ def _restore_rules(cfg, copied: dict) -> bool:
             keep.add(uuid)
         elif now is not None and ours(now):
             cfg.delete_group(uuid)
+            gone.add(uuid)
             changed = True
         elif now is not None:
             keep.add(uuid)
     order = ([u for u in copied_order if u in keep]
              + [u for u in now_order if u in keep and u not in copied_order])
     if order != now_order:
-        cfg.set("General", "rules", ",".join(order))
-        cfg.set("General", "count", len(order))
+        rules.write_order(cfg, order, gone)
         changed = True
     return changed
 
@@ -304,14 +329,20 @@ def load(name: str) -> dict | None:
     return found if isinstance(found, dict) else None
 
 
+def shape_of(desk) -> int:
+    """The shape a copy says it is in, its `meta`'s `format`; 0 when it says none that reads."""
+    meta = desk.get("meta") if isinstance(desk, dict) else None
+    try:
+        return int(meta.get("format", 0)) if isinstance(meta, dict) else 0
+    except (TypeError, ValueError):
+        return 0
+
+
 def why_not(desk: dict | None) -> str:
-    """Why a copy cannot be put back, or "" when it can."""
+    """Why a copy cannot be put back, or "" when it can: every shape up to `FORMAT` can."""
     if not isinstance(desk, dict):
         return "that copy is gone, or cannot be read"
-    try:
-        shape = int((desk.get("meta") or {}).get("format", 0))
-    except (TypeError, ValueError):
-        shape = 0
+    shape = shape_of(desk)
     if shape > FORMAT:
         return "that copy was taken by a newer KyprX, and this one cannot put it back whole"
     if shape < 1:

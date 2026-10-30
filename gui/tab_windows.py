@@ -2,11 +2,13 @@
 it.
 
 The rows are the daemon's `table`; ticking a box sends the change a moment later, rows ticked
-together as one batch, because two of the columns (Float and Animate) are memberships of one of the
-compositor's lists and writing the tiler's list re-tiles the screen. The Opacity column's menu gives
-one window a number of its own. *Find a window...* asks the compositor itself which window was
-clicked -- `queryWindowInfo` on `/KWin`, read through a slot typed `QVariantMap`, the one way this
-PySide decodes the answer -- which is the one call this tab makes without the daemon.
+together as one batch, because two of the columns (Float and Animate) are memberships of one list
+each -- the tiler's floating classes and the animation's -- and a Float tick moves windows on
+screen: the window floats or rejoins the layout, and the others on its screen make room or close
+the gap. The Opacity column's menu gives one window a number of its own. *Find a window...* asks
+the compositor itself which window was clicked -- `queryWindowInfo` on `/KWin`, read through a slot
+typed `QVariantMap`, the one way this PySide decodes the answer -- which is the one call this tab
+makes without the daemon.
 """
 
 from __future__ import annotations
@@ -93,8 +95,9 @@ BLUR_NEEDS_TRANSPARENCY = (
     "nothing of it to see. Tick Transparency and this comes back exactly as it was.")
 
 #: The columns that are membership in one list belonging to the whole compositor. They go the
-#: other way round to the daemon — see `LIST_SWITCHES` there — because writing the tiler's list
-#: costs a restart of the tiler and a re-tile of every window.
+#: other way round to the daemon — see `LIST_SWITCHES` there — because each is one key holding a
+#: whole list, and the tiler's moves windows: a batch of ticks is one write of each list, and one
+#: rearrangement of the screen, rather than one per row.
 LIST_COLUMNS = {COL_FLOAT: "float", COL_ANIMATE: "animate"}
 
 #: What the three per-window switches show for one of this app's own windows, and why.
@@ -104,6 +107,22 @@ OVERLAY_HELP = "One of KyprX's own windows. It has no title bar to hide."
 FLOAT_HELP = ("A persistent rule: the tiler leaves this window where it is put. Not the same as "
               "the toggle-float key, which lasts until the window closes.")
 ANIMATE_HELP = "Whether the geometry animation plays when this window is moved or resized."
+
+#: Why a Float box is ticked and locked, by the row's `float_why`: KyprX's own windows float
+#: whatever the list holds, and a tick offered there would be one that undoes itself. An overlay is
+#: put back in the tiler's list every time the daemon starts; the settings window floats because
+#: the tiling is told so in every answer (`tiling.BUILTIN_FLOAT` in the daemon), whatever the list
+#: says, and the daemon leaves its class in the list or out of it as it finds it. A row locked with
+#: no reason given -- an older daemon's -- is an overlay: those were the only ones it locked.
+FLOAT_LOCKED_HELP = {
+    "overlay": ("One of this app's own windows. It has to float, and the daemon puts it back in "
+                "the list every time it starts."),
+    "settings": ("KyprX's own settings window opens floating, above the other windows. With "
+                 "automatic tiling on, Toggle Float tiles it until it closes."),
+}
+
+FLOAT_NOT_RUNNING = ("KyprX's tiling is not running, so nothing is tiled and nothing floats. The "
+                     "Tiling tab says why.")
 
 STATUS_TEXT = {
     "refuses": "app refuses",
@@ -189,9 +208,10 @@ class WindowsTab(QWidget):
         self._loading = False
         #: Ticks waiting to be sent, and the timer that sends them. Ticking four rows in a row
         #: used to be four writes and four compositor reloads; with the float column it would also
-        #: be four reloads of the tiler, and a tiler that has just reloaded tiles the screen from
-        #: scratch — so the windows would visibly rearrange four times over. Collected and sent as
-        #: one batch instead, the same shape `ThemeBox` uses for a drag along its strength control.
+        #: be four times the tiler reading its settings again and laying the screen out around the
+        #: windows that float now — so the windows would visibly rearrange four times over.
+        #: Collected and sent as one batch instead, the same shape `ThemeBox` uses for a drag along
+        #: its strength control.
         self._queued_switches: dict[str, dict[str, bool]] = {}
         self._queued_lists: dict[str, dict[str, bool]] = {}
         self._batch = QTimer(self)
@@ -373,9 +393,12 @@ class WindowsTab(QWidget):
             name.setForeground(QColor(128, 128, 128))
         self.table.setItem(i, COL_CLASS, name)
 
+        # The settings window's box is ticked whether or not its class is in the list: `float` is
+        # the list alone, and that window floats either way (`FLOAT_LOCKED_HELP`).
         checks = {COL_TITLEBAR: not r["titlebar"], COL_OUTLINE: r["outline"],
                   COL_TRANSPARENCY: r["transparency"], COL_BLUR: r["blur"],
-                  COL_FLOAT: r["float"], COL_ANIMATE: r["animate"]}
+                  COL_FLOAT: r["float"] or r.get("float_why") == "settings",
+                  COL_ANIMATE: r["animate"]}
         for column, checked in checks.items():
             item = QTableWidgetItem()
             if r.get("overlay") and column in (COL_TITLEBAR, COL_OUTLINE,
@@ -412,14 +435,18 @@ class WindowsTab(QWidget):
                 item.setToolTip(BLUR_NEEDS_TRANSPARENCY)
             if column == COL_FLOAT:
                 item.setToolTip(FLOAT_HELP)
-                if r.get("float_locked"):
+                why = str(r.get("float_why") or "")
+                running = r.get("tiling_enabled", True)
+                # Locked either way, and the reason the one that is true now: the settings window
+                # is floated and kept above by the tiling itself, so while that is not running its
+                # box says so rather than promise either. An overlay's reason is the list, which
+                # holds whether the tiling runs or not.
+                if r.get("float_locked") and (running or why != "settings"):
                     item.setFlags(Qt.ItemFlag.ItemIsSelectable)
-                    item.setToolTip("One of this app's own windows. It has to float, and the "
-                                    "daemon puts it back in the list every time it starts.")
-                elif not r.get("tiling_enabled", True):
+                    item.setToolTip(FLOAT_LOCKED_HELP.get(why, FLOAT_LOCKED_HELP["overlay"]))
+                elif not running:
                     item.setFlags(Qt.ItemFlag.ItemIsSelectable)
-                    item.setToolTip("Tiling is switched off, so nothing is tiled and nothing "
-                                    "floats. The Tiling tab has a button that switches it on.")
+                    item.setToolTip(FLOAT_NOT_RUNNING)
             if column == COL_ANIMATE:
                 item.setToolTip(ANIMATE_HELP)
                 if not r.get("geometry_enabled", True):
@@ -482,7 +509,9 @@ class WindowsTab(QWidget):
             return item
         own = r.get("own_strength")
         comes_back = int(own) if own is not None else self._strength
-        at = int(r.get("opacity") or 100)
+        # `is None` and not falsy: a window drawn at 0 % -- the screen-sharing helper, hidden on
+        # purpose -- read as 100 % here, a number the window does not have.
+        at = int(r["opacity"]) if r.get("opacity") is not None else 100
         ticked = bool(r.get("transparency"))
         elsewhere = ticked and at != comes_back
         shown = at if elsewhere else comes_back
@@ -688,12 +717,13 @@ class WindowsTab(QWidget):
         """Send everything that was ticked since the last send.
 
         One call for the switches and one for the lists, whatever was ticked — so the tiler
-        re-reads itself once for the whole batch rather than once per row, and the screen
+        reads its settings again once for the whole batch rather than once per row, and the screen
         rearranges once rather than once per row.
 
         **And say so while it happens.** Both calls block until the compositor has taken them, and
-        a tick in the *Float* column re-tiles every window on the screen; this was the one write of
-        that size in the window that went out with nothing said at all. Not while the window is
+        a tick in the *Float* column moves windows: the one ticked floats or rejoins the layout, and
+        the others on its screen move to make room or close the gap. This was the one write of that
+        kind in the window that went out with nothing said at all. Not while the window is
         closing, though: a line nobody can read is not worth an extra pass of the event loop on a
         window that has already been asked to go away.
         """

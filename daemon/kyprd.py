@@ -2,22 +2,26 @@
 """KyprX's daemon.
 
 The compositor script tells it a window appeared; it works out what that window should look like,
-writes it, and asks for a reload. The interface talks to it over the same bus.
+writes it, and asks for a reload. The same script tiles the windows, by the settings it asks the
+daemon for. The interface talks to it over the same bus.
 
 It is D-Bus activated — the first message from the compositor script wakes it, through a systemd
 unit named in the activation file. The unit is not enabled and has no install target: systemd
-never starts it by itself. The compositor script does, at login: its last line sends the inventory
-of the windows already open (`Report("inventory", …)`) as soon as the compositor loads it, and
-that message wakes the daemon. After that a new window or the interface wakes it if it is not
-running, and it stays up for the rest of the session -- one was seen running for over two hours.
-What the unit buys is a name — something to stop and restart, instead of hunting the process down
-and killing it, which races the very activation it is trying to stop.
+never starts it by itself. The compositor script does, at login: as soon as the compositor loads
+it, it sends the inventory of the windows already open (`Report("inventory", …)`) and asks for its
+tiling settings (`Tiling(…)`), and the first of those messages wakes the daemon. After that a new
+window or the interface wakes it if it is not running, and it stays up for the rest of the session
+-- one was seen running for over two hours. What the unit buys is a name — something to stop and
+restart, instead of hunting the process down and killing it, which races the very activation it is
+trying to stop.
 
 Two objects:
 
 * `/Windows` — only the compositor script talks here, and by these names: `Report(reason, json)`
-  when a window moves, and `ShowCheatsheet()`, `ShowWallpaper()` and `ShowSettings()` when one of
-  their keys is pressed.
+  when a window moves; `ShowCheatsheet()`, `ShowWallpaper()` and `ShowSettings()` when one of
+  their keys is pressed; `ToggleAutomaticTiling()` when its key is pressed while the engine tiles,
+  which writes; and `Tiling(version)` when the tiling wants its settings
+  (`daemon/kyprd_tiling.py`).
 * `/Manager` — the interface's API, in `daemon/kyprd_api.py`.
 
 On waiting: `windowAdded` arrives too early. The window's class may not be final yet and its
@@ -56,6 +60,7 @@ import profiles  # noqa: E402
 import reload as reloader  # noqa: E402
 import rules  # noqa: E402
 import snapshot  # noqa: E402
+import tiling  # noqa: E402
 import writer  # noqa: E402
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP  # noqa: E402
 from kyprd_api import Manager  # noqa: E402
@@ -68,21 +73,21 @@ from kyprd_names import (CHEATSHEET_CLASS, CHEATSHEET_TITLE, OVERLAYS,  # noqa: 
                          SCRIPT_PLUGIN, SERVICE, WINDOWS_IFACE)
 from kyprd_offdesk import OffDeskPart  # noqa: E402
 from kyprd_profiles import ProfilesPart  # noqa: E402
-from kyprd_settingsfile import SettingsFilePart  # noqa: E402
 from kyprd_shortcuts import ShortcutsPart  # noqa: E402
 from kyprd_theme import ThemePart  # noqa: E402
+from kyprd_tiling import TilingPart  # noqa: E402
 from kyprd_transparency import TransparencyPart  # noqa: E402
 from kyprd_wallpaper import WallpaperPart  # noqa: E402
 from kyprd_windows import WindowsPart  # noqa: E402
 from state import Config, State  # noqa: E402
 
 #: The compositor's groups and plugin switches that a copy of the desk carries and puts back --
-#: the five this app has controls in and the three plugins it turns on. See `daemon/snapshot.py`.
+#: the five this app has controls in, KyprX's own tiling among them, and the two plugins it turns
+#: on. See `daemon/snapshot.py`.
 snapshot.configure(
     (DECORATION_GROUP, WINDOWS_GROUP, effects.BLUR_GROUP, effects.GEOMETRY_GROUP,
      effects.TILING_GROUP),
-    tuple(f"{p}Enabled" for p in (effects.BLUR_PLUGIN, effects.GEOMETRY_PLUGIN,
-                                  effects.TILING_PLUGIN)))
+    tuple(f"{p}Enabled" for p in (effects.BLUR_PLUGIN, effects.GEOMETRY_PLUGIN)))
 
 #: The main loop, for the one thing that ends it from inside: KyprX taken off this computer
 #: (`InstallationPart.remove_kyprx`). Set by `main`.
@@ -112,12 +117,12 @@ def _gui_command() -> list[str] | None:
 # a `kyprd_<topic>.py` file beside this one, holding the methods of one topic: no __init__ and no
 # D-Bus methods of its own. So the daemon's state is created below, in the order the comments
 # explain -- all of it but `_folder_watches`, which `watch_the_folder` creates when this calls it --
-# and the four methods the compositor script calls by name are declared on this class. A method of a
+# and the six methods the compositor script calls by name are declared on this class. A method of a
 # part runs on this object like any other, reaching the rest of the daemon through `self`.
-# `scripts/dry-run.sh` step 18 holds the parts to that shape, and refuses a name defined in two of
+# `scripts/dry-run.sh` step 17 holds the parts to that shape, and refuses a name defined in two of
 # them, or in one of them and here: Python would use the first it found and ignore the other.
-class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFilePart, CopiesPart,
-             ThemePart, WallpaperPart, TransparencyPart, WindowsPart, DeskPart, FolderPart,
+class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, CopiesPart, ThemePart,
+             WallpaperPart, TransparencyPart, WindowsPart, TilingPart, DeskPart, FolderPart,
              InstallationPart, dbus.service.Object):
     def __init__(self, bus, name):
         #: Before the first file is read. An install made under this app's previous name keeps its
@@ -187,13 +192,14 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         #: goes while a row is listening for keys. See `watch_interface`.
         self._interface_watch = None
         #: The wallpaper plugin watch: the monitor itself, the wait after an event, and the last
-        #: answer -- which a fresh reading is compared against, so that nothing is announced twice
+        #: answer -- the plugin each screen wears, in the order of the screens (`wallpaper.plugins`)
+        #: -- which a fresh reading is compared against, so that nothing is announced twice
         #: and a file touched for somebody else's reasons announces nothing at all. Empty until the
         #: first reading, so the first event settles the value rather than reporting it as news.
         #: See `watch_the_desktop`.
         self._plugin_watch = None
         self._plugin_timer = None
-        self._plugin_mode = ""
+        self._plugin_mode = ()
         #: The wallpaper whose colour is being worked out right now, on a thread of its own, the
         #: one asked for while that ran -- only the latest is kept -- and the stopwatch on the
         #: running one. See `warm_colour`.
@@ -206,6 +212,9 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         #: The write that puts the chosen wallpaper up, waiting for the deferred half to run it
         #: beside the colour. See `set_wallpaper`.
         self._wallpaper_change = None
+        #: The screen the colour came from, kept while a change of it waits for a wallpaper and
+        #: its colour already on their way to land first. See `follow_colour_screen`.
+        self._colour_follows: str | None = None
         self._name = name
         #: The KyprX folder: the one timer that brings it and the desk into step, what the last
         #: pass found (for the Settings tab), what was last said about it (so a problem is said
@@ -226,6 +235,10 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         #: What KyprX needs on this machine, as `requirements.check` last found it; None until
         #: somebody asks. See `InstallationPart.needs`.
         self._needs: list[dict] | None = None
+        #: The tiling (`TilingPart`): the version the compositor script last said it was when it
+        #: asked for its settings, "" until one has asked since this daemon started -- the script
+        #: asks at every inventory, and the first is asked for below.
+        self._script_version = ""
         dbus.service.Object.__init__(self, bus, "/Windows")
         self.manager = Manager(bus, self)
         self.release_legacy_shortcut_claims()
@@ -237,8 +250,8 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         self.switch_the_script_on()
         self.note_the_version()
         #: After both of the script's possible loads above, for the reason in its docstring. A key
-        #: taken changes an action the KyprX folder carries (Krohnkite's Focus Up), and the folder
-        #: pass above has already run: it is asked for again rather than left to the next change.
+        #: taken may change an action the KyprX folder carries, and the folder pass above has
+        #: already run: it is asked for again rather than left to the next change.
         if self.claim_kyprx_keys():
             self.folder_soon()
         self.request_inventory()
@@ -277,21 +290,22 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         Only a key that is not there at all is set. `false` is somebody's decision -- the
         desktop's own KWin Scripts page writes it -- and the Settings tab says the script is off
         rather than this undoing it on every start. The reconfigure is what loads a script that
-        has become enabled (measured: see `daemon/reload.py`), and the script's first act once
-        loaded is to report every open window here.
+        has become enabled (measured: see `daemon/reload.py`), and the script's first acts once
+        loaded are to report every open window here and to ask for its tiling settings.
         """
         def build(tx):
             key = f"{SCRIPT_PLUGIN}Enabled"
             if tx.kwin.get(effects.PLUGINS_GROUP, key) is None:
                 effects.set_plugin_enabled(tx.kwin, SCRIPT_PLUGIN, True)
                 tx.reload_kwin = True
-            # Only this script's switch, never the effects' or the tiler's. All three are off by
-            # default, and KDE's own pages save a plugin that is back at its default by deleting
-            # its key (`revertToDefault`, called by both `KWin::EffectsModel::save` and
+            # Only this script's switch, never the effects'. Both are off by default, and KDE's
+            # own pages save a plugin that is back at its default by deleting its key
+            # (`revertToDefault`, called by both `KWin::EffectsModel::save` and
             # `KPluginModel::save`, read in the 6.7 libraries) -- so for them "not there at all"
             # is somebody switching it off. Setting it here turned it back on at every login, with
             # a reconfigure to pay each time. They are switched on once, by the passes in
-            # `daemon/migrate.py`, and by *Restore defaults*.
+            # `daemon/migrate.py`, and by *Restore defaults*. The tiling's own switch is a key of
+            # its group, not a plugin's (`tiling` in `daemon/defaults.py`).
 
         try:
             diff = writer.run(build)
@@ -313,13 +327,13 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         Neither is something this app should own once and forget. A window rule is editable in
         the desktop's own rules dialog and deletable with one click; the tiler's float list is a
         comma-separated string anybody may tidy. Both are cheap to check and written only when
-        they have actually gone, so the usual start writes nothing at all — which matters for the
-        float list, whose every write costs a restart of the tiler and a re-tile of the screen.
+        they have actually gone, so the usual start writes nothing at all -- no reconfigure for a
+        rule, and for the float list not even the one call that has the tiling read its settings
+        again (`reload.tell_tiler`).
 
         **One transaction for all the overlays, not one each**, and that is the whole reason this
-        loops rather than being called twice. Writing the float list makes the tiling script
-        re-read itself, and a script that has just started tiles the screen from scratch. Two
-        transactions on the one start where both entries are missing would do that twice.
+        loops rather than being called twice: one write of each file, and one reload of each kind,
+        on the one start where every entry is missing.
         """
         def build(tx):
             wrote_rule = wrote_float = False
@@ -337,9 +351,11 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
                 self._unmanage(tx, window_class, blurred=not opaque)
             # `or tx.reload_kwin`, because taking a rule off an overlay sets that flag itself and
             # assigning over it is how the compositor is left holding a decoration this has just
-            # removed -- until something else reconfigures it, which may be the next login.
-            tx.reload_kwin = tx.reload_kwin or wrote_rule or wrote_float
-            tx.reload_tiling = wrote_float
+            # removed -- until something else reconfigures it, which may be the next login. The
+            # float list asks for no reconfigure: KyprX's tiling reads it from the daemon, and is
+            # told to.
+            tx.reload_kwin = tx.reload_kwin or wrote_rule
+            tx.reload_tiling = tx.reload_tiling or wrote_float
 
         try:
             diff = writer.run(build)
@@ -479,11 +495,17 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         logs.emit(f"{prefix}: {msg}", trouble)
 
     def notify_failure(self, body: str) -> None:
-        """Say on the desktop that something did not work, when notifications are on.
+        """Say on the desktop that something did not work, when notifications are on. See
+        `notify_desktop`, which says it."""
+        self.notify_desktop(body)
 
-        In dry run the words go to the log instead of the screen. Two of the three calls used to
-        reach the screen from a dry run, which is a real change to the desktop made by a run that
-        promises none -- and one whose cause, in dry run, is usually the dry run itself.
+    def notify_desktop(self, body: str) -> None:
+        """Say something on the desktop, when notifications are on: a failure (`notify_failure`).
+        The first line of `body` is its headline.
+
+        In dry run the words go to the log instead of the screen: a notification is a real change
+        to the desktop, made by a run that promises none -- and one whose cause, in dry run, is
+        usually the dry run itself.
         """
         if not self.config.notify:
             return
@@ -540,6 +562,46 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
             self.log(f"could not open the wallpaper picker: {logs.what(e)}", trouble=True)
             return f"error: {e}"
 
+    @dbus.service.method(WINDOWS_IFACE, in_signature="", out_signature="s")
+    def ToggleAutomaticTiling(self):
+        """The compositor script's end of the Toggle Automatic Tiling key: automatic tiling
+        switched the other way (`TilingPart.toggle_automatic_tiling`). Unlike the three `Show`
+        methods it writes -- `autoTiling`, through `writer` -- so a dry run holds it back and says
+        what it would have written. It never raises, for the reason `ShowCheatsheet` gives, and
+        answers "ok" or "error: ...", which the script does not read.
+
+        The write tells the tiling to ask for its settings again (`reload.tell_tiler`, a call the
+        compositor serves) while the compositor's call for this answer is still out, and the
+        engine is answered all the same (the sandbox's engine scenario, `auto_key`): the
+        compositor's `DBusCall` does not hold it up while it waits.
+        """
+        try:
+            return self.toggle_automatic_tiling()
+        except Exception as e:  # noqa: BLE001 — a D-Bus method that raises is a dead compositor
+            self.log(f"could not switch automatic tiling: {logs.what(e)}", trouble=True)
+            return f"error: {e}"
+
+    @dbus.service.method(WINDOWS_IFACE, in_signature="s", out_signature="s")
+    def Tiling(self, version):
+        """The compositor script asking for its tiling settings, with its own version: the answer
+        as JSON (`TilingPart.tiling_answer`). A read of the files as they are saved, and the same
+        in dry run.
+
+        **It never raises**, for the reason `ShowCheatsheet` gives, and the more so here: an
+        exception crossing the bus is a script left with no settings at all. What goes wrong is
+        answered as the one shape the script reads, with the tiling off and the reason in a
+        sentence, so the engine places nothing rather than placing by a guess.
+        """
+        try:
+            return json.dumps(self.tiling_answer(str(version)))
+        except Exception as e:  # noqa: BLE001 — a D-Bus method that raises is a dead compositor
+            self.log(f"could not answer the tiling's call for its settings: {logs.what(e)}",
+                     trouble=True)
+            return json.dumps({"version": tiling.ANSWER_VERSION, "tiling": False,
+                               "dryRun": writer.dry_run(),
+                               "error": f"KyprX could not work its tiling settings out: "
+                                        f"{type(e).__name__}: {e}"})
+
     @dbus.service.method(WINDOWS_IFACE, in_signature="ss", out_signature="")
     def Report(self, reason, payload):
         try:
@@ -586,6 +648,30 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, SettingsFil
         self.manager.changed()
 
 
+def _say_where_the_rules_are_kept(log, version) -> None:
+    """Say, as the daemon starts, which KWin answered and the list of `[General]` the window rules
+    file is kept in: the one the next write goes to, going by the file as it stands
+    (`rules.list_key`), for a file in KWin 6.8's shape keeps that shape whatever the compositor
+    answered. `version` is that answer, None when the compositor could not be asked.
+
+    Read only: a transaction that is never committed writes nothing. A file that cannot be read --
+    not UTF-8, or not this user's to read -- is said as a failure and stops nothing, as it stops
+    none of the passes that read it while the daemon comes up (`ensure_overlay_placement`): a
+    daemon that stopped here would be started again by the next call on the bus, to stop again.
+    """
+    if version is None:
+        log("could not ask the compositor its version: the window rules file says how its rules "
+            "are kept")
+        return
+    kwin = f"KWin {'.'.join(map(str, version))}"
+    try:
+        found = writer.Transaction().rules.groups
+    except Exception as e:  # noqa: BLE001 -- a file that cannot be read never stops the daemon
+        log(f"{kwin}: could not read the window rules file: {logs.what(e)}", trouble=True)
+        return
+    log(f"{kwin}: window rules kept in [General] {rules.list_key(found)}")
+
+
 def main() -> int:
     writer.set_dry_run("--dry-run" in sys.argv[1:])
     if writer.dry_run():
@@ -616,6 +702,13 @@ def main() -> int:
         # Exit cleanly: a failure here would have the bus try to start yet another one.
         print("kyprd: another daemon already holds the name — leaving it to it")
         return 0
+
+    # Before the daemon exists: the passes it makes as it comes up -- the one-off renames, the
+    # overlays' rules -- write the window rules in the shape the running KWin reads, and a list
+    # in the other shape is what makes KWin 6.8 delete every rule it leaves out (`daemon/rules.py`).
+    version = reloader.kwin_version()
+    rules.configure(version)
+    _say_where_the_rules_are_kept(Daemon.log, version)
 
     global _LOOP
     Daemon(bus, name)

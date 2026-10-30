@@ -1,15 +1,15 @@
 # KyprX for Fedora, and for the Fedora systems that update as a whole (rpm-ostree). Built in COPR
 # from the tag in the public repository; packaging/README.md says how, and how a release is made.
 #
-# The five projects KyprX is built on are required: KyprX is those five put to one use. Two are
-# compiled against one version of KWin and are rebuilt for each by the repositories that carry
-# them, which the COPR project names as its runtime dependencies (packaging/README.md), so enabling
-# KyprX's repository offers to enable theirs. The other three are noarch: Krohnkite and Geometry
-# Change are built in KyprX's own COPR (the two specs beside this one), the video plugin comes from
-# its author's repository.
+# The four projects KyprX is built on are required: KyprX is those four put to one use, and tiles
+# the windows itself, so no tiling script is among them. Two are compiled against one version of
+# KWin and are rebuilt for each by the repositories that carry them, which the COPR project names
+# as its runtime dependencies (packaging/README.md), so enabling KyprX's repository offers to
+# enable theirs. The other two, Geometry Change and the video plugin, are noarch and built in
+# KyprX's own COPR (the two specs beside this one).
 
 Name:           kyprx
-Version:        0.1.4
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -37,7 +37,6 @@ Requires:       kf6-kconfig
 Requires:       hicolor-icon-theme
 Requires:       klassy
 Requires:       kwin-effects-better-blur-dx
-Requires:       kwin-scripts-krohnkite
 Requires:       kwin-effects-geometry-change
 Requires:       plasma-smart-video-wallpaper-reborn >= 2.15.0
 # Thumbnails of video wallpapers, and a colour taken from a video. Everything else works without.
@@ -46,9 +45,11 @@ Recommends:     /usr/bin/ffmpeg
 %description
 KyprX gives KDE Plasma 6 on Wayland the look of a tiling window manager:
 windows side by side, with no title bars, an outline, a see-through background
-and blur behind them. It gathers in one window the settings of Klassy, Better
-Blur DX, Krohnkite, Geometry Change and Smart Video Wallpaper Reborn, and adds
-colour presets, profiles, a wallpaper picker and a shortcut cheatsheet.
+and blur behind them. It tiles the windows itself, in layouts you draw or pick
+from presets, one for each number of windows. It gathers in one window the
+settings of the four programs it is built on, Klassy, Better Blur DX, Geometry
+Change and Smart Video Wallpaper Reborn, and adds colour presets, profiles, a
+wallpaper picker and a shortcut cheatsheet.
 
 Installing it changes nothing on the desktop: KyprX switches itself on the
 first time it is opened. Removing it starts on its Settings tab, with "Remove
@@ -86,6 +87,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Fri Oct 30 2026 cyberbessa <grdz441yj@mozmail.com> - 0.2.0-1
+- KyprX tiles the windows itself, keeps everybody's window rules on Plasma 6.8, and sets a wallpaper per screen
+
 * Tue Oct 20 2026 cyberbessa <grdz441yj@mozmail.com> - 0.1.4-1
 - Fixes a crash of KyprX's window on the Shortcuts tab
 

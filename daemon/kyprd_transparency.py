@@ -99,7 +99,7 @@ class TransparencyPart:
 
         **So is every window with a number of its own**, and this is the one place that has to
         say so: every road that moves the strength -- the control, a profile, *Restore defaults*,
-        a settings file -- asks here which windows it reaches. It cannot be left to
+        the KyprX folder -- asks here which windows it reaches. It cannot be left to
         `policy.set_transparency` noticing a window is not at the old number: a class whose own
         number happens to equal the strength it is moving from would stand exactly where a window
         the strength owns stands, and would move with it.
@@ -356,57 +356,4 @@ class TransparencyPart:
         if held is not None:
             self.keep_ticks(held)
         self._look_again_soon()
-        return "ok"
-
-    def restrike_own(self, before: dict) -> str:
-        """After the whole list of own numbers was replaced -- a settings file being imported --
-        write every class whose number came, went or moved.
-
-        Only the ones that are see-through now. The file has already put each window's tick where
-        it says, and a number arriving with it is how see-through a ticked window is, not a tick:
-        a window the same file says is opaque stays opaque. That is the difference from
-        `set_own_transparency`, where somebody is asking for this one window by name.
-        """
-        after = self.config.own_transparency
-        moved = [c for c in sorted(set(before) | set(after)) if before.get(c) != after.get(c)]
-        if not moved:
-            return "ok"
-        reading = writer.Transaction()
-        open_now = self.by_class()
-        rows = []
-        held = None
-        for window_class in moved:
-            w = open_now.get(window_class) or policy.Window(window_class=window_class)
-            if policy.opacity_of(reading, window_class, w.resource_name) < rules.FULLY_OPAQUE:
-                rows.append((w, before.get(window_class), after.get(window_class)))
-
-        def build(tx):
-            for w, was, now in rows:
-                if now is not None:
-                    policy.set_transparency(tx, w, True, now, claim=True)
-                elif rules.find_owned(tx.rules, w.window_class, w.resource_name):
-                    # See `set_own_transparency`: only a rule of this app's goes back.
-                    policy.set_transparency(tx, w, True, self.config.transparency, previous=was)
-            nonlocal held
-            if self.at_full():
-                # Every row's window is ticked -- a number is how see-through a ticked window is,
-                # never a tick -- so at 100 the ones written back to the strength read exactly
-                # like unticked windows and are the ones the list has to hold. The rows given a
-                # number of their own read it, and are dropped by the table of own numbers.
-                held = self.ticks_at_100(
-                    tx, {w.window_class: (True, w.resource_name) for w, _, _ in rows},
-                    self.config.ticked_at_100)
-
-        try:
-            diff = writer.run(build)
-        except Exception as e:  # noqa: BLE001
-            self.log(f"failed on the windows' own transparency: {logs.what(e)}", trouble=True)
-            return f"error: {e}"
-        if diff:
-            self.log(f"{'would set ' if writer.dry_run() else ''}own transparency on "
-                     f"{len(rows)} window(s)")
-            if writer.dry_run():
-                self.log("would have written:\n" + diff)
-        if held is not None:
-            self.keep_ticks(held)
         return "ok"

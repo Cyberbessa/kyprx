@@ -11,9 +11,9 @@ keeps an open window from showing something a second out of date, and brings the
 step when the plugin changed.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, `manager`,
-`_colour_deadline`, `_colour_next`, `_colour_owed`, `_colour_running`, `_colour_timer`,
-`_colour_trace`, `_colour_wanted`, `_plugin_mode`, `_plugin_timer`, `_plugin_watch`,
-`_wallpaper_change`.
+`_colour_deadline`, `_colour_follows`, `_colour_next`, `_colour_owed`, `_colour_running`,
+`_colour_timer`, `_colour_trace`, `_colour_wanted`, `_plugin_mode`, `_plugin_timer`,
+`_plugin_watch`, `_wallpaper_change`.
 """
 
 from __future__ import annotations
@@ -28,11 +28,12 @@ from gi.repository import Gio, GLib
 import clock
 import explain
 import logs
+import reload as reloader
 import theme
 import wallcolour
 import wallpaper
 import writer
-from state import WALLPAPER_MODES, kde_wallpapers, wallpaper_layout
+from state import WALLPAPER_MODES, all_screens, kde_wallpapers, strip_text, wallpaper_layout
 from wallpaper import VIDEO_PLUGIN_FIXED
 
 
@@ -74,6 +75,12 @@ class WallpaperPart:
         this to have nothing to show — no shell on the bus, a plugin that is not installed, a
         folder that is not mounted — and a picker that says which one is far more use than one
         that fails to open.
+
+        **It answers for the screen the picker is about to open on**, the one the compositor
+        counts as active (`reload.active_output` says why it is asked here). Unless *Set for all
+        screens* is ticked, the kind of wallpaper listed, the one selected when it opens and
+        whether it moves on by itself are that screen's -- it is the screen a wallpaper chosen
+        will go on (`set_wallpaper`).
         """
         paper = self.config.wallpaper or {}
         #: Not a setting of this app's, and it stopped being one: which kind of wallpaper the
@@ -86,6 +93,21 @@ class WallpaperPart:
         out = {
             "mode": mode,
             "layout": wallpaper_layout(paper.get("layout")),
+            #: Whether the strip writes its text. The picker reads it from here, beside the
+            #: layout, so one answer builds the window it opens.
+            "strip_text": strip_text(paper),
+            #: *Set for all screens*, and the screen the picker opens on otherwise: an output's
+            #: name, which the picker sizes itself for and sends back with the wallpaper chosen.
+            "all_screens": all_screens(paper),
+            "screen": "",
+            #: How many screens there are, as the shell counts them -- not the desktops, which
+            #: include an unplugged screen's -- and whether they wear different kinds of
+            #: wallpaper, which the tab says because Pictures and Videos switch them all.
+            "screens": 0,
+            "kinds_differ": False,
+            #: Whether a wallpaper chosen in this picker hands its colour to the desktop: it does
+            #: when it reaches the screen the colour comes from.
+            "gives_colour": True,
             #: Whether the picker also lists the wallpapers the desktop itself ships, the switch
             #: on the Wallpaper tab, and the folders they come from -- spelled the way the
             #: interface shows a path, with the home directory written as `~`.
@@ -113,12 +135,14 @@ class WallpaperPart:
             "entries": [],
             "trouble": "",
         }
+        here = reloader.active_output()
         try:
-            state = wallpaper.snapshot()
+            state = wallpaper.snapshot(names=(here, self.config.colour_screen))
         except wallpaper.WallpaperError as e:
             out["trouble"] = str(e)
             return out
-        mode = wallpaper.mode_of(state) or mode
+        view = self._wallpaper_view(state, here)
+        mode = wallpaper.mode_of(view) or mode
         out["mode"] = mode
         video_dir = out["video_dir"] or wallpaper.default_video_dir(state)
         image_dir = out["image_dir"] or wallpaper.default_image_dir(state)
@@ -126,13 +150,17 @@ class WallpaperPart:
         out.update(
             activity=state.get("activity", ""),
             desktops=len(state.get("desktops") or []),
+            screen=here,
+            screens=int(state.get("screens") or 0) or len(state.get("desktops") or []),
+            kinds_differ=len(wallpaper.kinds_of(state)) > 1,
+            gives_colour=wallpaper.gives_colour(view, state, self.config.colour_screen),
             pause=wallpaper.pause_mode(state) if out["video_plugin"] else "",
             video_dir=video_dir,
             video_dir_present=bool(video_dir) and os.path.isdir(video_dir),
             image_dir=image_dir,
             image_dir_present=bool(image_dir) and os.path.isdir(image_dir),
-            rotates=wallpaper.rotates(state),
-            current=wallpaper.current_target(mode, state),
+            rotates=wallpaper.rotates(view),
+            current=wallpaper.current_target(mode, view),
             entries=entries,
             note=wallpaper.fallback_note(image_dir) if fell_back else "",
         )
@@ -144,6 +172,15 @@ class WallpaperPart:
         elif mode == "video" and not out["video_dir_present"]:
             out["trouble"] = f"the video folder is not there right now: {video_dir or '(none)'}"
         return out
+
+    def _wallpaper_view(self, state: dict, screen: str) -> dict:
+        """What a wallpaper chosen for `screen` reaches: that screen, or every screen while *Set for
+        all screens* is ticked, when no screen is named, and when the shell cannot say which screen
+        a name is (`wallpaper.on_screen` answers None for a name not connected too, which
+        `set_wallpaper` refuses before it gets here)."""
+        if all_screens(self.config.wallpaper) or not screen:
+            return state
+        return wallpaper.on_screen(state, screen) or state
 
     def set_wallpaper_mode(self, mode: str) -> str:
         """Put this kind of wallpaper on the activity in use.
@@ -181,7 +218,7 @@ class WallpaperPart:
             # What the watch will read in 300 ms is this app's own write, and it is not news:
             # without this the same change was announced twice, once here and once by the watch,
             # and every open interface redrew itself twice for it.
-            self._plugin_mode = mode
+            self._plugin_mode = tuple(wallpaper.PLUGINS[mode] for _ in state.get("desktops") or [])
         return "ok"
 
     def set_video_pause(self, value: str) -> str:
@@ -262,19 +299,26 @@ class WallpaperPart:
         self._plugin_timer = GLib.timeout_add(PLUGIN_SETTLE_MS, self._plugin_settled)
 
     def _plugin_settled(self) -> bool:
+        """Compare the plugin of **every** screen, and not only the primary's: one screen switched
+        to video in *Desktop and Wallpaper* is a change an open window has to show too."""
         self._plugin_timer = None
         try:
-            now = wallpaper.mode_of(wallpaper.snapshot())
+            state = wallpaper.snapshot()
         except wallpaper.WallpaperError:
             return False          # the shell will be asked again the next time anything reads
+        now = wallpaper.plugins(state)
         if now and self._plugin_mode and now != self._plugin_mode:
-            self.log(f"the desktop is showing {now} wallpapers now")
+            kinds = " and ".join(sorted(wallpaper.kinds_of(state)))
+            self.log(f"the desktop is showing {kinds} wallpapers now")
             self.manager.changed()
         self._plugin_mode = now
         return False
 
-    def set_wallpaper(self, target: str) -> str:
-        """Put this wallpaper on every screen of the activity in use, and on no other.
+    def set_wallpaper(self, target: str, screen: str = "") -> str:
+        """Put this wallpaper on the activity in use, and on no other: on the screen `screen` -- an
+        output's name, such as `HDMI-A-1` -- is on, or on every screen when no screen is named or
+        *Set for all screens* is ticked. The picker names the screen it opened on, which is what
+        KDE's own Wallpaper page does with the screen its window is on.
 
         The read happens **before** the transaction and not inside it, which is the same split
         `set_switches` makes and for a second reason besides: it is what lets a wallpaper that is
@@ -282,11 +326,27 @@ class WallpaperPart:
         """
         if not target:
             return "error: no wallpaper was named"
+        if all_screens(self.config.wallpaper):
+            screen = ""
         try:
-            state = wallpaper.snapshot()
+            state = wallpaper.snapshot(names=(screen, self.config.colour_screen))
         except wallpaper.WallpaperError as e:
             self.log(f"could not ask the shell what it is showing: {logs.what(e)}", trouble=True)
             return f"error: {e}"
+        view = state
+        if screen:
+            view = wallpaper.on_screen(state, screen)
+            if view is None and (state.get("connectors") or {}).get(screen) is None:
+                # The shell has no way to turn a name into a screen (`screenForConnector`, which it
+                # marks as one to remove): the wallpaper goes where it always went, rather than
+                # nowhere.
+                self.log(f"the shell cannot say which screen {screen} is, so the wallpaper goes on "
+                         f"every screen of the activity")
+                view = state
+            elif view is None:
+                self.log(f"no wallpaper was set: there is no screen called {screen} now",
+                         trouble=True)
+                return f"error: there is no screen called {screen} now"
         #: What this wallpaper **is**, rather than what the desktop is wearing. Both were wrong
         #: before in opposite directions: a mode kept in this app's settings could disagree with
         #: the desktop, and the desktop's own answer can have moved on between the picker opening
@@ -296,7 +356,7 @@ class WallpaperPart:
         if mode == "video" and not wallpaper.plugin_installed(wallpaper.VIDEO_PLUGIN):
             return ("error: the Smart Video Wallpaper Reborn plugin is not installed, "
                     "so there is nothing to play the video with")
-        change = wallpaper.plan(mode, target, state)
+        change = wallpaper.plan(mode, target, view)
         # **The picture travels with the colour, and that is deliberate.** Everything above is a
         # read: what the shell is showing, and whether this wallpaper can be shown at all. The
         # write itself is handed to the deferred half along with the colour, so the two land
@@ -311,8 +371,10 @@ class WallpaperPart:
         #
         # The colour is asked for **whether or not the picture itself moved**: switching the
         # feature on while a wallpaper is already up has to work, and so does picking again the one
-        # that is already there.
-        if self.config.auto_colour:
+        # that is already there. But only for a wallpaper that reaches the screen the colour comes
+        # from: one put on another screen leaves the colour where it is, and goes up at once.
+        if self.config.auto_colour and wallpaper.gives_colour(view, state,
+                                                              self.config.colour_screen):
             self._colour_soon(target, change)
             return "ok"
         if change is not None:
@@ -329,6 +391,66 @@ class WallpaperPart:
             if writer.dry_run() and diff:
                 self.log("would have written:\n" + diff)
         return "ok"
+
+    def screens(self, names) -> dict:
+        """The screens the colour can come from, for the outputs `names` -- the window's -- each
+        with the screen it is now, whether it is the primary, and the wallpaper it shows; how many
+        screens the shell counts, and the screen the colour comes from, resolved. A read."""
+        source = self.config.colour_screen
+        out = {"screens": [], "count": 0, "colour_screen": source, "colour_number": -1,
+               "trouble": ""}
+        try:
+            state = wallpaper.snapshot(names=(*names, source))
+        except wallpaper.WallpaperError as e:
+            out["trouble"] = str(e)
+            return out
+        connectors = state.get("connectors") or {}
+        for name in names:
+            number = connectors.get(name)
+            number = number if type(number) is int else -1
+            view = wallpaper.on_screen(state, name)
+            target = wallpaper.showing(view) if view else ""
+            path = wallpaper.to_path(target).rstrip("/") if target else ""
+            out["screens"].append({
+                "name": name, "number": number, "primary": number == 0,
+                "kind": wallpaper.mode_of(view) if view else "",
+                "file": explain.home(path) if path else "",
+                "wallpaper": os.path.splitext(os.path.basename(path))[0] if path else ""})
+        out["count"] = int(state.get("screens") or 0) or len(state.get("desktops") or [])
+        out["colour_number"] = wallpaper.colour_view(state, source).get("only", -1)
+        return out
+
+    def follow_colour_screen(self, was: str) -> None:
+        """The colour comes from another screen now, so take that screen's wallpaper's colour, the
+        way a wallpaper chosen there would have handed it over -- the owner's choice: choosing the
+        screen is choosing the colour. Nothing happens when both screens show the same wallpaper,
+        which includes a name not connected, read as the primary.
+
+        **A wallpaper and its colour already on their way go first, and are never dropped.**
+        `_colour_soon` keeps one wallpaper change waiting, and a request made now would put its
+        own in that place -- a picker's Enter still waiting for its colour would lose its picture.
+        So while one waits, this is remembered, and asked again when it has landed
+        (`_apply_wallpaper_colour`).
+        """
+        if not self.config.auto_colour:
+            return
+        if self._colour_timer is not None or self._colour_owed is not None:
+            if self._colour_follows is None:
+                self._colour_follows = was
+            return
+        source = self.config.colour_screen
+        try:
+            state = wallpaper.snapshot(names=(was, source))
+        except wallpaper.WallpaperError as e:
+            self.log(f"could not ask the shell what it is showing: {logs.what(e)}", trouble=True)
+            return
+        before = wallpaper.showing(wallpaper.colour_view(state, was))
+        target = wallpaper.showing(wallpaper.colour_view(state, source))
+        if not target or wallpaper.same_target(before, target):
+            return
+        self.log(f"the colour comes from {source or 'the primary screen'} now, so it is taken "
+                 f"from {os.path.basename(target.rstrip('/'))}")
+        self._colour_soon(target, None)
 
     def _colour_soon(self, target: str, change=None) -> None:
         """Ask for this wallpaper and its colour shortly, and only for this one.
@@ -369,6 +491,8 @@ class WallpaperPart:
         if not self.config.auto_colour:
             # Switched off between the picker's call and this. The picture still has to land --
             # it is what somebody asked for, and the colour was only ever the half that follows.
+            # A change of the colour's screen waiting behind it has nothing to follow any more.
+            self._colour_follows = None
             if change is not None:
                 self._put_the_picture_up(change)
             return False
@@ -403,6 +527,12 @@ class WallpaperPart:
         # The tab is drawn from `Theme`, and by now it says something different from what it said
         # when this method's caller was answered.
         self.manager.changed()
+        # A change of the colour's screen that waited for this one: asked again now that nothing
+        # is on its way, against what the screens show now.
+        if self._colour_follows is not None and self._colour_timer is None \
+                and self._colour_owed is None:
+            was, self._colour_follows = self._colour_follows, None
+            self.follow_colour_screen(was)
 
     def _put_the_picture_up(self, change) -> bool:
         """Ask the shell for the wallpaper itself, in a transaction of its own.

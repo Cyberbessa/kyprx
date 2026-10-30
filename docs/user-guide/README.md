@@ -43,6 +43,11 @@ window that is already open to come forward and opens nothing new. A minimised w
 back; a maximised one stays maximised. It stays on the tab it was on, even when the second command
 named another tab.
 
+**It opens floating**, in the middle of the screen, and stays above the other windows while it
+floats, as long as KyprX's tiling runs: the tiled windows do not make room for it. With **Automatic
+tiling** on, **Toggle Float** tiles it until it closes.
+[Floating windows](tiling.md#floating-windows) has the rest.
+
 If a box titled **KyprX is not running** appears instead of the window, see
 [Troubleshooting](../troubleshooting.md#kyprx-is-not-running).
 
@@ -58,17 +63,19 @@ Hold the pointer over a tab's name for a one-line description of it.
   moves or resizes.
 - [Wallpaper](wallpaper.md): whether the wallpaper picker offers pictures or videos, where the
   videos come from, when a video pauses, and how the picker is laid out.
-- [Tiling](tiling.md): how focus moves, the layouts the layout key cycles through, the gaps, and
-  how tiled, new and never-tiled windows behave.
-- [Shortcuts](shortcuts.md): every key KyprX and the tiler answer to, how to change one, and the
-  cheatsheet that lists them.
+- [Tiling](tiling.md): how focus moves, whether windows are tiled as they open or dropped into
+  zones by hand, the arrangements, the zone layouts they are made of and the builder that draws
+  them, the gaps, and how new, floating and never-tiled windows behave.
+- [Shortcuts](shortcuts.md): every key KyprX answers to, its tiling's among them, how to change
+  one, and the cheatsheet that lists them.
 - [Settings](settings.md): notifications, the KyprX folder and the copies of the desk, the
-  problems KyprX has found, credits, and the buttons that restore KyprX's defaults or take KyprX
-  off the desk.
+  problems KyprX has found, *About KyprX…* with the credits, and the buttons that restore KyprX's
+  defaults, take KyprX off the desk or remove it.
 
 Most sections of a tab have a small circled **i** beside their title. Hold the pointer over it, or
 over the section, for one sentence about what the section is for; clicking the **i** shows the
-same sentence.
+same sentence. On the Tiling tab every setting has one too, after its name, with one sentence about
+what the setting does.
 
 ## Above the tabs
 
@@ -91,9 +98,11 @@ KyprX's default: ticked.
 
 ### Colour from the wallpaper
 
-Ticked, every wallpaper you set from the wallpaper picker hands its colour to the desktop, whether
-it is a picture or a video. Ticking or unticking it changes nothing on screen by itself: it decides
-where the *next* colour comes from.
+Ticked, a wallpaper you set from the wallpaper picker hands its colour to the desktop, whether it
+is a picture or a video. With more than one screen, only the wallpaper of the screen the colour
+comes from does: the primary screen, unless another is chosen on [Appearance](appearance.md).
+Ticking or unticking it changes nothing on screen by itself: it decides where the *next* colour
+comes from.
 
 Putting a profile on unticks it, so that the profile's colours stay as they were saved.
 
@@ -129,10 +138,10 @@ with the arrow keys, or clicking a number up several steps, is one change.
 
 | What you change | When it is written |
 |---|---|
-| A tick box, menu, number or colour on the Effects and Tiling tabs, or in the Window section of Appearance, except **Opacity** | 0.7 seconds after your last change there |
+| A tick box, menu, number or colour on the Effects and Tiling tabs, or in the Window section of Appearance, except **Opacity**; an edit in the Tiling tab's **Arrangements** and **Zone layouts** boxes | 0.7 seconds after your last change there |
 | Anything in the Colours box on Appearance, and **Opacity** in its Window section | 0.5 seconds after your last change there |
 | A tick in the table on the Windows tab | 0.4 seconds after your last tick; every tick made by then goes together |
-| Everything else: the strip above the tabs, a number chosen in the Windows tab's **Opacity** column, the buttons of the Profiles box, a key on the Shortcuts tab, the Wallpaper tab, the Settings tab | at once |
+| Everything else: the strip above the tabs, a number chosen in the Windows tab's **Opacity** column, the buttons of the Profiles box, a key on the Shortcuts tab, the Wallpaper tab, the Settings tab, and **Put KyprX's zone layouts and arrangements back…** on the Tiling tab | at once |
 
 - **A number you type is read when you finish it**: when you press Enter or move to another
   control. It is not read while you type, so typing 120 is one change and not 1, 12 and 120.
@@ -197,8 +206,8 @@ written down instead, in plain words, in the terminal where the dry run was star
 journal. While it lasts:
 
 - every message on the line at the bottom starts with **Dry run -- nothing was written:**;
-- the **Title bar settings…** buttons, on the Appearance and Settings tabs, cannot be pressed,
-  because the decoration's own settings save for real and a dry run cannot hold that back.
+- the **Title bar settings…** button, on the Appearance tab, cannot be pressed, because the
+  decoration's own settings save for real and a dry run cannot hold that back.
 
 Nothing needs doing about the band: it is there so that no change looks real. Close the window
 before you stop the dry run. How to start one, and what it holds back, is in
@@ -224,12 +233,14 @@ the old one. The Settings tab's greyed line says which version the window is.
 
 What to do: **Restart the background service**, at the end of the band. A window opened with the
 settings key closes with it; open it again. When the band says instead that this window is the
-older one, close the window and open it again. Logging out and back in does both.
+older one, close the window and open it again. Logging out and back in does both. Until then, the
+Tiling tab's Arrangements and Zone layouts boxes can be locked
+([When the boxes cannot be used](tiling.md#when-the-boxes-cannot-be-used)).
 
 ### Something KyprX needs is missing
 
 An orange band that starts with **KyprX is missing part of what it is built on:** and names the
-programs. One of the five programs KyprX is built on is not installed, is too old, or is installed
+programs. One of the four programs KyprX is built on is not installed, is too old, or is installed
 and not running -- which is what a compiled program does after a Plasma update, until it is built
 again for the new Plasma. The tab that depends on it also says so on itself.
 
@@ -251,17 +262,17 @@ says **Your setup is back, and KyprX is on the desk again.** when it is done. If
 be put back, the line says why; **Go back to a copy…**, on the Settings tab, lists the other
 copies. Other ways back are on [Settings](settings.md).
 
-### Tiling is switched off
+### KyprX's tiling is not running
 
-An orange band at the top of the Tiling tab only, which says **Tiling is switched off, so nothing
-on this tab is doing anything.** Something has switched the tiling script off.
+An orange band at the top of the Tiling tab only, which says why KyprX's tiling is not laying out
+any window, and that nothing on the tab is doing anything: **Tiling is switched off**, no part of
+KyprX in the compositor asking for the tiling yet, or KyprX taken off the desk. After an update,
+the band can say instead that KyprX's part of the compositor is from before the update: that part
+goes on tiling as it did, and what is new on the tab starts at the next login.
 
-What to do: **Switch tiling back on**, at the end of the band, puts the tiling script back on and
-changes nothing else. [Tiling](tiling.md) has the rest.
-
-When Krohnkite is not installed at all, the same band says so instead, and that nothing on the tab
-does anything until it is. There is no button then: switching on a program that is not there would
-do nothing. [What KyprX needs](settings.md#what-kyprx-needs) says how to install it.
+What to do: the band says it. When the tiling is switched off, **Switch tiling back on**, at the
+end of the band, switches it back on and changes nothing else; the band has a button only then.
+[When tiling is switched off](tiling.md#when-tiling-is-switched-off) has every case.
 
 The Wallpaper tab and the Colours box on the Appearance tab have orange bands of their own; their
 pages explain them.

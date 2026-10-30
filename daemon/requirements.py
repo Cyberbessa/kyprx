@@ -1,8 +1,10 @@
-"""What KyprX needs on this machine: the five projects it is built on, whether each one is there,
+"""What KyprX needs on this machine: the four projects it is built on, whether each one is there,
 which version, and whether the compositor is actually running it.
 
-Every one of the five is required. KyprX is those five put to one use, and a desk without one of
-them is not KyprX, so the packages install them with it. What is checked here is what can still
+Every one of the four is required. KyprX is those four put to one use, and a desk without one of
+them is not KyprX, so the packages install them with it. The tiling is not one of them: it is
+KyprX's own, in its compositor script, and whether it runs is the Tiling tab's to say
+(`tiling_state`, in `daemon/kyprd_tiling.py`). What is checked here is what can still
 go wrong after that: one removed by hand; one never installed, because KyprX was installed from a
 working tree; and the one that happens to everybody sooner or later -- a compiled plugin built for
 the KWin that ran before the last Plasma update. The compositor then lists it and does not run it,
@@ -10,13 +12,15 @@ and the blur or the title bars simply stop, with nothing on screen saying why.
 
 **How each one is found**, and why that way:
 
-- Krohnkite, Geometry Change and the video plugin by their `metadata.json` in the data folders the
-  desktop searches (`about.data_dirs`), which also carries their version. A file, not
-  `kpackagetool6`: this is asked when a window opens, and a process started to draw a page is a
-  page that stutters (`wallpaper.plugin_dir` says the same).
-- Better Blur DX by the compositor's own list of the effects it can load, and whether it runs by
-  the list of those it has loaded. Its file, in the folders Qt looks for plugins in, when the
-  compositor cannot be asked.
+- Better Blur DX and Geometry Change by the compositor's own list of the effects it can load, and
+  whether they run by the list of those it has loaded. When the compositor cannot be asked, the
+  blur's file in the folders Qt looks for plugins in answers, and Geometry Change's
+  `metadata.json` in the data folders the desktop searches (`about.data_dirs`), which also carries
+  its version.
+- The video plugin by its `metadata.json` in the data folders the desktop searches
+  (`about.data_dirs`), which also carries its version. A file, not `kpackagetool6`: this is asked
+  when a window opens, and a process started to draw a page is a page that stutters
+  (`wallpaper.plugin_dir` says the same).
 - Klassy by its decoration plugin's file, and whether it runs by the decoration the compositor says
   it is drawing with -- while `kwinrc` asks for Klassy's. The compositor falls back to its own
   decoration when it cannot load the one asked for.
@@ -28,7 +32,9 @@ exactly those through. The package managers' versions cost a process each, so th
 answer and works it out again only when asked to (`InstallationPart.needs`).
 
 Run as a program -- `python3 daemon/requirements.py` -- it prints what is wrong and exits 1, or says
-all five are there and exits 0. `install.sh` runs it before installing anything.
+all four are there and exits 0. `install.sh` runs it before installing anything. With `--facts`,
+each project is preceded by one line saying what its answer was built on (`facts`); nothing is
+written and the exit code stays the same.
 """
 
 from __future__ import annotations
@@ -60,7 +66,7 @@ TOO_OLD = "too old"
 
 @dataclass(frozen=True)
 class Project:
-    """One of the five, as KyprX knows it."""
+    """One of the four, as KyprX knows it."""
     key: str
     name: str
     #: What KyprX has none of without it, as a noun phrase: "without it KyprX has no <purpose>".
@@ -83,9 +89,6 @@ PROJECTS = (
             "https://github.com/xarblu/kwin-effects-better-blur-dx",
             {about.FEDORA: "kwin-effects-better-blur-dx",
              about.ARCH: "kwin-effects-better-blur-dx"}),
-    Project("tiling", "Krohnkite", "tiling", effects.TILING_PLUGIN,
-            "https://codeberg.org/anametologin/Krohnkite",
-            {about.FEDORA: "kwin-scripts-krohnkite", about.ARCH: "kwin-scripts-krohnkite"}),
     Project("animation", "Geometry Change", "window animation", effects.GEOMETRY_PLUGIN,
             "https://github.com/peterfajdiga/kwin4_effect_geometry_change",
             {about.FEDORA: "kwin-effects-geometry-change",
@@ -199,6 +202,22 @@ def _has_plugin_file(m: Machine, leaf: str) -> bool:
     return any(os.path.isfile(os.path.join(base, leaf)) for base in m.plugin_dirs)
 
 
+def _raw_switch(m: Machine, plugin: str) -> str:
+    """The effect's on-and-off switch as `kwinrc` spells it, `absent` when the file does not."""
+    raw = m.kwin.get(effects.PLUGINS_GROUP, f"{plugin}Enabled")
+    if raw is None or raw is kconfig.NO_VALUE:
+        return "absent"
+    return str(raw)
+
+
+def _metadata_words(m: Machine, leaf: str) -> str:
+    """`metadata found, version X` -- or `not found` -- for the end of a `facts` line."""
+    found, version = _metadata_version(m, leaf)
+    if not found:
+        return "metadata not found"
+    return f"metadata found, version {version}" if version else "metadata found"
+
+
 def _state(project: Project, m: Machine) -> tuple[str, str]:
     """(state, version) of one project on this machine."""
     listed, loaded = m.effects if m.effects is not None else (None, None)
@@ -225,16 +244,19 @@ def _state(project: Project, m: Machine) -> tuple[str, str]:
             return NOT_RUNNING, version
         return OK, version
     if project.key == "animation":
-        installed, version = _metadata_version(m, effects.GEOMETRY_METADATA)
+        found, version = _metadata_version(m, effects.GEOMETRY_METADATA)
+        # What the compositor can load is what counts, as for the blur: KWin 6.8 looks for a
+        # scripted effect only under `kwin/effects`, 6.4 to 6.7 under `kwin-wayland/effects` too
+        # (`ScriptedEffectLoader`, read in both sources), so a package where this compositor does
+        # not look is not there for it. The file says the version, and decides when the compositor
+        # cannot be asked.
+        installed = project.plugin in listed if listed is not None else found
         if not installed:
             return MISSING, ""
         if (loaded is not None and effects.plugin_enabled(m.kwin, project.plugin)
                 and project.plugin not in loaded):
             return NOT_RUNNING, version
         return OK, version
-    if project.key == "tiling":
-        installed, version = _metadata_version(m, effects.TILING_METADATA)
-        return (OK if installed else MISSING), version
     # The video plugin.
     installed, version = _metadata_version(
         m, f"plasma/wallpapers/{project.plugin}/metadata.json")
@@ -301,12 +323,56 @@ def check() -> list[dict]:
     return [asdict(need) for need in assess(machine())]
 
 
+def facts(m: Machine) -> list[str]:
+    """What each answer was built on, one line per project, for whoever asks why.
+
+    Each line names only what that project's answer used -- the file that was looked for, what the
+    compositor answered, the switch's raw value -- so a state that surprises somebody can be
+    traced to the fact it came from. Writes nothing; `main` prints these under `--facts`, and the
+    daemon and the window never ask for them.
+    """
+    listed, loaded = m.effects if m.effects is not None else (None, None)
+
+    def among(name: str, effects_list) -> str:
+        """`yes` or `no` for a list the compositor answered with, `cannot be asked` for None."""
+        if effects_list is None:
+            return "cannot be asked"
+        return "yes" if name in effects_list else "no"
+
+    def effect_line(project: Project, tail: str) -> str:
+        return (f"{project.name}: listed by the compositor {among(project.plugin, listed)}; "
+                f"running {among(project.plugin, loaded)}; "
+                f"switch in kwinrc {_raw_switch(m, project.plugin)}; {tail}")
+
+    drawn = ("(cannot be asked)" if m.decoration is None
+             else m.decoration or "(nothing named)")
+    library = m.kwin.get("org.kde.kdecoration2", "library")
+    _, blur, animation, video = PROJECTS
+    lines = [
+        f"system: {m.system}",
+        f"Klassy: plugin file "
+        f"{'found' if _has_plugin_file(m, klassy.DECORATION_PLUGIN_FILE) else 'not found'}; "
+        f"the compositor draws with {drawn}; "
+        f"kwinrc asks for {library if library not in (None, kconfig.NO_VALUE) else '(nothing)'}",
+        effect_line(blur, "plugin file found" if _has_plugin_file(m, effects.BLUR_PLUGIN_FILE)
+                    else "plugin file not found"),
+        effect_line(animation, _metadata_words(m, effects.GEOMETRY_METADATA)),
+        f"{video.name}: "
+        f"{_metadata_words(m, f'plasma/wallpapers/{video.plugin}/metadata.json')}",
+    ]
+    return lines
+
+
 def main() -> int:
-    wrong = [n for n in assess(machine()) if n.state != OK]
+    m = machine()
+    if "--facts" in sys.argv[1:]:
+        for line in facts(m):
+            print(f"  {line}")
+    wrong = [n for n in assess(m) if n.state != OK]
     for n in wrong:
         print(f"  {n.detail}\n    {n.fix}")
     if not wrong:
-        print("  all five projects KyprX is built on are installed and running")
+        print("  all four projects KyprX is built on are installed and running")
     return 1 if wrong else 0
 
 

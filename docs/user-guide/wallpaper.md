@@ -8,8 +8,9 @@ Everything on the tab is written the moment you change it (see
 [The KyprX window](README.md#changes-apply-by-themselves)).
 
 **Everything here is about the activity you are in.** In Plasma each activity has its own
-wallpaper. The tab shows the activity you are in, and a change reaches every screen of that
-activity and no other activity. Switch to another activity and the tab follows it.
+wallpaper, and each screen of an activity can have its own. The tab shows the activity you are in,
+and a change on it reaches that activity and no other. Switch to another activity and the tab
+follows it.
 
 From top to bottom the tab has an orange warning band (only when there is something to say), the
 **Picker** section, the **Layout** section, and one line of summary.
@@ -22,6 +23,10 @@ carry more than one of these lines:
 - **Smart Video Wallpaper Reborn is not installed, so the picker can only offer pictures.** Video
   wallpapers need that plugin, and KyprX does not install it. Where it comes from is on
   Smart Video Wallpaper Reborn.
+- **the screens of this activity show different kinds of wallpaper. Pictures and Videos here
+  switch every one of them.** One screen shows a picture and another a video, which only
+  *Desktop and Wallpaper* does. **Pictures** and **Videos** show the kind of the screen the picker
+  would open on, and ticking one switches every screen of the activity to it.
 - **the video plugin is set to change the wallpaper by itself, so a video chosen here will not
   stay. Its own settings are where that is turned off; this app does not touch it.** The video
   plugin's own **Change Wallpaper** setting, in *Desktop and Wallpaper*, is not **Never** on a
@@ -58,7 +63,8 @@ The missing plugin and the old plugin are also reported in the Problems box on t
 ## Picker
 
 The section's **i** says: *What the wallpaper key offers you when you press it. A wallpaper you
-choose reaches every screen of the activity you are in, and no other.*
+choose goes on the screen the picker opened on, or on every screen of the activity with Set for all
+screens ticked, and never on another activity.*
 
 **Pictures — the folder below, and KDE's own wallpapers** and **Videos — played by Smart Video
 Wallpaper Reborn** choose which kind of wallpaper the activity you are in shows, and so what the
@@ -131,16 +137,32 @@ The menu is greyed unless **Videos** is ticked. A paused video still shows throu
 windows, so it can look like a still picture: see
 [A video wallpaper looks stuck](../troubleshooting.md#a-video-wallpaper-looks-stuck).
 
+**Set for all screens** is the last tick box of the section, and it is there only when the
+computer has more than one screen. Unticked, a wallpaper you choose in the picker goes on the screen
+the picker opened on: the screen you are working on. Ticked, it goes on every screen of the activity
+you are in. These are the words and the choice of KDE's own Wallpaper page, in System Settings,
+and it starts unticked there too. KyprX's default: unticked.
+
+**Pictures**, **Videos** and **Pause the video** are not one screen's: each of them reaches every
+screen of the activity you are in, whatever **Set for all screens** says.
+
 ## Layout
 
-The section's **i** says: *What the wallpaper picker looks like when it opens. All three show the
-same wallpapers and answer the same keys.*
+The section's **i** says: *What the wallpaper picker looks like when it opens. Both show the same
+wallpapers and answer the same keys.*
 
-**Pages — over the desktop, the chosen one in the middle and the rest behind it**,
-**Strip — a column of thumbnails beside one big picture, in a panel, no file names** and
-**Strip with names — the same thumbnails and big picture, with the file name under the picture**
-choose which layout the picker opens in. Each is described below, under [Pages](#pages),
-[Strip](#strip) and [Strip with names](#strip-with-names). KyprX's default: **Pages**.
+**Pages — over the desktop, the chosen one in the middle and the rest behind it** and
+**Strip — a column of thumbnails beside one big picture, in a panel** choose which layout the
+picker opens in. Each is described below, under [Pages](#pages) and [Strip](#strip). KyprX's
+default: **Pages**.
+
+**Show the names and the keys in the strip** is the tick box under **Strip**. Ticked, the strip
+writes the name of the selected wallpaper under the big picture, a line with the count and the
+keys, and a card's name. Unticked, it shows the pictures and nothing else, and writes a line only
+when something is wrong. The box is greyed while **Pages** is chosen: Pages writes nothing but a
+problem either way. KyprX's default: unticked.
+
+A choice saved by an earlier KyprX as **Strip with names** opens the strip with this box ticked.
 
 ## The line at the bottom
 
@@ -148,7 +170,7 @@ The last line of the tab reads, for example, **24 to choose from · 2 screens ·
 Meta+R**. It says:
 
 - how many wallpapers the picker would list right now;
-- how many screens the activity you are in has, only when there is more than one;
+- how many screens the computer has, only when there is more than one;
 - which key opens the picker, as it is set on the [Shortcuts](shortcuts.md) tab. **no key yet**
   means the picker has no key there. **no key yet — install.sh has not reloaded the compositor
   script** means the desktop does not know the picker's shortcut at all; see
@@ -162,9 +184,10 @@ Meta+R**. It says:
 - **Pick a wallpaper**, when you right-click KyprX in the application menu.
 - `kyprx --wallpaper`, from a terminal.
 
-The picker opens in the middle of the screen with the wallpaper that is on screen now selected, or
-the first one in the list when that one is not in it. Pressing the key again while the picker is
-open closes it and opens a new one.
+The picker opens in the middle of the screen you are working on — the one under the pointer, or
+the one with the active window, as KDE is set — and is sized for that screen. The wallpaper that
+screen shows now is selected, or the first one in the list when that one is not in it. Pressing the
+key again while the picker is open closes it and opens a new one, on the screen you are on then.
 
 **Moving through the list changes nothing on the desktop.** Nothing happens until you set a
 wallpaper, so **Esc** leaves the desktop exactly as it was.
@@ -174,7 +197,9 @@ The picker closes by itself as soon as another window takes the focus.
 ### What it lists
 
 What the picker lists follows **Pictures** and **Videos** on the tab, which is the kind of
-wallpaper the activity you are in is showing.
+wallpaper the activity you are in is showing. When its screens show different kinds — one a
+picture and another a video, chosen in *Desktop and Wallpaper* — the picker lists the kind of the
+screen it opens on.
 
 **Pictures** lists what is in the pictures folder set on the tab — your Pictures folder, while no
 folder is set — and, while **Also list KDE's own wallpapers** is ticked, what is in the
@@ -229,16 +254,16 @@ A panel in the middle of the screen, in your colour scheme's window colour, with
 - On the left, a strip of narrow cards, one per wallpaper, side by side. It scrolls sideways to keep
   the selected card in view, and the selected card has a border in the outline's colour.
 - On the right, the selected wallpaper as one big picture, shown whole.
-- Under the picture, a line such as **24 image(s) — arrows to move, Enter to set, Esc to leave**
-  (**video(s)** for videos). A line about a problem, when there is one, goes above it.
-- No file name under the picture. A card still says which wallpaper it is when you point at it,
-  and a card whose picture cannot be shown yet still writes its name on the card itself.
+- Nothing else while **Show the names and the keys in the strip** is unticked: no name, no line
+  with the keys, and a card says nothing when you point at it. A line appears under the picture
+  only when there is something wrong to say (see [Setting a wallpaper](#setting-a-wallpaper)).
 
-### Strip with names
+With the box ticked, the strip also writes:
 
-The Strip with one difference: the file name of the selected wallpaper is written under the big
-picture, in bold. Everything else is the same — the panel, the strip of cards, the big picture,
-and the line with the count and the keys.
+- the name of the selected wallpaper under the big picture, in bold;
+- under it, a line such as **24 image(s) — arrows to move, Enter to set, Esc to leave**
+  (**video(s)** for videos), with a line about a problem above it when there is one;
+- a card's name when you point at it, and on a card whose picture cannot be shown yet.
 
 ### Keys and clicks
 
@@ -247,22 +272,23 @@ and the line with the count and the keys.
 | **Right** or **Down** arrow | Selects the next wallpaper. |
 | **Left** or **Up** arrow | Selects the previous one. |
 | **Home** / **End** | Selects the first / the last. |
-| **Page Down** / **Page Up** | Moves five forward / back in Pages, and as many cards as the strip shows at once in either strip. |
+| **Page Down** / **Page Up** | Moves five forward / back in Pages, and as many cards as the strip shows at once in the strip. |
 | **Enter** (on the main keyboard or the number pad) or **Space** | Sets the selected wallpaper. |
 | **Esc** | Closes the picker without changing anything. |
 | Pages: a click on a page behind | Brings that page to the front. It does not set it. |
 | Pages: a click on the page in front | Sets it. |
 | Pages: a click anywhere else | Closes the picker without changing anything. |
-| Either strip: a click on a card | Sets that wallpaper at once. |
+| Strip: a click on a card | Sets that wallpaper at once. |
 
 In Pages a click on a page behind only brings it forward, because those pages are thin slivers and
-a click a little off would otherwise set a wallpaper you never looked at. In either strip every
-card is whole, so a click sets it.
+a click a little off would otherwise set a wallpaper you never looked at. In the strip every card
+is whole, so a click sets it.
 
 ### Setting a wallpaper
 
-**A wallpaper reaches every screen of the activity you are in, and no other activity.** Every
-screen gets the same one. Other activities keep theirs.
+**A wallpaper goes on the screen the picker opened on**, and the other screens keep theirs. With
+**Set for all screens** ticked on the tab, it goes on every screen of the activity you are in.
+Other activities keep theirs either way.
 
 - **A picture** is set as the desktop's picture wallpaper. A package is set as a whole, not as one
   picture from it, so the desktop still picks the size and the light or dark version itself.
@@ -273,11 +299,13 @@ screen gets the same one. Other activities keep theirs.
   ticked.
 
 While the wallpaper is being set, the picker shows the word **setting** followed by the
-wallpaper's name. When the desktop takes it, the picker closes. When it does not, the picker stays
-open and shows **could not set**, the name, and **— see the daemon's log**
-([Troubleshooting](../troubleshooting.md) says where the log is).
+wallpaper's name; the strip shows it only while its text is ticked. When the desktop takes it, the
+picker closes. When it does not, the picker stays open and shows **could not set**, the name, and
+**— see the daemon's log** ([Troubleshooting](../troubleshooting.md) says where the log is), in
+the strip whether or not its text is ticked.
 
-Other lines the picker can show, under the page in front or in a strip's panel:
+Other lines the picker can show, under the page in front or in the strip's panel, with the strip's
+text ticked or not:
 
 - **nothing to choose from**: the list is empty, for example a video folder with no videos in it;
 - **the video plugin is set to change the wallpaper on its own, so this one will not stay**: the
@@ -292,12 +320,15 @@ Other lines the picker can show, under the page in front or in a strip's panel:
 ### Colour from the wallpaper
 
 When **Colour from the wallpaper**, above the tabs of the settings window, is ticked (see
-[The KyprX window](README.md#colour-from-the-wallpaper)), every wallpaper set from the picker hands
-its colour to the desktop. What that colour does is on
-[Appearance](appearance.md#colours).
+[The KyprX window](README.md#colour-from-the-wallpaper)), a wallpaper set from the picker hands its
+colour to the desktop when it goes on the screen the colour comes from — the primary screen, unless
+another is chosen under **Colour from the wallpaper of** on [Appearance](appearance.md) — or on
+every screen. One set on another screen changes that screen and leaves the colours alone. What the
+colour does is on [Appearance](appearance.md#colours).
 
 - KyprX starts working the colour out as soon as the selection stops on a wallpaper, so it is
-  usually ready by the time you set it.
+  usually ready by the time you set it — only in a picker whose wallpaper would hand its colour
+  over.
 - The picker closes at once, and the new wallpaper appears a moment later, together with the new
   colours. How long that takes was measured — see the comment in `daemon/kyprd_wallpaper.py`
   (`WallpaperPart.set_wallpaper`). The screen can stop briefly while the colours change; see
@@ -321,8 +352,9 @@ once. A file replaced by another of the same name gets a new picture.
   taken with `ffmpeg`.
 
 When a wallpaper has no picture, because `ffmpeg` is not installed or because this computer cannot
-read that picture file, it is still listed and can still be set. In either strip its card shows its
-name, written sideways, and the big picture reads **no preview**. In Pages it is a plain page.
+read that picture file, it is still listed and can still be set. In the strip with its text ticked,
+its card shows its name, written sideways, and the big picture reads **no preview**; with the text
+unticked, the card and the big picture are left plain. In Pages it is a plain page.
 Without `ffmpeg`, **Colour from the wallpaper** also has no colour to take from a video.
 
 ### Always fully opaque
@@ -340,9 +372,11 @@ change the picture you are judging.
   the folders named in the tooltip of **Also list KDE's own wallpapers** is listed once it is
   copied into one of them.
 - **Choosing the wallpaper that is already on** changes nothing on the desktop. With
-  **Colour from the wallpaper** ticked, it still hands that wallpaper's colour to the desktop, which
-  is the way to take the colour of the wallpaper you already have.
-- **On more than one screen**, the picker is sized for the main screen, and the wallpaper you set
-  still goes on all of them.
+  **Colour from the wallpaper** ticked, choosing it on the screen the colour comes from still hands
+  that wallpaper's colour to the desktop, which is the way to take the colour of the wallpaper you
+  already have.
+- **On more than one screen**, the picker opens on the screen you are working on, sized for it,
+  and the wallpaper you set goes on that screen alone, unless **Set for all screens** is ticked.
+  A screen keeps its wallpaper when another screen's changes.
 - **Two activities, two kinds.** One activity can show a picture and another a video. The tab, the
   picker and **Pause the video** always follow the activity you are in.

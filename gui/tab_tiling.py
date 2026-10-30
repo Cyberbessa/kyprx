@@ -1,84 +1,156 @@
-"""The Tiling tab: the layout rotation, how tiling behaves, and the focus settings that go with it.
+"""The Tiling tab: how KyprX's own tiler lays windows out, and the focus settings that go with it.
 
-A page of `gui/fields.py`'s `TILING_FIELDS` in the form engine, with what the fields cannot say on
-their own: the gaps as one grid, which layouts the rotation walks and in what order, settings that
-do nothing while their switch is off, and the focus policies the desktop discourages under a tiler.
-It has no on/off control -- tiling is what KyprX is for -- and any change here puts the tiling
-script back on if something had switched it off.
+A page of `gui/fields.py`'s `TILING_FIELDS` in the form engine, each setting with its sentence on a
+mark after its name, and with what the fields cannot say on their own: the zone layouts and the
+arrangements -- one value of the tiler's (`gui/tiling_value.py`), which two boxes edit, the
+Arrangements box (`gui/arrangements_box.py`), folded away while automatic tiling is off, and the
+Zone layouts box (`gui/zone_layouts_box.py`) -- the gaps as one grid, settings that do nothing
+while their switch is off or while a menu is on an answer that does not use them, the focus
+policies the desktop discourages under a tiler, and the band that says when what is set here is
+not in force, or not all of it, and why -- which the daemon decides, in `tiling_state`. It has no
+on/off control -- tiling is what KyprX is for -- and any change here puts tiling back on if
+something had switched it off.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout,
-                               QWidget)
+import html
 
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QPushButton, QScrollArea, QWidget
+
+from arrangements_box import ArrangementsBox
 from fields import FOCUS_DELAY_NOTE, FOCUS_DISCOURAGED, FOCUS_STEALING_NOTE, TILING_FIELDS
 from form import SettingsPage
-from widgets import SECTION_HINTS, Section, Spin, unavailable, warning
+from tiling_value import TilingValue
+from widgets import warning
+from zone_layouts_box import ZoneLayoutsBox
 
 
-#: The band's two sentences. Off is a switch away from on; not installed is not, and the button
-#: that switches tiling back on would switch on nothing, so it goes while that is the case.
+#: The band's sentences, by the daemon's `tiling_state`. Each says why what is on the tab is not in
+#: force -- nothing of it, or under a part of the compositor from before an update, what is new --
+#: and where the way out is; only a switch that is off has its way out on this tab, the button
+#: beside the band. A state the daemon does not send -- an older daemon -- shows no band: this
+#: window cannot tell then, and a band that guessed would be the tab saying something untrue.
 TILING_OFF = "Tiling is switched off, so nothing on this tab is doing anything."
-TILING_MISSING = "Nothing on this tab does anything until it is. The Settings tab says what to do."
+TILING_OFF_DESK = ("KyprX is off this desk, so its tiling waits and nothing on this tab is doing "
+                   "anything. Put my setup back, at the top of the window, brings it back.")
+#: The compositor keeps what it compiled of a script for the whole session and never reads the
+#: files again before the next login (`docs/modules/kwin-script.md` has the finding), so a newer
+#: KyprX's part of the compositor is not the one running until then. Two states say so, and each
+#: band says what that login does and no more.
+#:
+#: "no-script": no part of the compositor has asked for the tiling since the daemon started -- a
+#: part from before KyprX tiled never asks -- so nothing tiles.
+TILING_NO_SCRIPT = ("KyprX's part of the compositor is not the one that tiles yet, so nothing on "
+                    "this tab is doing anything. Log out and back in to start it.")
+#: "old-script": a part of another version asked, and it goes on tiling with what it knows: the
+#: answer it reads only ever gains fields, so the settings it had act at once, and what is new waits
+#: for the part installed, which only that login starts.
+TILING_OLD_SCRIPT = ("KyprX's part of the compositor is from before the update, so what is new on "
+                     "this tab starts at the next login; until then the desktop tiles as it did. "
+                     "Log out and back in to start it.")
+BANDS = {"off": TILING_OFF, "off-desk": TILING_OFF_DESK, "no-script": TILING_NO_SCRIPT,
+         "old-script": TILING_OLD_SCRIPT}
+
+AUTO = ("tiling", "", "autoTiling")
+#: What a window that finds every zone taken does, and where the desktop it then goes to is made.
+OVERFLOW = ("tiling", "", "newWindowOverflow")
+NEW_DESKTOP = ("tiling", "", "newDesktopPosition")
+
+
+def _in_tab_order(part: QWidget) -> list[QWidget]:
+    """The controls in `part` that take the focus, in the keyboard's Tab order -- read while the
+    page is built, when what a part holds comes straight after it in that order. A control that
+    hands its focus on to the one it belongs to, as a spin box's line does, is left out: it goes
+    where that one goes.
+
+    The focus proxy is asked only of a control that takes the focus at all, and after that is
+    known: asked of a table header's viewport, whose proxy is the header, it leaves the two
+    wrappers holding each other in PySide's records, and the collector then frees the header
+    under its table. Measured offscreen with PySide 6.11: this walk over the Tiling page, the
+    proxy asked first, had the next collection destroy the Arrangements table's header, and the
+    page crashed at its next paint; asked in this order, nothing was destroyed (`Keyboard.stops`
+    in tests/test_tiling_tab.py has why)."""
+    found = []
+    control = part.nextInFocusChain()
+    while part.isAncestorOf(control):
+        if control.focusPolicy() != Qt.FocusPolicy.NoFocus and control.focusProxy() is None:
+            found.append(control)
+        control = control.nextInFocusChain()
+    return found
 
 
 class TilingPage(SettingsPage):
-    """Tiling: the layout rotation, how it behaves, and the focus settings that go with it.
+    """Tiling: the zone layouts and the arrangements, how they behave, and the focus settings that
+    go with it.
 
     There is no on/off control any more, and that is the point of this app rather than an omission:
     KyprX exists to put a tiling desktop on KDE, so "tiling off" is not one of its states. Applying
-    anything here switches the tiling script back on if something had switched it off — see the
-    `tiling` entry in `daemon/defaults.py`. Turning it off for good is done in the desktop's own
-    settings, and the next change here will undo that.
+    anything here switches tiling back on if something had switched it off — see the `tiling`
+    entry in `daemon/defaults.py`.
+
+    **The zone layouts and arrangements have a refusal of their own, and the page keeps it.** While
+    a question or a menu of either box is open, or a mouse button is down on the builder, the page
+    does not repaint -- repainting inside a question's own event loop pulls the value out from
+    under the answer -- and a repaint refused for that is owed, and paid the moment the value is
+    idle (`TilingValue.busy`). Refused and forgotten, a change that arrived meanwhile would leave the
+    boxes comparing against what the file held before it: putting a value back would then look like
+    no change, and be sent nowhere.
+
+    **Every setting carries its sentence on a mark after its name** (`marks`), and not on the
+    name's tooltip alone: the owner asked for the marks on this tab.
     """
 
     enforces = "tiling"
 
-    #: A switch and the setting that does nothing while it is off. Greyed rather than hidden, and
-    #: the widget rather than the label -- the label's grey means something else here.
-    FOLLOWS = ((("tiling", "", "limitTileWidth"), ("tiling", "", "limitTileWidthRatio")),
-               (("tiling", "", "adjustLayout"), ("tiling", "", "adjustLayoutLive")))
+    #: A switch and the settings that do nothing while it is off. Greyed rather than hidden, and
+    #: the widget rather than the label -- the label's grey means something else here. With
+    #: automatic tiling off nothing is tiled, so none of these has anything to act on: no window
+    #: goes anywhere in a layout, no arrangement is ever full, no tiled edge is dragged. The names
+    #: on screen follow no switch, and nor do the zone layouts, which a drag offers in both modes.
+    #: The Arrangements box folds away with the switch instead (`_follow_switches`).
+    FOLLOWS = ((AUTO, ("tiling", "", "adjustLayoutLive")),
+               (AUTO, ("tiling", "", "newWindowPosition")),
+               (AUTO, OVERFLOW),
+               (AUTO, NEW_DESKTOP),
+               (AUTO, ("tiling", "", "floatUtility")))
+
+    #: A menu, the answers on which a setting does something, and that setting: greyed the way
+    #: `FOLLOWS` greys, on any other answer. Where a new desktop goes matters only while a window
+    #: that finds every zone taken is given a new desktop. A setting in both tables is live only
+    #: while both allow it.
+    FOLLOWS_ANSWER = ((OVERFLOW, ("0",), NEW_DESKTOP),)
 
     def __init__(self, client, parent=None):
-        super().__init__(TILING_FIELDS, client, parent)
-        self.layout_boxes: dict[str, QSpinBox] = {}
-        self._layouts_at_load: dict[str, str] = {}
+        super().__init__(TILING_FIELDS, client, parent, marks=True)
+        #: A repaint refused while the zone layouts and arrangements were busy, to be made when
+        #: they are not.
+        self._owed = False
+        #: The one value both boxes edit, painted once per answer (`_load`). Its edits start the
+        #: clock as a field's do; putting KyprX's own back is sent at once, before an edit made in
+        #: the next moment can take its place (`TilingValue.put_back` says why).
+        self.tiling_value = TilingValue(self)
+        self.tiling_value.changed.connect(self.queue)
+        self.tiling_value.send_now.connect(self.flush)
+        self.tiling_value.idle.connect(self._pay_owed)
+        #: Under the switch that says whether windows are laid out at all, and above the gaps: the
+        #: arrangements are what is laid out, the zone layouts what they are made of and what a
+        #: drag offers, and the gaps are the space around it.
+        self.arrangements = ArrangementsBox(self.tiling_value)
+        self.zone_layouts = ZoneLayoutsBox(self.tiling_value)
+        self.arrangements.show_layout.connect(self._show_layout)
+        self.after("Automatic tiling", self.arrangements)
+        self.column.insertWidget(self.column.indexOf(self.arrangements) + 1, self.zone_layouts)
+        self._area = self.findChild(QScrollArea)
 
-        layouts = Section("Layouts", SECTION_HINTS["Layouts"] + " Nought takes one out.")
-        column = QVBoxLayout(layouts)
-        #: Two columns of six rather than twelve rows of one number, which took the whole of the
-        #: first screen of this tab on a window of the size it opens at.
-        form = QGridLayout()
-        form.setColumnStretch(4, 1)
-        form.setHorizontalSpacing(12)
-        column.addLayout(form)
-        self._layouts_form = form
-        self._layout_names: dict[str, str] = {}
-        #: Where each layout sits in the tiler's own list, which is what it falls back on when two
-        #: share a number. The boxes are not in that order any more -- KyprX's three come first --
-        #: so their order cannot stand in for it.
-        self._layout_rank: dict[str, int] = {}
-        #: What the numbers add up to, read off the boxes rather than off the file, so it cannot
-        #: describe a cycle nobody has. It is what makes a column of numbers mean something
-        #: without a sentence of instructions above it.
-        self.cycle = QLabel()
-        self.cycle.setWordWrap(True)
-        column.addWidget(self.cycle)
-        #: Under Focus rather than above it. Focus is first on this tab because it is the one thing
-        #: here that decides how the desktop *feels* rather than how it is arranged -- the owner
-        #: asked for it there -- and the layouts come next, which is the order the two are used in.
-        self.after("Focus", layouts)
-
-        #: The band and the way out of it, together. Until now the way out was *Apply*, which is
-        #: why the band said so; with every change applying by itself there is no click to name,
-        #: so the one thing that switches tiling back on without changing anything else is a
-        #: button of its own. It sends what an Apply with nothing changed used to send.
+        #: The band and the way out of it, together. With every change applying by itself there is
+        #: no click to name, so the one thing that switches tiling back on without changing anything
+        #: else is a button of its own -- shown only for the one state it can do anything about.
         self.banner = warning(TILING_OFF)
         self.banner.setVisible(False)
         self.switch_on = QPushButton("Switch tiling back on")
-        self.switch_on.setToolTip("Puts the tiling script back on and changes nothing else.")
+        self.switch_on.setToolTip("Puts KyprX's tiling back on and changes nothing else.")
         self.switch_on.clicked.connect(self._switch_on)
         band = QHBoxLayout()
         band.setContentsMargins(0, 0, 0, 0)
@@ -87,18 +159,65 @@ class TilingPage(SettingsPage):
         self.band = QWidget()
         self.band.setLayout(band)
         self.band.setVisible(False)
-        #: Above the scroll area and not inside it: "nothing on this tab is doing anything" is not
-        #: a thing to find by scrolling back up to it.
+        #: Above the scroll area and not inside it: "nothing on this tab is doing anything", or
+        #: "what is new on this tab starts at the next login", is not a thing to find by scrolling
+        #: back up to it.
         self.layout().insertWidget(0, self.band)
 
         self._gaps_grid()
-        for switch, _dependent in self.FOLLOWS:
+        self._tab_down()
+        for switch in dict.fromkeys(switch for switch, _dependent in self.FOLLOWS):
             self.widgets[switch].toggled.connect(self._follow_switches)
+        for menu in dict.fromkeys(menu for menu, _answers, _dependent in self.FOLLOWS_ANSWER):
+            self.widgets[menu].currentIndexChanged.connect(self._follow_switches)
         self._follow_switches()
 
         self.focus_policy = self.widgets[("windows", "", "FocusPolicy")]
         self.focus_policy.currentIndexChanged.connect(self._follow_focus_policy)
         self._follow_focus_policy()
+
+    def load(self, data: dict) -> None:
+        """Repaint, unless the zone layouts and arrangements are busy -- then the repaint is
+        owed."""
+        if self.tiling_value.busy():
+            self._owed = True
+            return
+        self._owed = False
+        super().load(data)
+
+    def _tab_down(self) -> None:
+        """The keyboard's Tab order, down the page as it is drawn: each section and box of the
+        column in turn, each in the order of its own controls.
+
+        Qt puts a widget at the end of its window's Tab order when it is given a parent, and the
+        form gives every section its own before this page gives the two boxes theirs, between
+        Automatic tiling and Gaps on screen: measured offscreen, Tab went from Ignored screens, at
+        the foot of the page, up to the Zone layouts box, and then further up to the Arrangements
+        box. Within a part the order is the one its controls were given their parent in, which is
+        theirs on screen. The cards a box makes as it paints come later, and the box puts them in
+        their place itself (`tab_before`)."""
+        parts = [self.column.itemAt(i).widget() for i in range(self.column.count())]
+        stops = [control for part in parts if part is not None
+                 for control in _in_tab_order(part)]
+        for first, second in zip(stops, stops[1:]):
+            QWidget.setTabOrder(first, second)
+
+    def _pay_owed(self) -> None:
+        """Nothing of either box is open: the repaint refused meanwhile, from a fresh answer."""
+        if self._owed and not self.tiling_value.busy():
+            self._owed = False
+            self.load(self.c.groups())
+
+    def _show_layout(self, ident: str) -> None:
+        """A zone layout the Arrangements box names -- *Edit in Zone layouts* -- selected in the
+        Zone layouts box and scrolled to: the builder first, then the card, so that the card is in
+        sight whatever happens, and the builder with it when the two fit at once."""
+        if not self.zone_layouts.select(ident) or self._area is None:
+            return
+        self._area.ensureWidgetVisible(self.zone_layouts.builder, 0, 16)
+        card = self.zone_layouts.card_for(ident)
+        if card is not None:
+            self._area.ensureWidgetVisible(card, 0, 16)
 
     def _follow_focus_policy(self) -> None:
         """Grey out what the compositor is going to ignore anyway.
@@ -116,55 +235,43 @@ class TilingPage(SettingsPage):
                  policy not in FOCUS_DISCOURAGED, FOCUS_STEALING_NOTE)):
             # The widget and not the label. A greyed label in this window means "nothing tells
             # this app what applies here", which is a different fact and is drawn by `_paint`.
-            # The reason goes on the label, because Qt sends no tooltip event to a dead widget.
+            # The reason goes on the label and its mark, because Qt sends no tooltip event to a
+            # dead widget.
             self.widgets[ident].setEnabled(applies)
-            self.labels[ident].setToolTip(self.fields[ident].hint if applies else why)
+            self.rows[ident].set_hint(self.fields[ident].hint if applies else why)
 
     def _load(self, data: dict) -> None:
         super()._load(data)
         self._warn_on_discouraged()
         self._follow_focus_policy()
+        self.tiling_value.load(data)
         self._follow_switches()
-        off = not (data.get("plugins") or {}).get("krohnkite", False)
-        missing = unavailable(data, "krohnkite")
-        self.banner.setText(f"{missing} {TILING_MISSING}" if missing else TILING_OFF)
-        self.switch_on.setVisible(not missing)
-        self.band.setVisible(off or bool(missing))
-        self.banner.setVisible(off or bool(missing))
-        tiling = data.get("tiling") or {}
-        defaults = data.get("tiling_defaults") or {}
-        for key, label in data.get("layouts") or []:
-            self._layout_names[key] = label
-            # The tiler's defaults count 1 to 12 along its own list, so they are that list's order.
-            try:
-                self._layout_rank[key] = int(defaults.get(key, 99))
-            except (TypeError, ValueError):
-                self._layout_rank[key] = 99
-            if key not in self.layout_boxes:
-                spin = Spin()
-                spin.setRange(0, 20)
-                spin.setMinimumWidth(64)
-                spin.setMaximumWidth(140)
-                spin.valueChanged.connect(self._say_cycle)
-                spin.valueChanged.connect(self.queue)
-                at = len(self.layout_boxes)
-                self.layout_boxes[key] = spin
-                self._layouts_form.addWidget(QLabel(label), at // 2, (at % 2) * 2)
-                self._layouts_form.addWidget(spin, at // 2, (at % 2) * 2 + 1)
-            raw = str(tiling.get(key, defaults.get(key, "0")))
-            spin = self.layout_boxes[key]
-            spin.setValue(int(float(raw or 0)))
-            # Record what the widget makes of it, not what the file said. The two differ whenever
-            # the box renormalises: an empty value becomes 0, anything above 20 is clamped to 20,
-            # `04` becomes `4`. Comparing the file's spelling against the widget's would report a
-            # change nobody made — and this one does not merely write a stray key, it takes a
-            # layout out of the rotation and restarts the tiler to do it.
-            self._layouts_at_load[key] = str(spin.value())
-        self._say_cycle()
+        state = str(data.get("tiling_state") or "")
+        text = BANDS.get(state, "")
+        self.banner.setText(text)
+        self.banner.setVisible(bool(text))
+        self.switch_on.setVisible(state == "off")
+        self.band.setVisible(bool(text))
 
     def _follow_switches(self, *_) -> None:
+        """Grey every setting that does nothing as things stand: one whose switch is off
+        (`FOLLOWS`), or whose menu is on an answer that does not use it (`FOLLOWS_ANSWER`). And
+        fold the Arrangements box away while automatic tiling is off: nothing is laid out by an
+        arrangement then, and the layout keys walk the zone layouts a drag offers instead.
+
+        Worked out whole each time, from every switch and menu at once, and not one pair at a
+        time: where a new desktop goes follows both the switch and the menu, and a pair on its
+        own would ungrey it when either came back while the other still says no.
+        """
+        live: dict = {}
         for switch, dependent in self.FOLLOWS:
-            self.widgets[dependent].setEnabled(self.widgets[switch].isChecked())
+            live[dependent] = live.get(dependent, True) and self.widgets[switch].isChecked()
+        for menu, answers, dependent in self.FOLLOWS_ANSWER:
+            live[dependent] = (live.get(dependent, True)
+                               and self.widgets[menu].currentData() in answers)
+        for dependent, on in live.items():
+            self.widgets[dependent].setEnabled(on)
+        self.arrangements.set_collapsed(not self.widgets[AUTO].isChecked())
 
     def _gaps_grid(self) -> None:
         """The four screen edges side by side, instead of five rows of one number each.
@@ -190,7 +297,7 @@ class TilingPage(SettingsPage):
         form.addRow(grid)
 
     def _switch_on(self) -> None:
-        """Put the tiling script back on, and write nothing else.
+        """Put tiling back on, and write nothing else.
 
         The same call the page makes when something on it changes -- `enforce` names what this
         page is responsible for, and for tiling that is the one switch. The values come from
@@ -200,20 +307,6 @@ class TilingPage(SettingsPage):
         self.says.emit("Switching tiling back on…")
         self.c.set_groups({"enforce": [self.enforces]})
         QTimer.singleShot(400, lambda: self.load(self.c.groups()))
-
-    def _say_cycle(self, *_) -> None:
-        """The cycle these numbers make, in the order the key would walk it.
-
-        Read off the boxes and not off the file, so it describes what is on screen even while a
-        change of somebody's is still settling. Two layouts sharing a number are listed in the
-        tiler's own list order, which is how it sorts them: a stable sort over that list.
-        """
-        ordered = sorted(((b.value(), self._layout_rank.get(k, 99), self._layout_names.get(k, k))
-                          for k, b in self.layout_boxes.items() if b.value() > 0),
-                         key=lambda entry: entry[:2])
-        names = ", ".join(name for _, _, name in ordered)
-        self.cycle.setText(f"The key cycles: {names}." if names
-                           else "No layout is in the cycle, so the key does nothing.")
 
     def _warn_on_discouraged(self) -> None:
         """The desktop warns about two of these policies. Carry the warning rather than hide it."""
@@ -226,6 +319,21 @@ class TilingPage(SettingsPage):
                     Qt.ItemDataRole.ToolTipRole)
 
     def extra_changes(self) -> dict:
-        moved = {k: str(b.value()) for k, b in self.layout_boxes.items()
-                 if str(b.value()) != self._layouts_at_load.get(k)}
-        return {"tiling": moved} if moved else {}
+        """The zone layouts and arrangements, when they changed: the value decides, against the
+        daemon's reading."""
+        return self.tiling_value.extra_changes()
+
+    def _sent(self, payload: dict) -> None:
+        """What was sent of the zone layouts and arrangements is what they compare with from now
+        on."""
+        self.tiling_value.sent(payload.get("tiling") or {})
+
+    def _said(self) -> str:
+        """The fields' words and the boxes', in that order, for the window's line -- as rich text
+        with every character escaped, because the line shows what it is given as rich text
+        whenever it looks like it (`Qt::mightBeRichText`), and the boxes' words carry names.
+        Measured offscreen on a label like the line: `<b>Work</b> & Co` given as it is is drawn
+        62 px wide, its tags taken for markup, where it takes 106 as plain text -- and 106 escaped
+        this way. The line's own words -- *Dry run* -- are rich text already."""
+        words = ", ".join(words for words in (super()._said(), self.tiling_value.said()) if words)
+        return f"<span>{html.escape(words, quote=False)}</span>" if words else ""

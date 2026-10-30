@@ -5,7 +5,10 @@ with the daemon's own list of what would change underneath, in the words a dry r
 safe answer as the default. `CopiesDialog` lists the copies of the desk, newest first, and shows
 what going back to the one selected would change. `RemoveDialog` asks the two questions removing
 KyprX from this computer needs, with nothing chosen for either, and `RemovedDialog` says what was
-done and the command that finishes it.
+done and the command that finishes it. `UpdateDialog` says a newer KyprX is out and how this
+installation takes it: *Update now* for a working tree, the command to copy for a package. And
+`AboutDialog`, which asks nothing: which KyprX this is, what it is built on and who made what it
+works with.
 """
 
 from __future__ import annotations
@@ -132,12 +135,13 @@ def _mono() -> QFont:
     return font
 
 
-#: The paragraph about the five projects, said before anything is chosen: removing KyprX never
-#: removes them, and whether the package manager does is its own rule, not a guess of this app's.
-THEIRS = ("Klassy, Better Blur DX, Krohnkite, Geometry Change and Smart Video Wallpaper Reborn are "
-          "programs of their own, and KyprX does not remove them. When you remove the KyprX "
-          "package, your package manager also removes the ones it installed only for KyprX, and "
-          "asks first; the ones you installed yourself stay.")
+#: The paragraph about the projects KyprX is built on, said before anything is chosen: removing
+#: KyprX never removes them, and whether the package manager does is its own rule, not a guess of
+#: this app's.
+THEIRS = ("Klassy, Better Blur DX, Geometry Change and Smart Video Wallpaper Reborn are programs "
+          "of their own, and KyprX does not remove them. When you remove the KyprX package, your "
+          "package manager also removes the ones it installed only for KyprX, and asks first; the "
+          "ones you installed yourself stay.")
 
 
 class RemoveDialog(QDialog):
@@ -156,16 +160,19 @@ class RemoveDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(note(
             "KyprX takes back what it keeps and what only it used: its switch and its part inside "
-            "the compositor, its keys, the rules that place its overlays, and what it remembers "
-            "about this computer. Then it gives you the command that removes its files."))
+            "the compositor, with the tiling; its keys; the rules that place its overlays; and "
+            "what it remembers about this computer. Then it gives you the command that removes "
+            "its files."))
 
         self.revert = QButtonGroup(self)
         desk = QGroupBox("Your desktop")
         desk_column = QVBoxLayout(desk)
-        back = QRadioButton("Put KDE back as KDE has it -- Breeze, and each program on its own "
-                            "defaults. A copy of the desk is kept first.")
-        stay = QRadioButton("Leave it looking as it does now. Windows keep the look KyprX gave "
-                            "them; its panel style and colour presets go with its files.")
+        back = QRadioButton("Put KDE back as KDE has it -- Breeze, each program on its own "
+                            "defaults, and no tiling of KyprX's. A copy of the desk is kept "
+                            "first.")
+        stay = QRadioButton("Leave it as it is now. Windows keep the look KyprX gave them, and "
+                            "the desktop behaves as KyprX set it -- focus follows the mouse, among "
+                            "the rest; its panel style and colour presets go with its files.")
         for answer, button in ((True, back), (False, stay)):
             self.revert.addButton(button, int(answer))
             desk_column.addWidget(button)
@@ -253,8 +260,104 @@ class RemovedDialog(QDialog):
             layout.addWidget(note(str(answer["then"])))
         if not dry:
             layout.addWidget(note("This window closes when you close this message. Opening KyprX "
-                                  "again before its files are removed brings it back on."))
+                                  "again before its files are removed brings it back on, with its "
+                                  "look, as on a new install. The keys KyprX took from other "
+                                  "actions stay without one: System Settings, under Shortcuts, "
+                                  "gives each its key back."))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.accept)
         buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+
+#: What *Update now* does, said before it is pressed.
+UPDATE_NOW_TEXT = ("Update now installs it over this one and restarts KyprX's background service. "
+                   "A KyprX window opened with its key closes then: open it again. KyprX's part "
+                   "inside the compositor is the new version from the next login.")
+
+
+def _plain(text: str) -> QLabel:
+    """A wrapped line of plain text: a path or a branch name is never read as markup."""
+    label = note(text)
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    return label
+
+
+class UpdateDialog(QDialog):
+    """A newer KyprX, and how this installation takes it: *Update now* for a working tree, which
+    `install.sh --update` updates in place; the command to copy for a package (KyprX never runs a
+    package manager) or for a working tree in a dry run; and for a working tree that cannot be
+    updated by itself, the reason alone. `update_now` says whether *Update now* closed it."""
+
+    def __init__(self, parent, answer: dict, dry_run: bool = False):
+        super().__init__(parent)
+        self.update_now = False
+        self.command: QLabel | None = None
+        latest = str(answer.get("latest") or "")
+        tree = answer.get("kind") in ("clone", "release")
+        self.setWindowTitle(f"KyprX {latest} is out" if latest
+                            else "New changes for this working tree")
+        layout = QVBoxLayout(self)
+        layout.addWidget(_plain(f"{answer.get('detail') or 'There is a new version'}. Updating "
+                                f"keeps your setup: nothing has to be removed first."))
+        if tree and answer.get("can_update") and not dry_run:
+            layout.addWidget(_plain(UPDATE_NOW_TEXT))
+            buttons = QDialogButtonBox()
+            go = buttons.addButton("Update now", QDialogButtonBox.ButtonRole.AcceptRole)
+            buttons.addButton("Not now", QDialogButtonBox.ButtonRole.RejectRole)
+            go.clicked.connect(self._go)
+        elif tree and not dry_run:
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        else:
+            lead = ("This window is on a dry run, so it updates nothing. In a terminal, this "
+                    "updates it:" if tree else
+                    "Your system's package manager updates KyprX. KyprX does not run it for you:")
+            layout.addWidget(_plain(lead))
+            self.command = QLabel(str(answer.get("command") or ""))
+            self.command.setTextFormat(Qt.TextFormat.PlainText)
+            self.command.setFont(_mono())
+            self.command.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            copy = QPushButton("Copy the command")
+            copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.command.text()))
+            row = QHBoxLayout()
+            row.addWidget(self.command, 1)
+            row.addWidget(copy)
+            layout.addLayout(row)
+            if answer.get("then"):
+                layout.addWidget(_plain(str(answer["then"])))
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _go(self) -> None:
+        self.update_now = True
+        self.accept()
+
+
+class AboutDialog(QDialog):
+    """*About KyprX…* on the Settings tab: this KyprX's version, the projects it is built on as
+    they stand here, and the projects it works with, from `CREDITS.md`.
+
+    Put together by the tab (`gui/tab_settings.py`, `needs_text` and `credits_text`), so nothing is
+    read here. Behind a button rather than on the page: it is read once and rarely again, and a
+    page somebody opens to change something should show what can be changed.
+    """
+
+    def __init__(self, parent, version: str, needs: str, credits: str):
+        super().__init__(parent)
+        self.setWindowTitle("About KyprX")
+        layout = QVBoxLayout(self)
+        title = QLabel(f"<b>{html.escape(version)}</b>")
+        layout.addWidget(title)
+        for heading, text in (("What KyprX is built on", needs), ("Credits", credits)):
+            box = QGroupBox(heading)
+            column = QVBoxLayout(box)
+            label = note(text)
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setOpenExternalLinks(True)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            column.addWidget(label)
+            layout.addWidget(box)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

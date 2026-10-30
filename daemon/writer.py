@@ -16,8 +16,8 @@ which is what makes it possible to exercise the whole interface against real con
 
 It also says so in plain words, before the diff, to whoever `set_reporter` named -- the daemon's
 own log. The diff is exact and it is for machines: `scripts/drive.py` reads it line by line. It
-never said what the desktop would do *after* the write, either -- stop the screen, lay every tiled
-window out again -- because that is not in any file. `daemon/explain.py` says both.
+never said what the desktop would do *after* the write, either -- stop the screen, have the tiling
+read its settings again -- because that is not in any file. `daemon/explain.py` says both.
 
 **And changes this app does not make itself.** The wallpaper lives in a file the shell owns, so it
 is written by asking the shell to write it. That is still a write, so it goes through here too --
@@ -85,6 +85,8 @@ class Transaction:
         self._session: list[tuple[str, Callable[[], None], str]] = []
         self.reload_kwin = False
         self.reload_blur = False
+        #: KyprX's tiling told to ask for its settings again, which reloads nothing in the
+        #: compositor -- see the reloads in `commit`.
         self.reload_tiling = False
         self.reload_colours = False
 
@@ -199,20 +201,22 @@ class Transaction:
         # did not, which is worse: it invites a retry against a file that already has the change.
         try:
             with clock.step(self.trace, "reload"):
-                # The tiler is unloaded first, so the one reconfigure below loads it back re-read.
-                # It used to be reloaded last, with a reconfigure of its own inside the call, and
-                # the journal showed the pair on every change to its list: about 630 ms of frozen
-                # screen twice over, and the screen re-tiled twice, for one tick. Measured after,
-                # by the gap between frames (`scripts/stall.py`) on two gap changes: one freeze
-                # each, 558 ms and 656 ms, and one re-tile.
-                if self.reload_tiling:
-                    reloader.unload_script(effects.TILING_PLUGIN)
-                if self.reload_kwin or self.reload_tiling:
+                # The compositor is reconfigured for what it reads itself -- rules, the decoration,
+                # its own groups and plugin switches -- and never for the tiling. A tiling script
+                # that reads `kwinrc` has to be unloaded and loaded back for a change, with a
+                # reconfigure: measured by the gap between frames (`scripts/stall.py`), two gap
+                # changes made that way froze the screen for 558 ms and for 656 ms, and every window
+                # was laid out again. KyprX's tiling reads no file. It is told to ask the daemon for
+                # its settings again (`reload.tell_tiler`), last, once the files above are saved and
+                # everything else has re-read them, and the compositor is asked for nothing more.
+                if self.reload_kwin:
                     reloader.reconfigure_kwin()
                 if self.reload_colours:
                     reloader.invalidate_colour_cache()
                 if self.reload_blur:
                     reloader.reconfigure_effect(effects.BLUR_PLUGIN)
+                if self.reload_tiling:
+                    reloader.tell_tiler()
         except Exception as e:  # noqa: BLE001 — it is already written; say so and carry on
             logs.emit(f"kyprd: written, but the reload did not go through: "
                       f"{logs.what(e)}", trouble=True)

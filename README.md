@@ -43,18 +43,26 @@ tiled side by side, with no title bars, a slim accent outline, a touch of transp
 behind them — while your apps, your settings and the rest of your desktop stay right where they
 are.
 
-**Native, not bolted on.** There is no second compositor, and nothing is replaced: KyprX sets up
-KWin, KDE's own window manager, and the decoration, blur and tiling plugins it runs — and gathers
-every one of their settings into a single window, where each change lands the moment you make it.
+**Native, not bolted on.** There is no second compositor, and nothing is replaced: KyprX tiles your
+windows from inside KWin, KDE's own window manager, sets up the decoration, blur and animation
+plugins KWin runs — and gathers all of it into a single window, where each change lands the moment
+you make it.
 
 ## Why you'll like it
 
 - **Tiled from the first window.** Open an app and it takes its place in the layout: no dragging,
-  no snapping. Tune the layouts, the gaps and the focus to taste, and move around from the
-  keyboard.
+  no snapping. KyprX tiles the windows itself, and focus, swapping and resizing are each a key
+  away.
+- **Layouts you draw.** Split a zone, take one away, set its share in percent — or start from the
+  zone layouts KyprX comes with. An arrangement picks one for each number of windows, and a key
+  flips between arrangements. Prefer to place windows yourself? Manual mode shows the zones as you
+  drag a window, with the layouts you choose in a bar along the top, and drops the window into the
+  zone under the pointer.
+- **Windows that float when they should.** Dialogs float by themselves, any app or title can be
+  told to float or never to be tiled, and a key floats the window in front of you.
 - **No title bars, all the style.** Clean frames with an accent outline, transparency and blur —
   set once for everything, or app by app.
-- **One window instead of five settings pages.** Decoration, blur, tiling, animations, shortcuts
+- **One window, not a stack of settings pages.** Decoration, blur, tiling, animations, shortcuts
   and colours, side by side. There is no Apply button: what you change is simply there.
 - **A new look in one click.** Catppuccin, Nord, Gruvbox, Dracula, Solarized, Rosé Pine and
   Monochrome, dark and light — or the colour of your wallpaper, soaked into the whole desktop.
@@ -64,7 +72,7 @@ every one of their settings into a single window, where each change lands the mo
 - **Made for dotfiles.** Your whole setup is a folder of readable files, `~/.config/kyprx/`. Keep
   it in git, carry it to another computer, and KyprX applies it by itself.
 - **Safe to try.** A copy of your desktop is kept before every big change, stock KDE is one click
-  away, and removing KyprX asks first and leaves nothing of its own behind.
+  away, and removing KyprX asks first, takes back what only KyprX used, and says what stays.
 
 ## See it move
 
@@ -83,10 +91,11 @@ as the number changes.
   <img src="screenshots/transparency.avif" width="100%" alt="The opacity on the Appearance tab lowered, and the tiled windows turning see-through as it changes">
 </p>
 
-**Every shortcut at a glance.** Meta+/ shows them all, grouped, over whatever is on screen.
+**Every shortcut at a glance.** Meta+/ shows them all over whatever is on screen, grouped: tiling,
+layouts, window management, and KyprX itself.
 
 <p align="center">
-  <img src="screenshots/cheatsheet.avif" width="100%" alt="The shortcut cheatsheet opening over the desktop">
+  <img src="screenshots/cheatsheet.avif" width="100%" alt="The shortcut cheatsheet opening over the desktop, with the keys for tiling, for layouts, for window management and for KyprX">
 </p>
 
 ## One window, tab by tab
@@ -97,11 +106,11 @@ as the number changes.
     <td width="50%"><img src="screenshots/tab-appearance.png" alt="The Appearance tab"><br><b>Appearance</b> — profiles, colour presets, a colour of your own or the wallpaper's, and the windows' opacity, corners and outline.</td>
   </tr>
   <tr>
-    <td><img src="screenshots/tab-tiling.png" alt="The Tiling tab"><br><b>Tiling</b> — focus, the layouts the key cycles through, the gaps, and where a new window goes.</td>
+    <td><img src="screenshots/tab-tiling.png" alt="The Tiling tab"><br><b>Tiling</b> — focus, automatic or manual tiling, your arrangements, the zone layouts they pick from and the split builder that draws them, the gaps, where a new window goes, and the windows never tiled.</td>
     <td><img src="screenshots/tab-effects.png" alt="The Effects tab"><br><b>Effects</b> — the blur behind windows, menus and panels, and the animation as windows move.</td>
   </tr>
   <tr>
-    <td><img src="screenshots/tab-shortcuts.png" alt="The Shortcuts tab"><br><b>Shortcuts</b> — the tiling keys and the desktop's own, each one yours to change.</td>
+    <td><img src="screenshots/tab-shortcuts.png" alt="The Shortcuts tab"><br><b>Shortcuts</b> — the keys for tiling, for the layouts, for window management and for KyprX itself, each one yours to change.</td>
     <td><img src="screenshots/tab-wallpaper.png" alt="The Wallpaper tab"><br><b>Wallpaper</b> — pictures or videos, the video folder, when a video pauses, and the picker's layout.</td>
   </tr>
   <tr>
@@ -122,15 +131,19 @@ sudo dnf install kyprx
 **Arch** and friends — EndeavourOS, CachyOS, Manjaro…
 
 KyprX is on its way to the AUR. Until it is there, each release carries its PKGBUILD, and an AUR
-helper builds it and brings in everything it needs from the AUR. Krohnkite's own AUR package fails
-its checksum at the moment, so its `-git` package goes first:
+helper builds it and brings in everything it needs from the AUR. The four lines build the package
+in a temporary folder and delete that folder at the end, so nothing of the build is left where you
+run them; paru keeps its own copies of what it builds from the AUR in `~/.cache/paru/clone/`:
 
 ```sh
-paru -S kwin-scripts-krohnkite-git
-mkdir kyprx && cd kyprx
-curl -LO https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
-paru -Ui
+build=$(mktemp -d)
+curl -fL -o "$build/PKGBUILD" https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
+(cd "${build:?}" && paru -Ui)
+rm -rf "$build"
 ```
+
+The four lines are for bash and zsh. In fish, the shell CachyOS starts with, type `bash` first,
+paste them there, and type `exit` afterwards.
 
 Everything KyprX is built on comes with it. For Fedora Kinoite and the systems built on it, for
 other distributions, and for updating and removing, see
@@ -178,15 +191,18 @@ screenshot of your desktop and reporting what breaks all help too.
 
 ## Built on
 
-KyprX brings together five excellent projects. They deserve a star as well:
+KyprX brings together four excellent projects. They deserve a star as well:
 
 | Project | What it brings |
 |---|---|
 | [Klassy](https://github.com/paulmcauley/klassy) | the window decoration: hidden title bars, outlines, the frame |
 | [Better Blur DX](https://github.com/xarblu/kwin-effects-better-blur-dx) | the blur behind see-through windows |
-| [Krohnkite](https://codeberg.org/anametologin/Krohnkite) | the tiling |
 | [Geometry Change](https://github.com/peterfajdiga/kwin4_effect_geometry_change) | the animation as windows move and resize |
 | [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn) | video wallpapers |
+
+The tiling is KyprX's own. Its ideas come from two projects worth knowing too: the zones of
+[KZones](https://github.com/gerritdevriese/kzones) that a window is dropped into, and the dwindle
+layout of [Hyprland](https://github.com/hyprwm/Hyprland). No code was taken from either of them.
 
 ## Learn more
 

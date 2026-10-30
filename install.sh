@@ -7,11 +7,20 @@
 #
 # What it does: links the compositor script, the daemon and the interface into the places the
 # session looks in, writes the D-Bus activation file and the desktop entry, and makes the
-# compositor re-read the script. The script carries this app's shortcuts, and a script re-reads
-# itself only when it is unloaded and loaded again -- so that reload is what puts those keys in
-# place.
+# compositor load the script again. The script carries this app's shortcuts and its tiling, and
+# registers its keys only as it loads -- so that reload is what puts them in place.
 #
-# Usage: ./install.sh [--dry-run] | ./install.sh --uninstall
+# --update brings this install up to the newest version in place, keeping the setup: a git clone
+# is fast-forwarded to the branch it follows, a folder unpacked from a release gets the newest
+# release unpacked beside it, and then the new version's installer runs and restarts the
+# background service. Nothing is removed first.
+#
+# --uninstall removes what this script put in place, once 'Remove KyprX from this computer…', on
+# KyprX's Settings tab, has taken KyprX's settings off the desk; while they are still there it
+# stops and says so. --force removes the files anyway, and leaves those settings as they are.
+#
+# Usage: ./install.sh [--dry-run] | ./install.sh --update [--dry-run]
+#        ./install.sh --uninstall [--force] [--dry-run]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +42,13 @@ PLUGIN_ID="kyprx"
 
 DRY=0
 MODE=install
+#: --uninstall --force: remove the files although KyprX's settings are still on the desk.
+FORCE=0
+
+#: Handed by --update to the new version's installer (`update_all`): the version it came from,
+#: and the folder it ran from when the new one was unpacked beside it.
+FROM=""
+PREVIOUS=""
 
 die()  { echo "error: $*" >&2; exit 1; }
 say()  { printf '%s\n' "$*"; }
@@ -58,6 +74,24 @@ stale_icon_links() {
   return 0
 }
 
+#: Whether the compositor has KyprX's script loaded after the reload below, asked the way the
+#: daemon asks (`reload.script_loaded`) for about five seconds. It may not be: the compositor reads
+#: a script it has not loaded before only once it has been running for about a minute -- until then
+#: it goes by the list of packages it read as it started, measured in a nested KWin -- and one that
+#: is not running at all, as from a text console, loads nothing. Either way the next login loads
+#: it, and that is said. Loaded is no proof of the new code, though: a declarative script the
+#: session already ran comes back as it was first read, which the message at the end says.
+wait_until_the_script_is_loaded() {
+  for _ in {1..25}; do
+    [[ "$(busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting isScriptLoaded s \
+          "$PLUGIN_ID" 2>/dev/null)" == "b true" ]] && return 0
+    sleep 0.2
+  done
+  say "  KyprX's new compositor script is not running yet: it starts at the next login, so log"
+  say "  out and back in."
+  return 0
+}
+
 #: The folder may carry a cache of what is in it, and a cache is rebuilt after its folder changes
 #: -- what every package that installs an icon does. None there, none made.
 icon_cache() {
@@ -69,7 +103,7 @@ icon_cache() {
 # ---------------------------------------------------------------- prerequisites
 #
 # Two halves. What the two programs themselves run on, looked for here: the three Python libraries
-# and two of the desktop's own tools. Then the five projects KyprX is built on, looked for by
+# and five of the desktop's own tools. Then the four projects KyprX is built on, looked for by
 # daemon/requirements.py -- the same check the daemon makes and the Settings tab shows, so what
 # stops an install here is exactly what the window would say afterwards. It finds each one by its
 # own files and asks the running compositor whether it runs, so it works on any distribution; the
@@ -142,7 +176,8 @@ install_all() {
 
   step "compositor script"
   # A link rather than a copy: the compositor reads the script and never writes to it, so the
-  # working tree can be the source and an edit takes effect straight away.
+  # working tree can be the source and an edit is the installed file at once. The compositor runs
+  # an edit from the next login on, though, not straight away: the last step says why.
   do_it "mkdir -p '$(dirname "$KWIN_SCRIPT")'"
   do_it "ln -sfn '$HERE/kwin-script' '$KWIN_SCRIPT'"
   say "  $KWIN_SCRIPT -> kwin-script/"
@@ -253,19 +288,28 @@ install_all() {
 
   step "switching the script on and making it re-read itself"
   # Switching it on is not enough on a re-install, where the key is already true and the
-  # compositor therefore does nothing -- and a shortcut added to main.js would not exist until
-  # the next logout, with nothing saying so.
+  # compositor therefore does nothing -- and an action added to the compositor script would not
+  # exist until the next logout, with nothing saying so.
   #
-  # Nor is flipping the key off and on, which is what this used to do. Measured: the compositor
-  # loads a script that has become enabled, but does NOT unload one that has become disabled, so
-  # the flip reloaded nothing. `unloadScript` is the part it only does when asked; one
-  # `reconfigure` afterwards loads every enabled script back, this one included.
+  # Nor is flipping the key off and on: the compositor acts on the key only when a reconfigure
+  # runs, 200 ms after it is asked, so a key back on by then reloads nothing (daemon/reload.py has
+  # the finding). `unloadScript` is the part it only does when asked; one `reconfigure` afterwards
+  # loads every enabled script back, this one included.
+  #
+  # Loaded back is not read again, though, once the session has read it. The script is
+  # declarative, and KWin runs every declarative script in the one QML engine it keeps for the
+  # whole session, which holds on to what it compiled from each file -- the QML and its modules
+  # alike -- and never reads them again. So this step reads the script's files only in a session
+  # that has not loaded it yet (a first install, or one over a KyprX whose script was JavaScript),
+  # and a change to them takes effect at the next login; the message at the end says so.
   do_it "kwriteconfig6 --file kwinrc --group Plugins --key ${PLUGIN_ID}Enabled true"
   do_it "busctl --user call org.kde.KWin /Scripting org.kde.kwin.Scripting unloadScript s '${PLUGIN_ID}' >/dev/null 2>&1 || true"
   do_it "busctl --user call org.kde.KWin /KWin org.kde.KWin reconfigure >/dev/null 2>&1 || true"
   say "  kwinrc [Plugins] ${PLUGIN_ID}Enabled=true, and the script re-read so its shortcuts exist"
+  do_it "wait_until_the_script_is_loaded"
 
   (( DRY )) && return 0
+  [[ -n "$FROM" ]] && return 0  # an update says its own last words (`after_update`)
   echo
   say "done. Open KyprX from the menu, or run 'kyprx'."
   say
@@ -275,15 +319,94 @@ install_all() {
   say "  kyprx"
   say
   say "To restart it normally:  systemctl --user restart kyprd"
+  say
+  say "If KyprX was already running, restart it that way now: until then the daemon keeps its old"
+  say "code."
+  say "A change to the compositor script takes effect only after logging out and back in: KWin"
+  say "keeps a declarative script's code cached for the whole session."
+}
+
+# ---------------------------------------------------------------- update
+
+#: daemon/update.py fetches the code -- a fast-forward for a clone, the newest release unpacked
+#: beside a release folder -- and prints the folder to install from, or nothing. That folder's own
+#: installer then runs, the new version's, told where the update came from. `exec`, because bash
+#: reads a script while it runs it, and a pull may just have rewritten this one.
+update_all() {
+  (( EUID != 0 )) || die "run the update as yourself, not as root: KyprX lives in your own folders"
+  local from next
+  from=$(cat "$HERE/VERSION" 2>/dev/null || true)
+  step "the newest version"
+  if (( DRY )); then
+    next=$(python3 "$HERE/daemon/update.py" fetch --dry-run) || exit 1
+  else
+    next=$(python3 "$HERE/daemon/update.py" fetch) || exit 1
+  fi
+  if [[ -z "$next" ]]; then
+    say "  nothing to update"
+    return 0
+  fi
+  local hand=(--updated-from "${from:-unknown}")
+  [[ "$(realpath -m "$next")" == "$(realpath -m "$HERE")" ]] || hand+=(--previous-tree "$HERE")
+  if (( DRY )); then
+    do_it "bash $(printf '%q ' "$next/install.sh" "${hand[@]}")"
+    do_it "systemctl --user try-restart kyprd"
+    return 0
+  fi
+  exec bash "$next/install.sh" "${hand[@]}"
+}
+
+#: The end of an update, in the new version's installer: `try-restart` starts nothing that was not
+#: running -- the next call to KyprX's bus name starts the new version -- and what is left to do.
+after_update() {
+  local now
+  now=$(cat "$HERE/VERSION" 2>/dev/null || true)
+  step "restarting KyprX's background service"
+  # Not ignored, unlike a stop: this is where the new version first runs, and a background service
+  # that does not start again on it is an update that did not take, whatever came before it.
+  do_it "systemctl --user try-restart kyprd" ||
+    die "KyprX's background service did not start again on the new version: journalctl --user -u kyprd says why"
+  (( DRY )) && return 0
+  echo
+  say "KyprX is updated from $FROM to ${now:-this version}, and your setup is kept."
+  say "A KyprX window opened with its key has closed: open it again. One opened from the menu"
+  say "asks to be closed and opened again."
+  say "KyprX's part inside the compositor is the new version from the next login: log out and"
+  say "back in. Until then it tiles as it did."
+  if [[ -n "$PREVIOUS" ]]; then
+    say "Nothing of KyprX runs from $PREVIOUS any more: delete it when you like."
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------- uninstall
 
 uninstall_all() {
+  # The Settings tab's removal comes first, and only it can: what it takes back -- the tiling's
+  # settings, KyprX's keys in the shortcut registry, the overlays' rules, and KDE as KDE has it when
+  # asked -- is done by the daemon this script is about to remove, and the docs saying "button
+  # first" stopped nobody: run alone, this left all of it, with Meta+/, Meta+K, Meta+R, Meta+T and
+  # the tiling's keys still taken by actions nothing would ever run again. The daemon keeps what it
+  # remembers about this machine in ~/.local/state/kyprx/ whatever XDG_STATE_HOME says
+  # (KNOWN-ISSUES.md), and that removal deletes the folder: finding it means it has not run, or that
+  # KyprX was opened again since, which brings back what it took away.
+  local settled=1
+  [[ -e "$HOME/.local/state/kyprx" ]] && settled=0
+  if (( ! settled && ! FORCE )); then
+    say "KyprX's settings are still on this desk ($HOME/.local/state/kyprx/ is there)."
+    say "Start with 'Remove KyprX from this computer…', at the bottom of KyprX's Settings tab: it"
+    say "asks whether KDE goes back as KDE has it and whether your KyprX folder stays, takes back"
+    say "what only KyprX used, and then gives you this command. To remove only the files this"
+    say "script put in place and leave everything else as it is, run it again with --force."
+    (( DRY )) || exit 1
+    say
+    say "-- dry run: what removing the files would do, all the same --"
+  fi
+
   step "switching the script off"
-  # `unloadScript` is what takes it out of the running compositor: a `reconfigure` does not unload
-  # a script that has become disabled (the measurement is in install_all and daemon/reload.py), so
-  # without it the script went on holding KyprX's keys until the next login. The switch is deleted
+  # `unloadScript` is what takes it out of the running compositor at once: the reconfigure
+  # unloads a script switched off only once it runs, 200 ms after it is asked (daemon/reload.py
+  # has the finding). The switch is deleted
   # rather than set to false: with no key the script is off, and nothing of this app's is left in
   # kwinrc -- the same as the daemon does when KyprX is removed from the Settings tab.
   do_it "kwriteconfig6 --file kwinrc --group Plugins --key ${PLUGIN_ID}Enabled --delete"
@@ -315,6 +438,14 @@ uninstall_all() {
   [[ -e "$THEMES/kyprx-panel" ]] && do_it "rm -rf '$THEMES/kyprx-panel'"
   [[ -e "$DATA" ]] && do_it "rm -rf '$(dirname "$DATA")'"
   [[ -e "$ENV_SCRIPT" ]] && do_it "rm -f '$ENV_SCRIPT'"
+  # Two files the desktop writes in KyprX's name (`STATE_CONFIG` and `STYLE_CACHE` in
+  # daemon/kyprd_installation.py say what and why): what KDE's file dialog remembers for KyprX, and
+  # the shell's cache of KyprX's panel style. The Settings tab's removal takes the cache only while
+  # the panel is not wearing the style; its files are gone now, so it goes here either way.
+  for owned in "${XDG_STATE_HOME:-$HOME/.local/state}/KyprXstaterc" \
+               "${XDG_CACHE_HOME:-$HOME/.cache}/plasma_theme_kyprx.kcache"; do
+    [[ -e "$owned" ]] && do_it "rm -f '$owned'"
+  done
   # Only the ones still what was installed. A scheme somebody has since tuned is theirs, and taking
   # it away with the app would be taking away their work. Compared with the comment lines left out:
   # the licence notice at the head of each file arrived after some of them were installed, and a
@@ -334,26 +465,48 @@ uninstall_all() {
   do_it "busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ReloadConfig >/dev/null 2>&1 || true"
 
   echo
+  if (( DRY )); then
+    say "-- dry run: nothing was removed --"
+    return 0
+  fi
   say "This removed the files this script put in place, and nothing it did not."
-  say "'Remove KyprX from this computer…', on KyprX's Settings tab, is where removing KyprX"
-  say "starts: it asks whether KDE goes back as KDE has it and whether the KyprX folder stays,"
-  say "takes back what only KyprX used, and then names this command. Run without it, the window"
-  say "rules and decoration overrides KyprX wrote ARE STILL IN EFFECT, your setup stays in"
-  say "~/.config/kyprx/, what it remembered about this machine in ~/.local/state/kyprx/, and the"
-  say "derived caches in ~/.cache/kyprx/."
+  if (( settled )); then
+    say "What 'Remove KyprX from this computer…' leaves on purpose stays: the desktops KyprX's"
+    say "tiling made, as ordinary desktops; the keys KyprX took from other actions, which are left"
+    say "without one -- System Settings, Shortcuts, gives them back; and, when you chose to leave"
+    say "the desktop as it was, the look and window behaviour KyprX gave it."
+  else
+    say "KyprX's settings were still on this desk, and stay: the window rules and decoration"
+    say "overrides KyprX wrote are still in effect, its tiling's settings and its keys stay in"
+    say "kwinrc and in the desktop's shortcut list, your setup stays in ~/.config/kyprx/, and what"
+    say "it remembered about this machine in ~/.local/state/kyprx/ and ~/.cache/kyprx/. To take"
+    say "those back, install KyprX again and use 'Remove KyprX from this computer…' first."
+  fi
+  say
+  say "KyprX tiled the windows itself, so KyprX tiles none of them now."
 }
 
 # ---------------------------------------------------------------- main
 
 while (( $# )); do
   case "$1" in
-    --dry-run)   DRY=1 ;;
-    --uninstall) MODE=uninstall ;;
-    -h|--help)   sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
+    --dry-run)       DRY=1 ;;
+    --uninstall)     MODE=uninstall ;;
+    --force)         FORCE=1 ;;
+    --update)        MODE=update ;;
+    # Every older version's `update_all` hands the two below to this installer, the newest: they
+    # are kept as they are, or each update from an older KyprX stops at "unknown argument" with
+    # its new code already in place (docs/modules/installer.md, "Why it is this way").
+    --updated-from)  (( $# > 1 )) || die "--updated-from needs a version"; FROM=$2; shift ;;
+    --previous-tree) (( $# > 1 )) || die "--previous-tree needs a folder"; PREVIOUS=$2; shift ;;
+    -h|--help)       sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
   shift
 done
 
+(( FORCE )) && [[ "$MODE" != uninstall ]] && die "--force goes with --uninstall"
 (( DRY )) && say "-- dry run: nothing will be written --"
 "${MODE}_all"
+# An `if`, not `&&`: as the last command, a false test would be the script's exit status.
+if [[ "$MODE" == install && -n "$FROM" ]]; then after_update; fi

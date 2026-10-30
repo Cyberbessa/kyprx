@@ -132,12 +132,34 @@ def _js(value) -> str:
     return json.dumps(value, ensure_ascii=True)
 
 
-_READ = """
+#: Which screen a desktop is on, worked out inside the shell for the scripts below. `d.screen` is
+#: the shell's own number -- the desktop's place in the compositor's order of outputs, 0 being the
+#: primary (`ScreenPool::idForScreen`) -- but only for a desktop on screen now: it is -1 for every
+#: desktop of another activity, and for the desktop of a screen that is unplugged. There the
+#: containment's own `lastScreen` says which screen it belongs to, in its own config group, the
+#: empty one. Measured on Plasma 6.7.5: the activity in use answered 0 and the other -1, with a
+#: `lastScreen` of "0". It only reads, and it is spelled without the word `scripts/buswatch.py`
+#: takes for a write, because it goes into the reading scripts too.
+_SCREEN_OF = """
+function screenOf(d) {
+    var at = (typeof d.screen === "number") ? d.screen : -1;
+    if (at < 0) {
+        d.currentConfigGroup = [];
+        at = parseInt(String(d.readConfig("lastScreen")), 10);
+    }
+    return isNaN(at) ? -1 : at;
+}
+"""
+
+_READ = _SCREEN_OF + """
+var names = %(names)s;
 var out = [];
 var ds = desktopsForActivity(currentActivity());
 for (var i = 0; i < ds.length; i++) {
     var d = ds[i];
     var row = { id: String(d.id), plugin: String(d.wallpaperPlugin) };
+    var at = screenOf(d);
+    if (at >= 0) { row.screen = at; }
     d.currentConfigGroup = ["Wallpaper", %(image)s, "General"];
     row.image = String(d.readConfig("Image"));
     d.currentConfigGroup = ["Wallpaper", %(video)s, "General"];
@@ -147,7 +169,13 @@ for (var i = 0; i < ds.length; i++) {
     row.pause = String(d.readConfig("PauseMode"));
     out.push(row);
 }
-print(%(ok)s + JSON.stringify({ activity: String(currentActivity()), desktops: out }));
+var connectors = {};
+var resolves = typeof screenForConnector === "function";
+for (var n = 0; n < names.length; n++) {
+    connectors[names[n]] = resolves ? screenForConnector(names[n]) : null;
+}
+print(%(ok)s + JSON.stringify({ activity: String(currentActivity()), desktops: out,
+                                screens: screenCount, connectors: connectors }));
 """
 
 
@@ -155,7 +183,7 @@ print(%(ok)s + JSON.stringify({ activity: String(currentActivity()), desktops: o
 #: gives for the one in use. What the KyprX folder and a copy of the desk carry: the activity in use
 #: alone would change the folder every time somebody switched activity, and on a second machine
 #: sharing the folder it would put one activity's wallpaper on another.
-_READ_ALL = """
+_READ_ALL = _SCREEN_OF + """
 var out = [];
 var ids = activities();
 for (var a = 0; a < ids.length; a++) {
@@ -164,6 +192,8 @@ for (var a = 0; a < ids.length; a++) {
     for (var i = 0; i < ds.length; i++) {
         var d = ds[i];
         var row = { id: String(d.id), plugin: String(d.wallpaperPlugin) };
+        var at = screenOf(d);
+        if (at >= 0) { row.screen = at; }
         d.currentConfigGroup = ["Wallpaper", %(image)s, "General"];
         row.image = String(d.readConfig("Image"));
         d.currentConfigGroup = ["Wallpaper", %(video)s, "General"];
@@ -198,13 +228,20 @@ def snapshot_all() -> list[dict]:
     return [a for a in found.get("activities") or [] if isinstance(a, dict)]
 
 
-def snapshot() -> dict:
+def snapshot(names=()) -> dict:
     """What the desktops of the activity in use have on them right now.
+
+    Each desktop carries the `screen` it is on, when the shell says (`_SCREEN_OF`); the answer
+    carries how many `screens` there are, and `connectors`: for each of `names` -- an output's
+    name, such as `HDMI-A-1`, the way the compositor and Qt spell it -- which screen it is now, -1
+    for a name not connected, and None for every name when the shell has no way to say
+    (`screenForConnector`, which the shell marks as one to remove some day).
 
     A read, so it happens in dry run too -- reading the session is not a change to it.
     """
+    wanted = sorted({str(n) for n in names if n})
     answer = _evaluate(_READ % {"image": _js(IMAGE_PLUGIN), "video": _js(VIDEO_PLUGIN),
-                                "ok": _js(OK)})
+                                "ok": _js(OK), "names": _js(wanted)})
     try:
         state = json.loads(answer)
     except json.JSONDecodeError as e:
@@ -212,6 +249,91 @@ def snapshot() -> dict:
     if not state.get("desktops"):
         raise WallpaperError("the activity in use has no desktop to put a wallpaper on")
     return state
+
+
+# ---------------------------------------------------------------- one screen of several
+
+def screen_number(desktop) -> int:
+    """The screen a desktop is on, or was on last; -1 when its row does not say. A row from a copy
+    of the desk made before rows carried it, or a folder written before, says nothing."""
+    value = desktop.get("screen") if isinstance(desktop, dict) else None
+    return value if type(value) is int and value >= 0 else -1
+
+
+def _desktops(state) -> list[dict]:
+    return [d for d in (state or {}).get("desktops") or [] if isinstance(d, dict)]
+
+
+def _primary_first(state) -> list[dict]:
+    """The desktops with the primary screen's first: the one on screen 0, else the first row.
+
+    **The primary, and not the first row, answers for the activity.** The shell lists desktops in
+    the order its containments were made, which is not the order of the screens: on a desk where a
+    second screen was plugged in first, or one is unplugged, the first row can be a screen nobody
+    is looking at.
+    """
+    desktops = _desktops(state)
+    primary = next((d for d in desktops if screen_number(d) == 0), None)
+    return [primary] + [d for d in desktops if d is not primary] if primary else desktops
+
+
+def on_screen_number(state, number: int) -> dict | None:
+    """`state` with only the desktops on screen `number`, as a view every reader and every plan
+    below takes in place of the whole state -- or None when the activity has no desktop there.
+    `only` is the screen, and is what a write is filtered by."""
+    if type(number) is not int or number < 0:
+        return None
+    desktops = [d for d in _desktops(state) if screen_number(d) == number]
+    return dict(state, desktops=desktops, only=number) if desktops else None
+
+
+def on_screen(state, name: str) -> dict | None:
+    """The view of the screen an output's name is on now, `""` naming the primary; None when that
+    output is not connected, or when the shell could not say (`snapshot`'s `connectors`). A view
+    made from a name keeps it as `only_name`, and a write resolves the name again in the shell
+    when it runs, so a screen order that moved in between still reaches the screen named."""
+    if not name:
+        return on_screen_number(state, 0)
+    number = ((state or {}).get("connectors") or {}).get(name)
+    if type(number) is not int or number < 0:
+        return None
+    view = on_screen_number(state, number)
+    return dict(view, only_name=name) if view else None
+
+
+def colour_view(state, name: str) -> dict:
+    """What a colour is taken from: the screen `name` is on, the primary when that one is not
+    connected, and the whole activity when not even that can be told."""
+    return on_screen(state, name) or on_screen(state, "") or state
+
+
+def gives_colour(view, state, name: str) -> bool:
+    """Does a wallpaper put on `view` reach the screen the colour comes from (`colour_view`)? A
+    view of every screen always does."""
+    if "only" not in (view or {}):
+        return True
+    source = colour_view(state, name)
+    return "only" not in source or source["only"] == view["only"]
+
+
+def screen_words(state) -> str:
+    """Which screens a write reaches, in plain words."""
+    if "only" not in (state or {}):
+        count = len(_desktops(state))
+        return "this activity's screen" if count == 1 else f"this activity's {count} screens"
+    if state.get("only_name"):
+        return f"the screen on {state['only_name']}"
+    return "the primary screen" if state["only"] == 0 else f"screen {state['only'] + 1}"
+
+
+def _want(state) -> str:
+    """Which desktops a write reaches, as the script reads it: an output's name, which the shell
+    turns into a screen when it writes; a screen's number; or "" for every desktop."""
+    if (state or {}).get("only_name"):
+        return _js(str(state["only_name"]))
+    if type((state or {}).get("only")) is int:
+        return _js(state["only"])
+    return _js("")
 
 
 # ---------------------------------------------------------------- what there is to choose from
@@ -558,8 +680,9 @@ def scan_videos(folder: str) -> list[dict]:
 
 
 def _known_videos(state: dict) -> list[dict]:
-    """The video plugin's own list, from the first desktop that has one."""
-    for desktop in state.get("desktops") or []:
+    """The video plugin's own list, from the primary screen's desktop or else the first that has
+    one."""
+    for desktop in _primary_first(state):
         raw = desktop.get("videos") or ""
         try:
             parsed = json.loads(raw)
@@ -675,14 +798,28 @@ def mode_of(state: dict) -> str:
     to write back when the desktop changes, so a watcher cannot start a round of writes answering
     each other.
 
-    The first desktop answers for the activity. Several screens can in principle disagree, and
-    `plugin_plan` settles that by writing every desktop of the activity rather than by guessing
-    which one meant it.
+    The primary screen's desktop answers for what it is given -- the activity, or a view of one
+    screen (`on_screen`). Several screens can disagree, and `plugin_plan` settles that by writing
+    every desktop it is given rather than by guessing which one meant it.
     """
-    desktops = state.get("desktops") or []
+    desktops = _primary_first(state)
     if not desktops:
         return ""
     return "video" if str(desktops[0].get("plugin")) == VIDEO_PLUGIN else "image"
+
+
+def plugins(state) -> tuple:
+    """The plugin each desktop wears, in the order of the screens: what the watch compares, so a
+    plugin changed on any screen is news, and not only one changed on the primary."""
+    def order(desktop):
+        number = screen_number(desktop)
+        return (number if number >= 0 else 1 << 30, str(desktop.get("id") or ""))
+    return tuple(str(d.get("plugin") or "") for d in sorted(_desktops(state), key=order))
+
+
+def kinds_of(state) -> set:
+    """The kinds of wallpaper the desktops wear, in this app's words: "image" or "video"."""
+    return {"video" if plugin == VIDEO_PLUGIN else "image" for plugin in plugins(state)}
 
 
 def mode_for(target: str) -> str:
@@ -702,8 +839,9 @@ def mode_for(target: str) -> str:
 
 
 def current_target(mode: str, state: dict) -> str:
-    """What is on the desktop now, in the same spelling an entry's `target` has."""
-    desktops = state.get("desktops") or []
+    """What is on the desktop now, in the same spelling an entry's `target` has: the primary
+    screen's, of the activity or of the view given."""
+    desktops = _primary_first(state)
     if not desktops:
         return ""
     first = desktops[0]
@@ -714,17 +852,37 @@ def current_target(mode: str, state: dict) -> str:
 
 # ---------------------------------------------------------------- changing it
 
+#: Which desktops a write reaches, read at the top of every writing script: `want` is `_want`'s,
+#: and `only` the screen it means, -1 for every desktop of the activity. **An output's name is
+#: turned into a screen here, when the script runs**, and not when the shell was read: the order
+#: of the screens can move in between -- a screen plugged in, another made the primary -- and the
+#: number read a moment ago would then be another screen's. A name that is not connected now is
+#: -2, which no desktop has, and the count `_run` checks says so.
+_ONLY = """
+var want = %(want)s;
+var only = -1;
+if (typeof want === "number") {
+    only = want;
+} else if (want !== "") {
+    only = (typeof screenForConnector === "function") ? screenForConnector(want) : -2;
+    if (only < 0) { only = -2; }
+}
+"""
+
 #: Setting the image. The config goes in **before** the plugin is named, and that order is the
 #: same in both scripts below for the same reason -- see the note on the video one.
-_WRITE_IMAGE = """
+_WRITE_IMAGE = _SCREEN_OF + _ONLY + """
+var done = 0;
 var ds = desktopsForActivity(%(activity)s);
 for (var i = 0; i < ds.length; i++) {
     var d = ds[i];
+    if (only !== -1 && screenOf(d) !== only) { continue; }
     d.currentConfigGroup = ["Wallpaper", %(plugin)s, "General"];
     d.writeConfig("Image", %(target)s);
     d.wallpaperPlugin = %(plugin)s;
+    done++;
 }
-print(%(ok)s + ds.length);
+print(%(ok)s + done);
 """
 
 #: Setting the video. Three things here are the whole feature, and none of them is obvious.
@@ -742,15 +900,17 @@ print(%(ok)s + ds.length);
 #: **The config is written before the plugin is named.** Coming from the image plugin, naming the
 #: plugin first starts it on the previous `LastVideo` and only then switches -- a visible flash of
 #: the video before last.
-_WRITE_VIDEO = r"""
+_WRITE_VIDEO = _SCREEN_OF + _ONLY + r"""
 function norm(u) {
     try { u = decodeURIComponent(String(u)); } catch (e) { u = String(u); }
     return u.replace(/\/+$/, "");
 }
 var chosen = %(target)s;
+var done = 0;
 var ds = desktopsForActivity(%(activity)s);
 for (var i = 0; i < ds.length; i++) {
     var d = ds[i];
+    if (only !== -1 && screenOf(d) !== only) { continue; }
     d.currentConfigGroup = ["Wallpaper", %(plugin)s, "General"];
     var list;
     try { list = JSON.parse(d.readConfig("VideoUrls")); } catch (e) { list = []; }
@@ -769,8 +929,9 @@ for (var i = 0; i < ds.length; i++) {
     d.writeConfig("LastVideo", chosen);
     d.writeConfig("LastVideoPosition", 0);
     d.wallpaperPlugin = %(plugin)s;
+    done++;
 }
-print(%(ok)s + ds.length);
+print(%(ok)s + done);
 """
 
 
@@ -788,7 +949,7 @@ def _run(script: str, expected: int) -> None:
 
 
 def showing(state: dict) -> str:
-    """Whatever is on the first desktop now, whichever plugin put it there.
+    """Whatever is on the primary screen's desktop now, whichever plugin put it there.
 
     `current_target` answers *for a mode* and says nothing when the running plugin is not that
     mode's. That is right for the picker, whose job is to say whether what you are looking at is
@@ -840,28 +1001,30 @@ def video_list(target: str, state: dict) -> list[dict]:
 
 
 def _heading(state: dict, plugin: str) -> str:
+    where = f", {screen_words(state)}" if "only" in state else ""
     return (f"--- the wallpaper of activity {state.get('activity', '?')}, "
-            f"{len(state.get('desktops') or [])} desktop(s)\n+++ {plugin}\n")
+            f"{len(state.get('desktops') or [])} desktop(s){where}\n+++ {plugin}\n")
 
 
 #: Changing which plugin draws the wallpaper, and nothing else about it. Each plugin keeps its own
 #: config under its own group, so the one being switched to comes back showing whatever it had --
 #: which is what the desktop's own dialog does, and the reason nothing is written here but the name.
-_WRITE_PLUGIN = """
+_WRITE_PLUGIN = _SCREEN_OF + _ONLY + """
+var done = 0;
 var ds = desktopsForActivity(%(activity)s);
-for (var i = 0; i < ds.length; i++) { ds[i].wallpaperPlugin = %(plugin)s; }
-print(%(ok)s + ds.length);
+for (var i = 0; i < ds.length; i++) {
+    if (only !== -1 && screenOf(ds[i]) !== only) { continue; }
+    ds[i].wallpaperPlugin = %(plugin)s;
+    done++;
+}
+print(%(ok)s + done);
 """
-
-
-def _screens(state: dict) -> str:
-    count = len(state.get("desktops") or [])
-    return "this activity's screen" if count == 1 else f"this activity's {count} screens"
 
 
 def plugin_plan(mode: str, state: dict,
                 activity: str | None = None) -> tuple[str, Callable[[], None], str] | None:
-    """Put this kind of wallpaper on every desktop of the activity. None when it is already so.
+    """Put this kind of wallpaper on every desktop `state` holds -- the activity, or a view of one
+    screen (`on_screen`). None when it is already so.
 
     Answering None is not a nicety here, it is the whole loop prevention: this app writes the
     plugin only when the plugin is not already that, so a change it made itself, coming back
@@ -877,8 +1040,9 @@ def plugin_plan(mode: str, state: dict,
         return None
     was = str(desktops[0].get("plugin") or "") or "(none)"
     text = _heading(state, plugin) + f"-wallpaperplugin={was}\n+wallpaperplugin={plugin}\n"
-    script = _WRITE_PLUGIN % {"plugin": _js(plugin), "ok": _js(OK), "activity": _activity(activity)}
-    plain = (f"switch {_screens(state)} to {'video' if mode == 'video' else 'picture'} "
+    script = _WRITE_PLUGIN % {"plugin": _js(plugin), "ok": _js(OK), "activity": _activity(activity),
+                              "want": _want(state)}
+    plain = (f"switch {screen_words(state)} to {'video' if mode == 'video' else 'picture'} "
              f"wallpapers -- each kind keeps its own settings, so it comes back showing what it "
              f"showed last")
     return text, lambda: _run(script, len(desktops)), plain
@@ -908,9 +1072,9 @@ def pause_default() -> str:
 
 
 def pause_mode(state: dict) -> str:
-    """When the video pauses on the activity in use, as the plugin's number. The first desktop
-    answers for the activity, the way it does for the plugin in `mode_of`."""
-    desktops = state.get("desktops") or []
+    """When the video pauses on the activity in use, as the plugin's number. The primary screen's
+    desktop answers for the activity, the way it does for the plugin in `mode_of`."""
+    desktops = _primary_first(state)
     raw = str((desktops[0] if desktops else {}).get("pause") or "")
     return raw if raw in PAUSE_MODES else pause_default()
 
@@ -931,6 +1095,10 @@ print(%(ok)s + ds.length);
 def pause_plan(value: str, state: dict,
                activity: str | None = None) -> tuple[str, Callable[[], None], str] | None:
     """Make the video pause at `value` -- one of `PAUSE_MODES` -- on every desktop of the activity.
+
+    **The whole activity's state, never a view of one screen.** The pause is a choice made for the
+    activity, and the script writes every desktop of it -- handed a view, the count `_run` checks
+    would be a view's, and a pause that had gone in everywhere would read as a failure.
 
     None when every desktop already pauses that way, a desktop with nothing in its file counting
     as the plugin's default. That is what keeps painting the Wallpaper tab from writing anything,
@@ -954,35 +1122,44 @@ def pause_plan(value: str, state: dict,
     script = _WRITE_PAUSE % {"plugin": _js(VIDEO_PLUGIN), "value": _js(int(value)),
                              "activity": _activity(activity),
                              "ok": _js(OK)}
-    plain = (f"pause the video wallpaper on {_screens(state)}: "
+    plain = (f"pause the video wallpaper on {screen_words(state)}: "
              f"{PAUSE_MODES.get(was, was)} → {PAUSE_MODES[value]}")
     return text, lambda: _run(script, len(desktops)), plain
 
 
 def _settled(mode: str, target: str, state: dict) -> bool:
-    """Is the desktop already showing this, in the way this app would have set it?
+    """Is every desktop given already showing this, in the way this app would have set it?
 
     Not just "is that the file". In video mode the plugin has to be the one running **and** the
     chosen video has to be the only one enabled, because a list with two enabled entries is a
     desktop that will move on to a different video by itself.
+
+    **Each desktop by its own record.** This used to ask the first desktop for the file and the
+    list, and the others only for the plugin -- which held while every screen was given the same
+    wallpaper, and stopped holding once a screen can keep its own: putting the first screen's
+    picture on every screen read as done, and the other screens kept theirs.
     """
-    desktops = state.get("desktops") or []
-    if not desktops:
-        return False
+    desktops = _desktops(state)
+    return bool(desktops) and all(_desktop_settled(mode, target, d) for d in desktops)
+
+
+def _desktop_settled(mode: str, target: str, desktop: dict) -> bool:
+    one = {"desktops": [desktop]}
     if mode == "video":
-        if not all(d.get("plugin") == VIDEO_PLUGIN for d in desktops):
-            return False
-        enabled = [v for v in _known_videos(state) if v.get("enabled")]
-        return (len(enabled) == 1
+        enabled = [v for v in _known_videos(one) if v.get("enabled")]
+        return (desktop.get("plugin") == VIDEO_PLUGIN and len(enabled) == 1
                 and same_target(str(enabled[0].get("filename") or ""), target)
-                and same_target(current_target("video", state), target))
-    return (all(d.get("plugin") == IMAGE_PLUGIN for d in desktops)
-            and same_target(current_target("image", state), target))
+                and same_target(current_target("video", one), target))
+    return (desktop.get("plugin") == IMAGE_PLUGIN
+            and same_target(current_target("image", one), target))
 
 
 def plan(mode: str, target: str, state: dict,
          activity: str | None = None) -> tuple[str, Callable[[], None], str] | None:
     """What changing the wallpaper to this would do, and how to do it. None when it is already so.
+
+    It reaches every desktop `state` holds: the activity's, or a view of one screen (`on_screen`,
+    `on_screen_number`), which the script reaches by the same screen (`_want`).
 
     Answering None is what makes applying the wallpaper already on screen silent, and that is
     worth more than the call it saves: it is the property `scripts/drive.py` asserts, because a
@@ -1001,11 +1178,11 @@ def plan(mode: str, target: str, state: dict,
                 + f"+LastVideo={target}\n"
                 + f" VideoUrls: {len(listing)} known, {enabled} enabled\n")
         script = _WRITE_VIDEO % {"plugin": _js(VIDEO_PLUGIN), "target": _js(target), "ok": _js(OK),
-                                 "activity": _activity(activity)}
+                                 "activity": _activity(activity), "want": _want(state)}
         others = len(listing) - 1
         switch = ("" if all(d.get("plugin") == VIDEO_PLUGIN for d in desktops)
                   else ", switching them to video wallpapers")
-        plain = (f"play {shown} as the wallpaper on {_screens(state)}{switch}: in the video "
+        plain = (f"play {shown} as the wallpaper on {screen_words(state)}{switch}: in the video "
                  f"plugin's list it is the one switched on and the other {others} are switched "
                  f"off but kept, and it starts from the beginning")
     else:
@@ -1013,8 +1190,8 @@ def plan(mode: str, target: str, state: dict,
                 + f"-Image={current_target('image', state) or '(none)'}\n"
                 + f"+Image={target}\n")
         script = _WRITE_IMAGE % {"plugin": _js(IMAGE_PLUGIN), "target": _js(target), "ok": _js(OK),
-                                 "activity": _activity(activity)}
+                                 "activity": _activity(activity), "want": _want(state)}
         switch = ("" if all(d.get("plugin") == IMAGE_PLUGIN for d in desktops)
                   else ", switching them to picture wallpapers")
-        plain = f"show {shown} as the wallpaper on {_screens(state)}{switch}"
+        plain = f"show {shown} as the wallpaper on {screen_words(state)}{switch}"
     return text, lambda: _run(script, expected), plain

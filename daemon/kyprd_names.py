@@ -2,7 +2,7 @@
 
 The bus names the daemon answers on, its overlays' window classes and titles, and the per-window
 switches of the Windows tab. Each is a lookup key somewhere outside this repository -- the bus, the
-compositor's placement rules, the tiler's float list, the settings file -- and nothing reports a
+compositor's placement rules, the tiler's float list, the KyprX folder -- and nothing reports a
 miss. The interface keeps copies that have to agree with these: the classes in `gui/kyprx.py`, the
 titles in `gui/cheatsheet.py` and `gui/picker.py`. `SWITCHES` names the four switches whose
 defaults `daemon/defaults.py` declares under the same name.
@@ -23,8 +23,14 @@ MANAGER_IFACE = "org.cyberbessa.KyprX.Manager"
 #: again in `install.sh` (`PLUGIN_ID`), which runs before any of this is installed.
 SCRIPT_PLUGIN = "kyprx"
 
+#: The settings window's own class: the desktop file name `gui/kyprx.py` sets when it starts with no
+#: overlay flag. The tiling floats it, opens it in the middle of its screen and keeps it above the
+#: other windows while it is open (`tiling.BUILTIN_FLOAT` and its two neighbours), and the
+#: migration that renamed this app reads it (`migrate.py`). A test holds it to `gui/kyprx.py`.
+SETTINGS_CLASS = "kyprx"
+
 #: The overlay's window class and title, which is how the compositor is told where to put it and
-#: how the tiler is told to leave it alone. Both have to agree with `gui/kyprx.py` — the class
+#: how the tiling is told to leave it floating. Both have to agree with `gui/kyprx.py` — the class
 #: is the desktop file name the interface sets, the title is the one the overlay sets.
 CHEATSHEET_CLASS = "kyprx-cheatsheet"
 CHEATSHEET_TITLE = "KyprX shortcuts"
@@ -49,23 +55,24 @@ OVERLAYS = (
 #: Their window classes, for the two places that ask "is this one of ours?"
 OVERLAY_CLASSES = frozenset(window_class for _, window_class, _, _, _ in OVERLAYS)
 
-#: The same overlays, spelled as the decoration spells them in an override's pattern. The settings
-#: file is filtered through this in both directions: an overlay managed as a window is exactly
-#: what `daemon/policy.py` refuses to do and takes back off on every start, and a backup is no
+#: The same overlays, spelled as the decoration spells them in an override's pattern. The KyprX
+#: folder is filtered through this in both directions: an overlay managed as a window is exactly
+#: what `daemon/policy.py` refuses to do and takes back off on every start, and a folder is no
 #: reason for it to arrive on another machine.
 OVERLAY_PATTERNS = frozenset(klassy.pattern_for(c) for c in OVERLAY_CLASSES)
 
 #: The four a person chooses about a window that are genuinely *written per window* — the title
 #: bar and the outline in a decoration override, the transparency in a compositor rule, the blur as
-#: a name in the blur effect's list. `policy.apply` writes them, and they are the settings file's
-#: vocabulary for a window row.
+#: a name in the blur effect's list. `policy.apply` writes them, and they are the names a row of
+#: the Windows tab sends its switches by.
 SWITCHES = ("titlebar", "outline", "transparency", "blur")
 
 #: The other two columns of the same table, which are not switches at all: each is membership in
 #: one comma-separated list that belongs to the whole compositor. They are kept apart from the
-#: four above for a measured reason — the list ones must never be written from
-#: `apply_defaults`, which runs over every unseen window in one batch at login, because the
-#: tiler's list cannot be written without the tiler re-reading itself and tiling the screen from
-#: scratch. `set_window_lists` is their path, and it does a whole batch of rows in one
-#: transaction — so a batch costs one rearrangement rather than one per row.
+#: four above because the list ones must never be written from `apply_defaults`, which runs over
+#: every unseen window in one batch at login: neither list can be written without something else
+#: acting on the whole desktop -- the tiling reading its settings again and laying the screen out
+#: by them, the compositor reconfigured for the animation's -- and the login is the busiest moment
+#: there is. `set_window_lists` is their path, and it does a whole batch of rows in one
+#: transaction — so a batch costs one of each rather than one per row.
 LIST_SWITCHES = ("float", "animate")

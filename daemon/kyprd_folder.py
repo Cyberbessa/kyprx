@@ -2,10 +2,10 @@
 
 A change on the desk -- made here or in another program, noticed by watching the four config files,
 the shortcut registry and the shell's config -- is mirrored into the folder; a change that arrived
-in the folder -- a copy, a `git pull`, an edit -- is merged three ways with the desk and applied.
-`daemon/folder.py` decides which side a change came from and what is merged, and
-`daemon/kyprd_desk.py` describes and applies the desk; this is the timing and the order between
-them, and the one place that knows whether the session is ready for an arrival. The stray
+in the folder -- a copy, a `git pull`, an edit -- is merged three ways with the desk, checked again
+as merged, and applied. `daemon/folder.py` decides which side a change came from and what is
+merged, and `daemon/kyprd_desk.py` describes and applies the desk; this is the timing and the order
+between them, and the one place that knows whether the session is ready for an arrival. The stray
 `[Exceptions]` group Klassy's own settings leave behind is removed first on every pass, while KyprX
 is on the desk, so the folder never records it; and the decoration's per-window list is written
 compactly when somebody else wrote it last (`compact_overrides`).
@@ -30,6 +30,7 @@ import klassy
 import logs
 import shortcuts
 import snapshot
+import tiling
 import wallpaper
 import writer
 
@@ -114,6 +115,7 @@ class FolderPart:
         """
         if self._off_desk():
             return
+        self.pay_owed_keys()
         texts, unreadable = folder.read_texts()
         base = self._base()
         arrived = folder.arrivals(texts, base)
@@ -153,9 +155,33 @@ class FolderPart:
                                 + (f" (and {len(problems) - 1} more)" if len(problems) > 1 else ""))
         self._folder_holding = False
 
+    def _merged_problems(self, target: dict) -> list[str]:
+        """What a merge made of the folder and the desk, asked what the folder's own files were
+        asked as they were read (`folder_problems`), and whether its tiling part makes a group to
+        write (`tiling.group_from_part`, which applying it asks next): one sentence each, naming the
+        file. The folder's side of a merged part was asked already; the desk's side never was."""
+        problems = self.folder_problems(target)
+        part = target.get("tiling")
+        if not problems and part is not None:
+            try:
+                tiling.group_from_part(part)
+            except tiling.ArrangementsError as e:
+                problems = [f"{folder.FILES['tiling']}: {e}"]
+        return problems
+
     def _folder_arrival(self, texts: dict, arrived: list[str], areas: dict, fmt: int,
                         base: dict | None) -> None:
-        target, conflicts, whole = folder.arrival_target(arrived, areas, base, self.describe())
+        target, conflicts, whole = folder.arrival_target(arrived, areas, base, self.describe(),
+                                                         atomic=folder.ATOMIC)
+        # Asked before a dry run says what it would apply and before a copy of the desk is kept for
+        # it, rather than found out by applying: there, a target the tiling's part cannot be
+        # written from costs a copy of the desk and is said as an apply that failed and may have
+        # left the desk half changed, and in a dry run it ends the pass as the daemon's own failure
+        # (`_folder_due`). Here it is what it is, a problem of the folder's: nothing is applied.
+        problems = self._merged_problems(target)
+        if problems:
+            self._folder_problem(problems)
+            return
         if target and not self._session_ready(target):
             waited = time.time() - (self._folder_waiting_since or time.time())
             self._folder_waiting_since = self._folder_waiting_since or time.time()
@@ -245,7 +271,11 @@ class FolderPart:
             with trace.step("write"):
                 for name, text in writes.items():
                     folder.write_text(name, text)
-                folder.ensure_extras()
+                extras = folder.ensure_extras()
+            if extras:
+                # Said because the folder may be somebody's repository, where a `README.md` this
+                # app brought up to date shows as a change of its own (`folder.README_BEFORE`).
+                self.log(f"wrote the KyprX folder's {', '.join(extras)}")
             if writes:
                 self.log(f"wrote the KyprX folder's {', '.join(sorted(writes))}")
                 # Timed, and said only when there was something to write: a pass that finds the
@@ -261,6 +291,78 @@ class FolderPart:
         """KyprX taken off the desk: the folder keeps the setup and is neither written nor
         applied until it is put back. See `take_off`."""
         return bool(self.state.off)
+
+    def pay_owed_keys(self) -> None:
+        """Put on the keys owed to actions that were not there when a KyprX folder or a copy of
+        the desk brought them (`State.owed_keys`, `CopiesPart._restore_shortcuts`), now that they
+        are. Run at the head of every folder pass, so no pass can write the folder between an
+        action being registered at its default and its own keys going on: the desk is described
+        with the owed keys meanwhile (`_keys_now`), and the agreement holds them.
+
+        An action still not there waits -- KyprX's own until its compositor script registers it,
+        which after an update is the next login -- and so does everything while the registry
+        cannot be asked. Settled, each leaves what is owed: put on; refused, because another
+        action holds the key now, which is said; or found to be another program's action this
+        desk lacks. For the last two the agreement's entry becomes what the desk holds, so that a
+        key not put on does not read as the desk having changed it, and nothing is written over
+        the folder for it. A dry run says what it would put on, and changes nothing.
+        """
+        owed = self.state.owed_keys
+        if not owed:
+            return
+        settled: dict[str, list[list[int]] | None] = {}
+        refused: list[str] = []
+        for name, wanted in sorted(owed.items()):
+            component, action = shortcuts.unqualified(name)
+            try:
+                held = shortcuts.keys_of(action, component)
+                taken = [seq for seq in wanted if seq not in held
+                         and shortcuts.holders(seq, exclude=(component, action))]
+            except KeyError:
+                if not (component == shortcuts.KWIN_COMPONENT
+                        and action in shortcuts.SCRIPT_ACTIONS):
+                    settled[name] = None
+                continue
+            except dbus.DBusException:
+                return
+            words = (f"the keys of {action} ({component}): {shortcuts.keys_text(held)} → "
+                     f"{shortcuts.keys_text(wanted)}")
+            if writer.dry_run():
+                if held != wanted:
+                    writer.report("would set " + words + ", owed since it was not there")
+                continue
+            if taken:
+                refused.append(f"{action} was not given {shortcuts.keys_text(taken)}, which "
+                               f"another action holds now")
+                settled[name] = held
+                continue
+            if held != wanted:
+                try:
+                    shortcuts.set_keys(action, wanted, component)
+                except (KeyError, dbus.DBusException) as e:
+                    self.log(f"could not put on {words}: {logs.what(e)}", trouble=True)
+                    continue
+                self.log(f"put on {words}, owed since it was not there")
+            owed.pop(name, None)
+        if writer.dry_run():
+            return
+        for name in settled:
+            owed.pop(name, None)
+        self.state.save()
+        if settled:
+            base = self._base()
+            desk = (base or {}).get("desk") or {}
+            keys = (desk.get("shortcuts") or {}).get("keys")
+            if isinstance(keys, dict):
+                for name, held in settled.items():
+                    if held is None:
+                        keys.pop(name, None)
+                    else:
+                        keys[name] = [shortcuts.words(s) for s in held]
+                self._keep_base(base)
+        if refused:
+            self.log("owed keys not put on: " + "; ".join(refused), trouble=True)
+            self.notify_failure("A key from the KyprX folder was not put on\n" + refused[0])
 
     def folder_status(self) -> dict:
         return {"path": folder.PATH, "snapshots": snapshot.DIRECTORY,

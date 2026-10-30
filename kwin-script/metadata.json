@@ -7,12 +7,12 @@
                 "Name": "cyberbessa"
             }
         ],
-        "Description": "Tells the KyprX daemon about windows, and owns the cheatsheet key",
+        "Description": "KyprX's tiling, its window watcher and its keys",
         "Icon": "kyprx",
         "Id": "kyprx",
         "License": "GPL-3.0-or-later",
         "Name": "KyprX",
-        "Version": "0.2"
+        "Version": "0.7"
     },
-    "X-Plasma-API": "javascript"
+    "X-Plasma-API": "declarativescript"
 }

@@ -36,7 +36,7 @@ put() {  # put MODE SOURCE TARGET -- a copy with the mode given, its folder made
 
 # The code, laid out the way it is in the working tree: `daemon/`, `gui/`, and at the top the two
 # files the code finds through its own real path -- VERSION (daemon/about.py) and CREDITS.md (the
-# Settings tab's Credits box). The two entry files keep their execute bit; the links in bin/ are
+# Settings tab's *About KyprX…*). The two entry files keep their execute bit; the links in bin/ are
 # what runs them.
 for f in "$HERE"/daemon/*.py "$HERE"/gui/*.py; do
   rel=${f#"$HERE"/}

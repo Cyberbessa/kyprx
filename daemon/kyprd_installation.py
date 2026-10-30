@@ -1,7 +1,7 @@
 """This installation of KyprX: what it needs on this machine, and taking it off the machine.
 
-**What it needs.** The five projects KyprX is built on are checked by `daemon/requirements.py`; this
-part keeps the answer, because two of the five cost a question to the package manager each --
+**What it needs.** The four projects KyprX is built on are checked by `daemon/requirements.py`; this
+part keeps the answer, because two of the four cost a question to the package manager each --
 measured on this desk, about 45 ms for the whole check, 40 of them the two questions -- and the
 settings window asks on every tab it opens. It is worked out again when a settings window claims
 the interface -- somebody opening KyprX is the moment something may have been installed since --
@@ -14,8 +14,10 @@ offers to restart it. The daemon does not restart itself when a window opens: a 
 with the settings key runs inside the daemon's unit, and would close with it the moment it
 appeared. The first start of a version that is not the one that ran here last
 (`note_the_version`) has the compositor load KyprX's script again, whose file may have changed
-with the rest, and says so in the log. What changed in the format of KyprX's own files is brought
-up to date by `daemon/migrate.py` at every start, as it always is.
+with the rest, and says so in the log -- which takes in a new script only where the session has
+not run KyprX's declarative one yet; anywhere else the new script runs from the next login, and
+the Tiling tab says so. What changed in the format of KyprX's own files is brought up to date by
+`daemon/migrate.py` at every start, as it always is.
 
 **Taking it off the machine.** A package manager removes the files a package installed and nothing
 else: it runs as root, for every user, and never opens anybody's settings -- nor should it. So
@@ -23,11 +25,12 @@ removing KyprX starts here, as the user whose settings they are, and ends with t
 removes the package, said rather than run. Two things are asked, never assumed: whether KDE is put
 back as KDE has it (*Take KyprX off this desk…*, which keeps a copy of the desk first), and whether
 the KyprX folder, with the setup and the copies in it, is kept. Everything else that is only
-KyprX's goes -- the switch and the load of its compositor script, the overlays' two rules and their
-entries in the per-window lists, its actions in the shortcut registry, its colour scheme when the
-desktop is not wearing it, and its memory of this machine and its caches. The five projects stay:
-they are programs of their own, and whether each goes is the package manager's business, which
-removes only what it installed for KyprX.
+KyprX's goes -- the switch and the load of its compositor script, its tiling's settings with the
+zone layouts and arrangements in them, the overlays' two rules and their entries in the blur's list,
+its actions in the shortcut registry and the keys on them, its colour scheme when the desktop is not
+wearing it, and its memory of this machine and its caches. The four projects stay: they are
+programs of their own, and whether each goes is the package manager's business, which removes only
+what it installed for KyprX.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `_needs`, `config`,
 `state` (`app_version`, and `off` in memory only after a removal).
@@ -58,12 +61,24 @@ from kyprd_names import OVERLAY_CLASSES, OVERLAYS, SCRIPT_PLUGIN
 #: under one folder (`daemon/wallcolour.py`, `gui/thumbs.py`).
 CACHE_ROOT = os.path.dirname(os.path.dirname(wallcolour.CACHE_DIR))
 
+#: Two files the desktop writes in KyprX's name, which nothing of KyprX's writes and nothing else
+#: removes; both were found on this desk after every road of removing KyprX had been read. What
+#: KDE's file dialog remembers for an application goes in a file named after it, where every
+#: program's state goes (`<name>staterc`) -- for KyprX, whose name is "KyprX" (`gui/kyprx.py`), the
+#: folders last opened from the Wallpaper tab. And the shell keeps a cache of each Plasma style it
+#: has worn, named after the style (`plasma_theme_<name>.kcache`, 17 MB of KyprX's here). Both
+#: follow the XDG variables, as the desktop that writes them does.
+STATE_CONFIG = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                            "KyprXstaterc")
+STYLE_CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                           f"plasma_theme_{theme.STYLE}.kcache")
+
 
 class InstallationPart:
     """What KyprX needs here, kept between questions; and KyprX taken off this computer."""
 
     def needs(self, refresh: bool = False) -> list[dict]:
-        """Each of the five projects as it stands, from memory unless `refresh` or never asked.
+        """Each of the four projects as it stands, from memory unless `refresh` or never asked.
 
         A check that fails is said once and answered with nothing, rather than taking the settings
         window's every read down with it: an empty list reads as "nothing known to be wrong".
@@ -86,7 +101,17 @@ class InstallationPart:
         the compositor load KyprX's script again: a package update replaced its file, and the
         compositor goes on running the one it loaded until the script is unloaded and loaded again
         or the session ends (measured: see `daemon/reload.py`). The very first start has nothing
-        to reload -- `switch_the_script_on` has just loaded it, or `install.sh` did."""
+        to reload -- `switch_the_script_on` has just loaded it, or `install.sh` did.
+
+        **What the reload can and cannot bring**, both measured in a nested KWin. It is what loads
+        KyprX's declarative script in place of the plain JavaScript one an earlier version ran:
+        that first switch under the same id is read fresh -- once the compositor has been up for
+        about a minute, since until then it goes by the list of packages it read as it started. A
+        declarative script the session has already loaded is another matter: the compositor keeps
+        what it compiled of it for the whole session, and loading it again runs the old code
+        again. So a later version of it is finished by logging out and back in, which the Tiling
+        tab asks for when the script's version is not the one installed ("old-script"). The reload
+        stays for the first case, and costs the second nothing it would not have cost anyway."""
         now, last = about.RUNNING, self.state.app_version
         if not now or now == last:
             return
@@ -109,10 +134,15 @@ class InstallationPart:
     @staticmethod
     def _only_kyprx(tx) -> None:
         """What only KyprX uses in other programs' files: the compositor script's switch, the
-        overlays' placement rules and the names `ensure_overlay_placement` gives them in the
-        tiler's float list and the blur's list, and its way of writing the decoration's per-window
-        list -- the entries stay, one group each (`klassy.spread`). Nobody else's rule or list
-        entry is touched."""
+        settings of its tiling, the overlays' placement rules and the names
+        `ensure_overlay_placement` gives them in the blur's list, and its way of writing the
+        decoration's per-window list -- the entries stay, one group each (`klassy.spread`). Nobody
+        else's rule or list entry is touched.
+
+        The tiling's group goes whole, the zone layouts and arrangements and the float list with
+        it: nothing but KyprX's own engine reads it. Nothing is told to read it again either -- the
+        engine is in the script unloaded below, and a call into it now could only reach a script
+        that is gone, or wake this daemon again on its way out."""
         klassy.spread(tx.klassy)
         if tx.kwin.get(effects.PLUGINS_GROUP, f"{SCRIPT_PLUGIN}Enabled") is not None:
             tx.kwin.delete_key(effects.PLUGINS_GROUP, f"{SCRIPT_PLUGIN}Enabled")
@@ -122,11 +152,7 @@ class InstallationPart:
                 # Every key of it: the rule is this app's from its name to its last key.
                 rules.release(tx.rules, uuid, list(tx.rules.groups.get(uuid, {})))
                 tx.reload_kwin = True
-        floating = effects.tiling_list(tx.kwin, effects.TILING_FLOAT_LIST)
-        if OVERLAY_CLASSES & set(floating):
-            effects.set_tiling_list(tx.kwin, effects.TILING_FLOAT_LIST,
-                                    [c for c in floating if c not in OVERLAY_CLASSES])
-            tx.reload_tiling = True
+        tx.kwin.delete_group(effects.TILING_GROUP)
         blurred = effects.blur_classes(tx.kwin)
         if OVERLAY_CLASSES & set(blurred):
             effects.set_blur_classes(tx.kwin, [c for c in blurred if c not in OVERLAY_CLASSES])
@@ -144,6 +170,19 @@ class InstallationPart:
                (CACHE_ROOT, "the wallpaper pictures and colours KyprX worked out")]
         if not keep_folder:
             out.append((snapshot.FOLDER, "your KyprX folder, with the copies of the desk"))
+        return out
+
+    @staticmethod
+    def _own_files(putting_kde_back: bool) -> list[tuple[str, str]]:
+        """Each file the desktop keeps in KyprX's name that goes (`STATE_CONFIG`, `STYLE_CACHE`),
+        with what it holds. The style's cache only when the panel is not wearing the style -- or
+        will not be, with KDE put back first: the shell reads it while it does, as KyprX's own
+        colour scheme is kept while the desktop wears it. `install.sh --uninstall` takes both
+        either way, once the style's own files are gone."""
+        worn = theme.current().get("style") == theme.STYLE and not putting_kde_back
+        out = [(STATE_CONFIG, "the folders KDE's file dialog last opened for KyprX")]
+        if not worn:
+            out.append((STYLE_CACHE, "Plasma's cache of KyprX's panel style"))
         return out
 
     @staticmethod
@@ -181,7 +220,8 @@ class InstallationPart:
             worn = theme.current().get("scheme") == theme.CUSTOM and not revert
             parts.append(f"{'Kept, because the desktop is wearing it' if worn else 'Removed'}: "
                          f"KyprX's own colour scheme, {explain.home(custom)}")
-        gone = [f"  {explain.home(p)} -- {what}" for p, what in self._own_folders(keep_folder)
+        gone = [f"  {explain.home(p)} -- {what}"
+                for p, what in self._own_folders(keep_folder) + self._own_files(revert)
                 if os.path.lexists(p)]
         if gone:
             parts.append("Removed:\n" + "\n".join(gone))
@@ -213,8 +253,8 @@ class InstallationPart:
             return {"answer": f"error: {e}"}
         if diff and writer.dry_run():
             self.log("would take away what only KyprX used:\n" + diff)
-        done.append("KyprX's compositor script is switched off and unloaded, and the overlays' "
-                    "rules are gone")
+        done.append("KyprX's compositor script is switched off and unloaded, and its tiling's "
+                    "settings and the overlays' rules are gone")
         if writer.dry_run():
             held = shortcuts.script_actions_held()
             if held:
@@ -252,11 +292,24 @@ class InstallationPart:
                 kept.append(said)
             elif said:
                 done.append(said)
+        for path, what in self._own_files(revert):
+            if not os.path.lexists(path):
+                continue
+            if writer.dry_run():
+                writer.report(f"would remove {explain.home(path)} ({what})")
+                continue
+            try:
+                os.remove(path)
+            except OSError as e:
+                self.log(f"could not remove {path}: {logs.what(e)}", trouble=True)
+                kept.append(f"{explain.home(path)}: {e.strerror or e}")
+                continue
+            done.append(f"removed {explain.home(path)} ({what})")
         if keep_folder:
             kept.append(f"your KyprX folder, {explain.home(snapshot.FOLDER)}: install KyprX again, "
                         f"here or anywhere, and it is applied")
-        kept.append("Klassy, Better Blur DX, Krohnkite, Geometry Change and Smart Video Wallpaper "
-                    "Reborn: programs of their own")
+        names = [p.name for p in requirements.PROJECTS]
+        kept.append(", ".join(names[:-1]) + f" and {names[-1]}: programs of their own")
         if not writer.dry_run():
             # In memory only -- the file is gone: nothing of the desk is touched again, and the
             # folder is neither written nor applied, for the moment this process has left.

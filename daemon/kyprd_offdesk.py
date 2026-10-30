@@ -2,8 +2,9 @@
 
 Taking it off keeps a copy of the desk that is never pruned, deletes what KyprX wrote rather than
 writing anything of its own, and puts KDE's own Breeze on; putting it back restores that copy. While
-it is off, `state.json` says so, new windows are left alone, and the KyprX folder is neither written
-nor applied. MAP.md has what exactly is deleted; the methods have why.
+it is off, `state.json` says so, new windows are left alone, nothing is tiled -- the engine's
+switch is one of the keys deleted, and it stands down while KyprX is off besides -- and the KyprX
+folder is neither written nor applied. MAP.md has what exactly is deleted; the methods have why.
 
 The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, `state`.
 """
@@ -40,13 +41,17 @@ class OffDeskPart:
 
         **Only what is this app's goes.** Every key `defaults.SETTINGS` declares is deleted, so the
         decoration, the blur, the animation, the tiling and focus are each back on their own
-        defaults. From every window rule, this app's keys -- the forced title bar and the opacity
-        -- and a rule left doing nothing goes; one with somebody's activity or desktop in it stays.
-        From every decoration override that is a window's own entry, this app's keys, and an entry
-        left with nothing of anybody else's goes; the preset that drops the outline goes after them.
-        The windows this app speaks for leave the three per-window lists. The three plugins it
-        switches on are switched off. Then KDE's own Breeze global theme, with no colour of this
-        app's, keeping every other choice the global theme would have taken (`theme.pure_plan`).
+        defaults -- for the tiling, KyprX's engine's, whose switch reads as off when it is not
+        there, so nothing tiles; the zone layouts and arrangements are not declared, and stay where
+        they are, somebody's work for the day KyprX is put back. From every window rule, this app's
+        keys -- the forced title bar and the opacity -- and a rule left doing nothing goes; one
+        with somebody's activity or desktop in it stays. From every decoration override that is a
+        window's own entry, this app's keys, and an entry left with nothing of anybody else's
+        goes; the preset that drops the outline goes after them. The windows this app speaks for
+        leave the three per-window lists: the blur's, the animation's and the tiling's floating
+        list. The two plugins it switches on are switched off. Then KDE's own Breeze global theme,
+        with no colour of this app's, keeping every other choice the global theme would have
+        taken (`theme.pure_plan`).
 
         **And then KyprX stops.** New windows are left alone, and the KyprX folder is frozen --
         neither written nor applied -- so it keeps the setup. A copy of the desk is kept first and
@@ -88,8 +93,13 @@ class OffDeskPart:
                 for _, keys in groups.items():
                     for key in keys:
                         tx.kwin.delete_key(_SOURCES[source], key)
-            for _, group, list_key in self.KWIN_PARTS:
-                if not list_key or tx.kwin.get(group, list_key) is None:
+            # The tiling's floating list is not among the compositor's parts the folder carries in
+            # `kwin.json` (`KWIN_PARTS`): KyprX's engine has a file of its own there. It is one of
+            # the three lists all the same, and the Float column's windows leave it with the rest.
+            lists = [(group, list_key) for _, group, list_key in self.KWIN_PARTS if list_key]
+            lists.append((effects.TILING_GROUP, effects.TILING_FLOAT_LIST))
+            for group, list_key in lists:
+                if tx.kwin.get(group, list_key) is None:
                     continue
                 values, sep = self._split_list(tx.kwin.get(group, list_key), list_key)
                 left = [v for v in values if v not in managed]
@@ -165,8 +175,8 @@ class OffDeskPart:
         return answer
 
     def leave_off(self) -> None:
-        """Something else put KyprX back on the desk -- *Restore defaults*, going back to a copy,
-        a backup file. The folder is unfrozen, and first kept whole beside the newest copy of the
+        """Something else put KyprX back on the desk -- *Restore defaults*, or going back to a
+        copy. The folder is unfrozen, and first kept whole beside the newest copy of the
         desk: from here on the daemon writes the desk into it again, and the setup it kept while
         KyprX was off must not be written over without a copy."""
         if not self.state.off:

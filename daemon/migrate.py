@@ -1,9 +1,11 @@
 """The one-off passes that bring an install up to date, each run once, gated on the version
 stamped in `state.json`: bringing an install made under this app's previous name across (below
-version 3), putting KyprX's layout order in place where nobody had chosen one (below 4),
-moving the title bar's opacity keys to the names the decoration reads (below 5), moving this
-app's own two files out of what became the KyprX folder (below 6), and applying default settings
-including Longive theme and 7.5 corner radius (below 7).
+version 3), moving the title bar's opacity keys to the names the decoration reads (below 5),
+moving this app's own two files out of what became the KyprX folder (below 6), and applying
+default settings including Longive theme and 7.5 corner radius (below 7). Versions 4 and 8 have no
+pass of their own: an install below them is only stamped. KyprX's own tiling switch is written by
+the bootstrap of a fresh install and by nothing here for an older one, so there it reads off until
+somebody switches it on.
 
 The first of them is most of this file.
 
@@ -53,7 +55,7 @@ import theme
 import writer
 import profiles
 import snapshot
-from kyprd_names import SCRIPT_PLUGIN
+from kyprd_names import SCRIPT_PLUGIN, SETTINGS_CLASS
 from state import CONFIG_PATH, LEGACY_CONFIG_PATH, STATE_PATH, STATE_VERSION
 
 CONFIG_DIR = os.path.expanduser("~/.config/kyprx")
@@ -81,9 +83,9 @@ OLD_OUTLINE_OFF_PRESET = "CYBE-KDE No Outline"
 OLD_GUI_CLASS = "cybe-kde"
 OLD_CHEATSHEET_ACTION = "CybeKdeCheatsheet"
 
-#: The interface's window class today — `app.setDesktopFileName` in `gui/kyprx.py`.
-GUI_CLASS = "kyprx"
-
+#: The interface's window class today — `app.setDesktopFileName` in `gui/kyprx.py`, and
+#: `kyprd_names.SETTINGS_CLASS`, where the rest of the daemon reads it.
+GUI_CLASS = SETTINGS_CLASS
 
 def _state_version() -> int:
     """The version stamped in `state.json`, or 0 when there is nothing to read.
@@ -99,6 +101,7 @@ def _state_version() -> int:
 
 
 def _stamp_version(log) -> None:
+    """Stamp `STATE_VERSION`, keeping everything else the file holds."""
     if writer.dry_run():
         log(f"would have stamped state.json at version {STATE_VERSION}")
         return
@@ -221,15 +224,6 @@ def _rewrite_configs(tx, cheatsheet_class: str, cheatsheet_title: str) -> None:
         klassy.ensure_outline_off_preset(tx.presets)
         tx.presets.delete_group(old_group)
 
-    # The tiler's float list, which is append-only: nothing but this removes an entry.
-    floating = (tx.kwin.get(effects.TILING_GROUP, effects.TILING_FLOAT_LIST, "") or "")
-    if OLD_CHEATSHEET_CLASS in [v.strip() for v in floating.split(",")]:
-        kept = [v.strip() for v in floating.split(",")
-                if v.strip() and v.strip() != OLD_CHEATSHEET_CLASS]
-        kept.append(cheatsheet_class)
-        tx.kwin.set(effects.TILING_GROUP, effects.TILING_FLOAT_LIST, ",".join(dict.fromkeys(kept)))
-        tx.reload_tiling = True
-
     # One reconfigure covers the rule, the override and the preset the override points at — the
     # same signal the rest of the app leans on, and it applies to windows already on screen.
     if tx.rules.dirty() or tx.klassy.dirty() or tx.presets.dirty():
@@ -269,54 +263,6 @@ def _restore_cheatsheet_key(log) -> None:
             "the compositor refused the old cheatsheet key — its default applies")
     except Exception as e:  # noqa: BLE001
         log(f"could not carry the cheatsheet key over: {logs.what(e)}", trouble=True)
-
-
-#: KyprX's own layout order before `defaults.VERSION` 4, as the tiler reads it: Quarter, Monocle,
-#: Tile and on to Cascade, every layout in the cycle. Written out here rather than kept in
-#: `defaults.py`, because it is not an opinion any more -- it is a fact about what installs made
-#: before then may still be wearing, and the only thing that reads it is the pass below.
-PREVIOUS_LAYOUT_ORDER = {
-    "quarterLayoutOrder": 1, "monocleLayoutOrder": 2, "tileLayoutOrder": 3,
-    "threeColumnLayoutOrder": 4, "stackedLayoutOrder": 5, "binaryTreeLayoutOrder": 6,
-    "columnsLayoutOrder": 7, "spreadLayoutOrder": 8, "floatingLayoutOrder": 9,
-    "stairLayoutOrder": 10, "spiralLayoutOrder": 11, "cascadeLayoutOrder": 12,
-}
-
-
-def new_layout_order(kwin) -> bool:
-    """Put KyprX's layout order on a desk still wearing an order nobody chose. True if it wrote.
-
-    **Nobody chose** means one of exactly two orders, compared as the tiler reads them
-    (`effects.layout_order`): the tiler's own, which is what a desk has before anything writes a
-    number, and KyprX's previous one, which is what *Restore defaults* wrote until the default
-    moved. Any other order is somebody's -- one number moved on the Tiling tab is enough -- and is
-    left exactly as it is. The owner asked for that in as many words: a new default must not
-    silently overwrite an order that was arranged.
-
-    Only the keys that read differently are written, the rule `declared.write_declared` keeps, and
-    the order is the one declared in `defaults.SETTINGS` rather than a second copy of it here.
-    Takes the config itself rather than a transaction, so `scripts/dry-run.sh` can hand it one
-    that exists only in memory.
-    """
-    now = effects.layout_order(kwin)
-    shipped = {key: int(effects.TILING_DEFAULTS[key]) for key in now}
-    if now not in (shipped, PREVIOUS_LAYOUT_ORDER):
-        return False
-    declared = defaults.SETTINGS["tiling"][""]
-    wrote = False
-    for key, value in now.items():
-        wanted = int(declared[key])
-        if value != wanted:
-            kwin.set(effects.TILING_GROUP, key, str(wanted))
-            wrote = True
-    return wrote
-
-
-def _layout_pass(tx) -> None:
-    """`new_layout_order`, shaped for `writer.run`. The tiler re-reads itself only when it is
-    reloaded, and a tiler that reloads tiles the screen again -- once, here."""
-    if new_layout_order(tx.kwin):
-        tx.reload_tiling = True
 
 
 #: The title bar's opacity keys as this app used to spell them, and as the decoration spells them.
@@ -495,7 +441,7 @@ def _bootstrap_pass(tx) -> None:
 
 def _v7_upgrade_pass(tx) -> None:
     """Migrate settings for existing installs updating to version 7."""
-    for plugin in (SCRIPT_PLUGIN, effects.BLUR_PLUGIN, effects.TILING_PLUGIN, effects.GEOMETRY_PLUGIN):
+    for plugin in (SCRIPT_PLUGIN, effects.BLUR_PLUGIN, effects.GEOMETRY_PLUGIN):
         key = f"{plugin}Enabled"
         if tx.kwin.get(effects.PLUGINS_GROUP, key) is None:
             effects.set_plugin_enabled(tx.kwin, plugin, True)
@@ -513,8 +459,8 @@ def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
 
     Each pass runs when the stamped version is below the one that introduced it, so an install
     that was already brought across under the new name is not walked through that again for a
-    pass that arrived later. A fresh install answers 0 and gets both. The version is stamped only
-    when every pass that was due went through.
+    pass that arrived later. A fresh install answers 0 and gets what applies to it. The version is
+    stamped only when every pass that was due went through.
     """
     moved_ok = _move_dirs(log)
     if not moved_ok:
@@ -540,23 +486,6 @@ def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
             log(f"would rewrite the old names in config:\n{diff}" if writer.dry_run()
                 else "rewrote the old names in config")
         _restore_cheatsheet_key(log)
-
-    if version < 4:
-        try:
-            diff = writer.run(_layout_pass)
-        except Exception as e:  # noqa: BLE001 — the order stays as it was, and says so
-            log(f"could not put KyprX's layout order in place: {logs.what(e)}", trouble=True)
-            return True
-        declared = defaults.SETTINGS["tiling"][""]
-        cycle = ", ".join(label for _, key, label in sorted(
-            (int(declared[key]), key, label) for key, label in effects.LAYOUTS
-            if int(declared[key]) > 0))
-        if not diff:
-            log("left the layout order as it is: it is already KyprX's, or it is somebody's own")
-        elif writer.dry_run():
-            log(f"would have put KyprX's layout order in place ({cycle}):\n{diff}")
-        else:
-            log(f"put KyprX's layout order in place: {cycle}")
 
     if version < 5:
         try:

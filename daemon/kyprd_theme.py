@@ -56,12 +56,15 @@ class ThemePart:
         #: answer costs a second and a half of ffmpeg -- cached after that, per file.
         offered, why = "", ""
         if self.config.auto_colour and now["mode"] in theme.MODES:
+            source = self.config.colour_screen
             try:
-                state = wallpaper.snapshot()
+                state = wallpaper.snapshot(names=(source,))
             except wallpaper.WallpaperError as e:
                 why = f"the shell did not say what the wallpaper is: {e}"
             else:
-                target = wallpaper.showing(state)
+                # The wallpaper of the screen the colour comes from, the primary's when that one
+                # is not connected.
+                target = wallpaper.showing(wallpaper.colour_view(state, source))
                 if not target:
                     why = "the shell is not showing a wallpaper this can read"
                 else:
@@ -174,10 +177,10 @@ class ThemePart:
         #: This one is told rather than asked, and the difference from `from_wallpaper` is the
         #: point rather than an inconsistency. That one can be asked because there is a fact
         #: outside this process to consult -- what colour the wallpaper on screen gives. "Somebody
-        #: picked a theme" has no such fact anywhere: a profile being loaded, a settings file being
-        #: imported and *Restore defaults* all arrive here with a preset that differs from the one
-        #: in force, and each of the three carries outline keys of its own, written moments
-        #: earlier, that this would throw away -- a profile that does not load, a backup that does
+        #: picked a theme" has no such fact anywhere: a profile being loaded, the KyprX folder or a
+        #: copy of the desk being applied and *Restore defaults* all arrive here with a preset that
+        #: differs from the one in force, and each carries outline keys of its own, written moments
+        #: earlier, that this would throw away -- a profile that does not load, a copy that does
         #: not restore. So it is a Python argument like `from_wallpaper`, nothing outside this
         #: process can set it, and the default is the safe one: a caller that says nothing moves no
         #: outline.
@@ -275,8 +278,8 @@ class ThemePart:
         on every single wallpaper change and the outline would follow nothing at all. So: a name
         means that wallpaper, `""` means whatever is on screen -- which is right for a colour taken
         from the Appearance tab, where the picture is already up -- and `None` means a caller that
-        knows this is nobody's wallpaper, which is what an imported settings file is, and a
-        profile being loaded.
+        knows this is nobody's wallpaper, which is what the KyprX folder, a copy of the desk,
+        *Restore defaults* and a profile being loaded are.
 
         Read from the cache and never worked out here. `set_theme` runs on the daemon's own loop,
         and a wallpaper whose colour is not known yet is exactly the second and a half of ffmpeg
@@ -286,8 +289,10 @@ class ThemePart:
         if target is None or not accent or not self.config.auto_colour or mode not in theme.MODES:
             return False
         if not target:
+            source = self.config.colour_screen
             try:
-                target = wallpaper.showing(wallpaper.snapshot())
+                target = wallpaper.showing(wallpaper.colour_view(
+                    wallpaper.snapshot(names=(source,)), source))
             except wallpaper.WallpaperError as e:
                 self.log(f"could not ask the shell what the wallpaper is: "
                          f"{logs.what(e)}", trouble=True)

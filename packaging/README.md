@@ -8,8 +8,7 @@ What a package installs.
 |---|---|
 | `packaging/stage.sh` | lays KyprX out under a prefix, the way both recipes install it |
 | `packaging/fedora/kyprx.spec` | KyprX's own RPM |
-| `packaging/fedora/kwin-scripts-krohnkite.spec` | Krohnkite, built in KyprX's COPR: no Fedora repository its author keeps carries it |
-| `packaging/fedora/kwin-effects-geometry-change.spec` | Geometry Change, for the same reason |
+| `packaging/fedora/kwin-effects-geometry-change.spec` | Geometry Change, built in KyprX's COPR: no Fedora repository carries it |
 | `packaging/fedora/plasma-smart-video-wallpaper-reborn.spec` | the video plugin at 2.15.0, which KyprX needs and Fedora's own package and its author's repository do not yet carry; under Fedora's name, so a newer one supersedes it |
 | `.copr/Makefile` | how COPR makes a source package from this repository |
 | `packaging/arch/PKGBUILD` | KyprX's AUR package |
@@ -17,9 +16,10 @@ What a package installs.
 | `packaging/public/.github/FUNDING.yml` | what puts the *Sponsor* button, to Ko-fi, on the public repository's page |
 | `packaging/public/screenshots/` | what the public README shows: the settings window's seven tabs as PNGs (`tab-<tab>.png`), and four screen recordings as animated AVIF -- the wallpaper picker, a wallpaper's colour taken by the desktop, transparency and the cheatsheet -- referenced from the README as `screenshots/<name>` |
 
-The five projects KyprX is built on are required by both packages. Two of them are compiled
-against one version of KWin, and KyprX never builds those: the repositories that carry them
-rebuild them for each Plasma release, which is work that has to follow Plasma's calendar.
+The four projects KyprX is built on are required by both packages. KyprX tiles the windows
+itself, so no tiling script is among them. Two of them are compiled against one version of KWin,
+and KyprX never builds those: the repositories that carry them rebuild them for each Plasma
+release, which is work that has to follow Plasma's calendar.
 
 ## The repositories KyprX depends on
 
@@ -31,7 +31,7 @@ same ones are added the same way.
 |---|---|---|
 | Klassy | `https://download.opensuse.org/repositories/home:/paulmcauley/Fedora_$releasever/` | its author's own repository, on the openSUSE build service |
 | Better Blur DX | `copr://infinality/kwin-effects-better-blur-dx` | a COPR that rebuilds it for each Plasma release |
-| Krohnkite, Geometry Change, the video plugin | KyprX's own COPR | the three specs here |
+| Geometry Change, the video plugin | KyprX's own COPR | the two specs here |
 
 ## Once: the COPR project
 
@@ -46,7 +46,7 @@ copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a 
 2. In the project's settings, *Runtime dependencies*: the Klassy and Better Blur DX lines of the
    table above. Measured: the repository file COPR serves carries both as sections of their own,
    enabled, and `dnf copr enable` enables them together with KyprX's.
-3. Four packages, each with the source type *SCM*: the clone URL
+3. Three packages, each with the source type *SCM*: the clone URL
    `https://github.com/Cyberbessa/kyprx` -- spelled the way GitHub spells the account, capital C
    included -- the spec file `packaging/fedora/<package>.spec`, and the SRPM build method *make
    srpm*, which runs `.copr/Makefile`.
@@ -58,7 +58,7 @@ copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a 
    was built. A tag alone rebuilds nothing, because COPR takes a tag as `kyprx-0.1.0`, not `v0.1.0`;
    each release reaches the public repository as a commit, so the push is what builds it.
    `copr-cli new-webhook-secret kyprx` makes a new secret -- it asks for a yes first, and prints
-   `Generated new token:` -- and the webhook on GitHub has to be given it. The three others are
+   `Generated new token:` -- and the webhook on GitHub has to be given it. The two others are
    rebuilt by hand, when their spec changes.
 
 ## Once: the AUR package
@@ -74,8 +74,8 @@ git -C kyprx config user.email grdz441yj@mozmail.com
 ```
 
 Every AUR dependency of KyprX's -- `klassy`, `kwin-effects-better-blur-dx`,
-`kwin-scripts-krohnkite`, `kwin-effects-geometry-change`,
-`plasma6-wallpapers-smart-video-wallpaper-reborn` -- is somebody else's package, kept by them.
+`kwin-effects-geometry-change`, `plasma6-wallpapers-smart-video-wallpaper-reborn` -- is somebody
+else's package, kept by them.
 
 ## A release
 
@@ -89,15 +89,26 @@ Every AUR dependency of KyprX's -- `klassy`, `kwin-effects-better-blur-dx`,
    `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`), committed and pushed. Both commands need an
    Arch system; a container is enough.
 4. On the GitHub release, that `PKGBUILD`, checksum filled in. Until KyprX is in the AUR it is
-   how Arch installs it -- `paru -Ui` in a folder holding it builds KyprX and brings the five from
-   the AUR, `kwin-scripts-krohnkite-git` installed first while Krohnkite's own package fails its
-   checksum -- and the install guide points at `releases/latest/download/PKGBUILD`, so a release
-   without it breaks that line. Measured on a clean Arch: `paru -Ui` installed it with all five,
-   and `makepkg -si` did with the five present. No built package goes beside it: it would carry
-   KyprX's files and none of the five -- Klassy and Better Blur DX are built against one KWin and
-   cannot travel prebuilt -- so it would install only where they already are.
+   how Arch installs it -- the install guide downloads it into a temporary folder, `paru -Ui`
+   builds KyprX there and brings the four from the AUR, and the folder is deleted afterwards --
+   and the guide points at `releases/latest/download/PKGBUILD`, so a release without it breaks
+   that line. Measured on a clean Arch while the recipe named a fifth package from the AUR:
+   `paru -Ui` installed it with all five, and `makepkg -si` did with the five present. Measured
+   in an Arch container, with `makepkg -d` in place of `paru -Ui`: the guide's four lines built
+   the PKGBUILD of the 0.1.4 release, which names a fifth package, and left nothing in the home
+   folder. The recipe with its four has not been built on Arch, and the four lines have not been
+   run with `paru`. No built package goes beside it: it would carry KyprX's files and none of the
+   four -- Klassy and Better Blur DX are built against one KWin and cannot travel prebuilt -- so
+   it would install only where they already are. The release's notes carry the install guide's
+   four Arch lines as they are, for installing and for updating alike, never a folder of the
+   reader's own to build in.
+5. The GitHub release is also how an install made with `install.sh` from a release folder finds
+   the new version: `daemon/update.py` asks GitHub for the latest release -- by GitHub's
+   documentation, the newest that is neither a draft nor a pre-release -- and downloads the
+   tarball of its tag. So the tag is `v<version>` and the release is published, or no installed
+   KyprX sees it (installer).
 
-A new version of one of the three projects built here is a new `Version` in its spec, a
+A new version of one of the two projects built here is a new `Version` in its spec, a
 `%changelog` entry, and a rebuild of that package in COPR.
 
 ## The screenshots

@@ -64,7 +64,7 @@ def app_icon() -> QIcon:
 #: and what opens it. A table rather than a chain of `if`s, because each entry has to agree with
 #: `daemon/kyprd_names.py:OVERLAYS` and a list is easier to keep beside another list.
 #:
-#: The wallpaper entry is a **function**, not a class, because which of its three layouts to build
+#: The wallpaper entry is a **function**, not a class, because which of its two layouts to build
 #: is a setting and is only known after the daemon has been asked. It is called the same way, so
 #: nothing below has to know the difference.
 OVERLAYS = {
@@ -86,7 +86,7 @@ DRY_RUN_OVER = ("<b>The dry run is over.</b> The daemon that was only writing th
                 "gone, and the one that answers now writes for real -- so this window has stopped "
                 "sending anything. Close it and open it again to go on.")
 
-#: The doors to the decoration's own settings, when this window is on a dry run. That program is
+#: The door to the decoration's own settings, when this window is on a dry run. That program is
 #: not this app: it writes its own file and reloads the compositor itself, and a dry run cannot
 #: hold any of it back.
 DRY_RUN_DOOR_TIP = ("Closed during a dry run: the decoration's own settings save for real, and a "
@@ -122,11 +122,13 @@ TAB_ORDER = [
     ("wallpaper", "Wallpaper", ("wallpaper", "wallpapers"),
      "What the wallpaper key offers you, and how it looks when it opens."),
     ("tiling", "Tiling", ("tiling",),
-     "How windows are laid out, the space between them, and how focus moves."),
+     "How windows are laid out, in which arrangements, the space between them, and how focus "
+     "moves."),
     ("shortcuts", "Shortcuts", ("shortcuts",),
-     "Every key KyprX and the tiler answer to, and what each one does."),
+     "Every key KyprX answers to, its tiling's among them, and what each one does."),
     ("settings_tab", "Settings", ("settings",),
-     "What KyprX keeps about itself: the backup file, and its own defaults."),
+     "Notifications, your KyprX folder, and the ways back: a copy of the desk, KyprX's "
+     "defaults, plain KDE."),
 ]
 
 TABS = {name: i for i, (_, _, names, _hint) in enumerate(TAB_ORDER) for name in names}
@@ -167,7 +169,7 @@ class MainWindow(QWidget):
         self.off_band.setVisible(False)
         self._off_copy = ""
 
-        #: When one of the five projects KyprX is built on is missing or not running: which ones,
+        #: When one of the projects KyprX is built on is missing or not running: which ones,
         #: and the way to what to do about it. Above every tab, because one missing project breaks
         #: something on several -- each tab it breaks also says so on itself.
         self.needs_text = warning()
@@ -201,9 +203,9 @@ class MainWindow(QWidget):
         self.update_band.setVisible(False)
 
         #: What is always on screen, and it is deliberately the three things somebody comes here
-        #: to do rather than the three this app has to configure. `Notify` and the door to the
-        #: decoration's own settings went to the Settings tab, which is where a thing set once
-        #: belongs.
+        #: to do rather than the three this app has to configure. `Notify` went to the Settings
+        #: tab, which is where a thing set once belongs, and the door to the decoration's own
+        #: settings is the Appearance tab's, beside the title bar it changes.
         self.strip = TopStrip(client)
         self.strip.says.connect(self._say)
         self.strip.loaded.connect(self._look_loaded)
@@ -357,15 +359,17 @@ class MainWindow(QWidget):
             self.banner.setVisible(True)
         else:
             self.banner.setVisible(False)
-        for door in (self.appearance.title_bar.door, self.settings_tab.door):
-            door.setEnabled(not (dry or held))
-            door.setToolTip(DRY_RUN_DOOR_TIP if (dry or held) else TITLEBAR_BUTTON_TIP)
+        door = self.appearance.title_bar.door
+        door.setEnabled(not (dry or held))
+        door.setToolTip(DRY_RUN_DOOR_TIP if (dry or held) else TITLEBAR_BUTTON_TIP)
 
     def keyPressEvent(self, event):  # noqa: N802 — Qt's spelling
         """Escape closes the window, as it closes the other two this app opens with a key.
 
         Not while a shortcut row is listening: there Escape already means *leave that key as it
-        was*, and it is handled by the row itself.
+        was*, and it is handled by the row itself. Nor in the middle of a drag on the Tiling tab's
+        builder, where it means *put that divider back*: the builder holds the keyboard for the
+        drag, so the key never arrives here (`LayoutBuilder`).
         """
         if event.key() == Qt.Key.Key_Escape and not any(row._editing
                                                         for row in self.shortcuts.rows):
@@ -480,6 +484,7 @@ class MainWindow(QWidget):
             # somebody's hands throws their edit away, and a field already touched is skipped even
             # among those two. The box has a refusal of its own for when a write of its is pending.
             self.appearance.colours.load(self.c.theme())
+            self.appearance.colours.reload_screens()
             # The profiles are painted by `_paint_looks`, which the strip needs anyway --
             # their bold row is "the look on the desktop now", a fact that any change on any tab
             # can move. The strength a loaded profile moves is this box's own.

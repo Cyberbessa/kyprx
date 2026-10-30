@@ -136,9 +136,12 @@ to 99 %. The cell shows a number on every row but KyprX's own overlays, which sh
   shares. Moving that number moves these windows with it.
 - **No dot** means one of two things, and the cell's tooltip says which. Either the window has a
   number of its own: moving the Appearance tab's number does not reach it, and neither does loading
-  a profile or **Restore KyprX's defaults…**, while applying the KyprX folder or a backup file puts
-  back whatever numbers they carry. Or a window rule that KyprX did not write draws the window at
+  a profile or **Restore KyprX's defaults…**, while applying the KyprX folder puts back whatever
+  numbers it carries. Or a window rule that KyprX did not write draws the window at
   that number: KyprX leaves it there, and giving the window a number of its own takes it over.
+- **0 %** is a window hidden on purpose, such as KDE's screen-sharing helper
+  (`xwaylandvideobridge`). KyprX leaves it at 0 %, whoever's rule holds it, its own included: the
+  Appearance tab's number never reaches it.
 - **The ▾ after the number** means the cell can be clicked.
 
 Click the number, right-click it, or select it and press Enter, F2 or the menu key, and a menu
@@ -179,18 +182,25 @@ Greyed in two cases:
 
 ### Float
 
-Ticked, the tiler leaves every window of this class where you put it instead of tiling it. This is
-a standing rule. The tiler's toggle-float key on the [Shortcuts](shortcuts.md) tab is not the
-same: it floats one window until that window closes. Floating by window title is on the
-[Tiling](tiling.md) tab.
+Ticked, every window of this class always floats: KyprX's tiling leaves it where you put it instead
+of tiling it. This is a standing rule. **Toggle Float** on the
+[Shortcuts](shortcuts.md#resize-and-arrange) tab is not the same: it floats one window until that
+window closes, and it wins over this tick. How a floating window behaves, and floating by window
+title, are on the [Tiling](tiling.md#floating-windows) tab.
 
-KyprX adds the class to the tiler's list of floating windows, or takes it out
-(Krohnkite). A new window gets nothing
-here: it is left as that list already says.
+KyprX adds the class to its tiling's list of windows that always float, or takes it out. The list
+is KyprX's own, and an entry matches the way the lists on the Tiling tab do: a window whose class,
+or whose program name, is the class, whatever the case
+([How an entry matches](tiling.md#never-tiled)). A tick moves windows at once: the window floats
+where it is or goes back into the layout, and the others on its screen make room or close up.
+Nothing else on the desktop is reloaded for it. A new window gets nothing here: it is left as that
+list already says.
 
-Greyed while tiling is switched off, because then nothing is tiled and nothing floats. The Tiling
-tab has a **Switch tiling back on** button. Locked on KyprX's own overlays, which have to float
-(see [KyprX's own overlays](#kyprxs-own-overlays)).
+Greyed while KyprX's tiling is switched off, or KyprX is off this desk, because then KyprX tiles
+nothing and nothing floats. The band at the top of the Tiling tab says why, and what to do
+([When tiling is switched off](tiling.md#when-tiling-is-switched-off)). Locked on KyprX's own
+overlays, which have to float, and ticked and locked on KyprX's own settings window, which floats
+by itself (see [KyprX's own overlays](#kyprxs-own-overlays)).
 
 ### Animate
 
@@ -238,10 +248,16 @@ they are open and **System windows** is ticked.
 On those rows, **Hide title bar**, **Outline**, **Transparency**, **Opacity** and **Blur** show a
 grey dash instead of a box. An empty box would say the window has a title bar, and it has none:
 these windows have no frame on purpose, and KyprX never manages them like an application. **Float**
-is locked: the overlays have to float, and KyprX puts them back in the tiler's list every time it
-starts. **Animate** is an ordinary box.
+is locked: the overlays have to float, and KyprX puts them back in its tiling's list of floating
+windows every time it starts. **Animate** is an ordinary box.
 
-The settings window itself is not an overlay. Its class is `kyprx`, and it is an ordinary row.
+The settings window itself is not an overlay. Its class is `kyprx`, and it is an ordinary row but
+for **Float**, which is ticked and locked: while KyprX's tiling runs, the settings window floats
+whatever the tiling's list says, opens in the middle of its screen and stays above the other
+windows ([Floating windows](tiling.md#floating-windows)). With **Automatic tiling** on,
+**Toggle Float** tiles it until it closes. While KyprX's tiling is not running, in the cases
+[Float](#float) names, the box stays ticked and locked, and its tooltip says that the tiling is not
+running.
 
 ## Under the table
 
@@ -286,11 +302,12 @@ It happens only while **Adjust new windows**, above the tabs, is ticked
 | **Outline** | ticked |
 | **Transparency** | ticked, at the Appearance tab's **Opacity** number (92 % unless you changed it) |
 | **Blur** | ticked |
-| **Float** | nothing: left as the tiler's list already says |
+| **Float** | nothing: left as the tiling's list already says |
 | **Animate** | nothing: left as the animation's list already says |
 
 **Float** and **Animate** are never set for a new window. At login every window is new at once, and
-writing the tiler's list at that moment would make it lay out the whole screen again.
+each of those lists is one list for every window: writing them then would have KyprX's tiling, and
+for the animation's list the whole compositor, read its settings again for nothing.
 
 No control in the window changes these defaults. The one place to change them is `new_windows` in
 the `settings.json` file of the KyprX folder (see [Settings](settings.md), and
@@ -335,9 +352,9 @@ under the table names the kind (**left alone because it is:**).
 - **Every change reaches windows that are already open, both ways.** Ticking and unticking change
   the window on screen at once, with no reopening and no logging out. Measured — see the module
   comment in `daemon/reload.py`.
-- **A Float tick rearranges the tiled windows.** Changing the tiler's list makes the tiler start
-  again, and a tiler that has just started lays out every tiled window from scratch. Ticks that go
-  out together cost one rearrangement, not one each.
+- **A Float tick moves the windows on its screen.** The window floats or goes back into the layout,
+  and the tiled windows beside it make room or close up. Ticks that go out together are one change,
+  and one rearrangement, not one each.
 - **Your own Klassy entries and window rules count.** An entry you made in Klassy's own settings
   counts here like one of KyprX's, and the row shows what it says (which entries count is on the
   Klassy page). A window rule of yours that forces a

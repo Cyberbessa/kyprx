@@ -1,12 +1,16 @@
 """The Settings tab: what KyprX keeps about itself, and the big changes it can make.
 
-Notifications, the door to the decoration's own settings, the KyprX folder and how it stands with
-the desk, what is wrong on this machine and its repairs, and the changes that write a great deal:
-applying a backup file, and *Restore defaults*, *Take KyprX off this desk* and *Go back to a
-copy...*, each of those three asked first in `gui/dialogs.py` with what it would change listed. Also
-the projects KyprX works with, the short form of `CREDITS.md`: `CREDITS` is compared with that file
-by `scripts/dry-run.sh`, and the file is found at the top of the working tree, the folder above
-`gui/`.
+Notifications, the KyprX folder and how it stands with the desk, and -- only while there is
+something to say -- what KyprX needs and what is wrong on this machine, with its repairs. Along the
+bottom, KyprX's version with *About KyprX…* and *Look for a new version*, and the changes that write
+a great deal: *Go back to a copy…*, *Restore KyprX's defaults…*, *Take KyprX off this desk…* and
+*Remove KyprX from this computer…*, each asked first in `gui/dialogs.py` with what it would change
+listed. *About KyprX…* (`AboutDialog`) holds the projects KyprX is built on as they stand here, and
+the projects it works with, the short form of `CREDITS.md`: `CREDITS` is compared with that file by
+`scripts/dry-run.sh`, and the file is found at the top of the working tree, the folder above
+`gui/`. *Look for a new version* is the one door to a new version: `daemon/update.py check` in a
+process of its own, asked only when pressed, its answer put in `UpdateDialog`, and *Update now* run
+in a unit of its own (`update_argv` says why).
 """
 
 from __future__ import annotations
@@ -14,15 +18,19 @@ from __future__ import annotations
 import html
 import json
 import os
+import shlex
+import subprocess
+import sys
+import time
 
-from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtCore import QProcess, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication
-from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
-                               QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QMessageBox,
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from client import Client
-from decoration import TITLEBAR_BUTTON_TIP, open_decoration_settings
-from dialogs import ChangesDialog, CopiesDialog, RemoveDialog, RemovedDialog
+from dialogs import (AboutDialog, ChangesDialog, CopiesDialog, RemoveDialog, RemovedDialog,
+                     UpdateDialog)
 from widgets import SECTION_HINTS, WARNING_STYLE, Section, note
 
 
@@ -40,8 +48,8 @@ RESTORE_QUESTION = (
     "<b>Writes:</b> the appearance, the title bar, the effects and the tiling settings, what a "
     "new window gets, how see-through the windows are, the three settings KyprX keeps about "
     "itself, the wallpaper picker's folder and layout, and the desktop's colours.<br><br>"
-    "<b>Leaves alone:</b> the windows you have set by hand, your shortcuts, your wallpaper and "
-    "your profiles.<br><br>"
+    "<b>Leaves alone:</b> the windows you have set by hand, your shortcuts, your wallpaper, "
+    "your profiles, and your zone layouts and arrangements.<br><br>"
     "A copy of the desk is kept first, and <i>Go back to a copy…</i> on this page puts it back. "
     "Below is exactly what would change.")
 
@@ -56,7 +64,7 @@ TAKE_OFF_QUESTION = (
     "A copy of the desk is kept first and never thrown away, and <i>Put my setup back</i> restores "
     "it. Below is exactly what would change.")
 
-#: The short form of CREDITS.md, for the Settings tab: each project, what it is here, who made it,
+#: The short form of CREDITS.md, for *About KyprX…*: each project, what it is here, who made it,
 #: its licence and where it lives. CREDITS.md is the whole record -- authors in full, what each
 #: licence asks of KyprX, the notices -- and `scripts/dry-run.sh` checks every name and link here
 #: is there too, so the two cannot drift apart without a check failing.
@@ -65,8 +73,6 @@ CREDITS = (
      "GPL; its colour schemes LGPL", "https://github.com/paulmcauley/klassy"),
     ("Better Blur DX", "the blur", "xarblu, after taj-ny's Better Blur", "GPL-3.0",
      "https://github.com/xarblu/kwin-effects-better-blur-dx"),
-    ("Krohnkite", "the tiling", "Vjatcheslav V. Kolchkov, after Eon S. Jeon's Kröhnkite", "MIT",
-     "https://github.com/anametologin/krohnkite"),
     ("Geometry Change", "the window animation", "Peter Fajdiga", "GPL-3.0",
      "https://github.com/peterfajdiga/kwin4_effect_geometry_change"),
     ("Smart Video Wallpaper Reborn", "video wallpapers", "Luis Bocanegra, with Rog131 and adhe",
@@ -109,9 +115,43 @@ def app_version() -> str:
 #: and this process is still the old one. See `daemon/about.py`, which does the same.
 RUNNING = app_version()
 
+#: The tree this window runs from, which *Update now* updates, in a unit of its own.
+TOP = os.path.dirname(CREDITS_FILE)
+UPDATE_UNIT = "kyprx-update"
+
+
+def check_argv() -> list[str]:
+    """A process of its own: the window never waits on a network."""
+    return [sys.executable, os.path.join(TOP, "daemon", "update.py"), "check", "--json"]
+
+
+def update_argv() -> list[str]:
+    """A unit of its own: the update restarts the background service, whose unit holds a window
+    opened with the settings key -- and anything that window started. `--wait` gives the status."""
+    return ["systemd-run", "--user", "--wait", "--quiet", "--collect", f"--unit={UPDATE_UNIT}",
+            "--description=Updating KyprX", "--setenv=GIT_TERMINAL_PROMPT=0",
+            "bash", os.path.join(TOP, "install.sh"), "--update"]
+
+
+def update_failure(since: float, said: str = "") -> str:
+    """What a failed update said, and the command that shows every step: `systemd-run`'s own
+    words first -- all there is when the unit never started, another update still running in it,
+    say -- then the last of the unit's journal."""
+    try:
+        journal = subprocess.run(["journalctl", "--user", f"--unit={UPDATE_UNIT}",
+                                  f"--since=@{int(since)}", "--output=cat", "--no-pager"],
+                                 capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        journal = ""
+    lines = [line for line in said.splitlines() if line.strip()]
+    lines += [line for line in journal.splitlines() if line.strip()][-12:]
+    command = f"{shlex.quote(os.path.join(TOP, 'install.sh'))} --update"
+    return ("\n".join(lines) + "\n\n" if lines else "") + \
+        f"To see every step, run it in a terminal:\n{command}"
+
 
 def credits_text() -> str:
-    """The Credits box, as rich text: one line per project, its name a link to where it lives."""
+    """The credits, as rich text: one line per project, its name a link to where it lives."""
     rows = "".join(
         f"<tr><td><a href='{html.escape(url)}'>{html.escape(name)}</a></td>"
         f"<td style='padding-left:12px'>{html.escape(what)}</td>"
@@ -119,33 +159,88 @@ def credits_text() -> str:
         f"<td style='padding-left:12px'>{html.escape(licence)}</td></tr>"
         for name, what, who, licence, url in CREDITS)
     record = QUrl.fromLocalFile(CREDITS_FILE).toString()
-    return (f"<table>{rows}</table><p>KyprX is free software, under the GNU General Public "
-            f"License, version 3 or later. Every project, its licence and what that licence asks "
-            f"of KyprX: <a href='{html.escape(record)}'>CREDITS.md</a>.</p>")
+    return (f"<table>{rows}</table><p>The tiling is KyprX's own, with ideas from KZones and "
+            f"Hyprland and none of their code. KyprX is free software, under the GNU General "
+            f"Public License, version 3 or later. Every project, its licence and what that licence "
+            f"asks of KyprX: <a href='{html.escape(record)}'>CREDITS.md</a>.</p>")
 
 
-#: One sentence each, behind the mark on each section. The rest -- what a backup file carries,
-#: what applying one replaces, what a notification is -- is in `docs/user-guide/settings.md`.
-NOTIFY_HINT = ("Failures only: a title bar refused, a wallpaper or a colour that would not "
-               "apply. Nothing is said when things go well.")
+#: How each project KyprX is built on stands, as the daemon names it (`Requirements`).
+NEEDS_WORDS = {"ok": "installed and running", "missing": "not installed",
+               "not running": "installed, not running", "too old": "too old"}
+
+#: What the box and *About KyprX…* say when the daemon could not find out what is installed.
+NEEDS_UNKNOWN = "KyprX could not find out what is installed here."
+
+
+def needs_text(needs: list) -> str:
+    """Projects KyprX is built on, as a table: a line each -- the name a link to where it lives,
+    the version, how it stands -- and under one that is not right, what is wrong and what to do."""
+    rows = []
+    for n in needs:
+        name = html.escape(str(n.get("name") or ""))
+        url = html.escape(str(n.get("url") or ""))
+        state = str(n.get("state") or "")
+        rows.append(f"<tr><td><a href='{url}'>{name}</a></td>"
+                    f"<td style='padding-left:12px'>{html.escape(str(n.get('version') or ''))}</td>"
+                    f"<td style='padding-left:12px'>{html.escape(NEEDS_WORDS.get(state, state))}"
+                    f"</td></tr>")
+        if state != "ok":
+            rows.append(f"<tr><td colspan='3' style='{WARNING_STYLE}'>"
+                        f"{html.escape(str(n.get('detail') or ''))}<br>"
+                        f"{html.escape(str(n.get('fix') or ''))}</td></tr>")
+    return f"<table>{''.join(rows)}</table>" if rows else NEEDS_UNKNOWN
+
+
+#: What waits for the next login, said as one line. KyprX's part of the compositor older than the
+#: rest of KyprX lacks the keys added since, and tiles as it did or not at all -- and the
+#: compositor reads its part again only at login (the head of `kwin-script/contents/ui/main.qml`
+#: has the finding), so whatever waits, the one thing to do is the same, and it is said once, with
+#: what waits behind it. Switched off and off the desk are choices rather than steps still to take,
+#: and the Tiling tab and the band at the top already say them.
+LOGIN_LINE = "Part of KyprX starts only at the next login: log out and back in."
+
+#: The tiling's states that wait for the login, as the daemon names them (`tiling_state`), and what
+#: each means until then. A part from before an update goes on tiling as it did, and only what is
+#: new waits -- the Tiling tab's band says the same (`TILING_OLD_SCRIPT`).
+TILING_WAITS = {
+    "old-script": "Until then the desktop tiles as it did, and what is new on the Tiling tab "
+                  "waits.",
+    "no-script": "Until then nothing is tiled: KyprX's part of the compositor has not asked for "
+                 "the tiling.",
+}
+
+#: The two actions of the compositor script's that hold no key: the daemon invokes them by name,
+#: one to ask for the window list and one to have the tiling read its settings again, and nobody
+#: presses either. `missing_actions` names them when the script lacks them, and the count of keys
+#: that do nothing leaves them out: they are not keys. A part of the compositor too old to have
+#: them is said by the tiling's own words instead (`TILING_WAITS`).
+KEYLESS_ACTIONS = ("KyprXInventory", "KyprXTiling")
+
+#: One sentence each, behind the mark on each section. The rest -- what the folder holds, when a
+#: notification is said -- is in `docs/user-guide/settings.md`.
+NOTIFY_HINT = ("Failures -- a title bar refused, a wallpaper or its colour that would not go on, "
+               "the KyprX folder not applied. Nothing is said when things go well.")
 
 FOLDER_HINT = ("Everything KyprX controls on this desk, as files you can copy to another "
                "machine, keep in git or edit. KyprX keeps them up to date by itself, and applies "
                "what arrives there by itself -- after keeping a copy of the desk.")
 
+TIDY_TIP = ("Give every rule whose only job is forcing a title bar this app's naming. Rules that "
+            "also pin an activity or a desktop keep their names.")
+
 
 class SettingsTab(QWidget):
-    """What this app keeps about itself: how it speaks up, where the decoration's own settings
-    are, the KyprX folder that carries the setup elsewhere, what is wrong on this machine, and its
-    defaults.
+    """What this app keeps about itself: how it speaks up, the KyprX folder that carries the setup
+    elsewhere, what is wrong on this machine while something is, and the big changes.
 
-    The first two arrived from the strip across the top of the window, which is now the three
-    things somebody comes here to *do*. These are two things set once, and a thing set once
-    belongs on a page rather than in front of every tab.
+    Only what somebody comes here to set or to do is on the page every time. What KyprX needs and
+    the Problems box appear while they have something to say -- the band above every tab already
+    names a missing project, and its *What to do* opens this page -- and the versions and the
+    credits, read once and rarely again, are behind *About KyprX…*.
     """
 
-    #: What the window's footer should say. Export, import and the repair used to answer with a
-    #: dialog or with nothing at all.
+    #: What the window's footer should say: what a button on this page did, or why it did not.
     says = Signal(str)
     #: *Check again* found out afresh what KyprX needs, so the band above every tab is redrawn.
     looked_again = Signal()
@@ -154,10 +249,12 @@ class SettingsTab(QWidget):
         super().__init__(parent)
         self.c = client
 
-        load = QPushButton("Apply a backup file from an earlier version…")
         tidy = QPushButton("Tidy up rule names")
-        load.clicked.connect(self._import)
         tidy.clicked.connect(self._normalize)
+        tidy.setToolTip(TIDY_TIP)
+        #: Shown only while there is a rule to rename, like the button beside it: greyed, it was
+        #: one more control on every visit, for a repair most desks never need.
+        tidy.setVisible(False)
         #: The second repair, and one that changes how the desk looks: it gives a title bar back to
         #: every window the decoration's leftover group was hiding one on. Shown only while there
         #: is one, beside the line that says what it is.
@@ -166,12 +263,8 @@ class SettingsTab(QWidget):
                                   "the desk is kept first.")
         self.bars_back.clicked.connect(self._remove_stray)
         self.bars_back.setVisible(False)
-        load.setToolTip("A settings file exported by KyprX before the folder existed. A copy of the "
-                        "desk is kept first.")
-        tidy.setToolTip("Give every rule whose only job is forcing a title bar this app's "
-                        "naming. Rules that also pin an activity or a desktop keep their names.")
-        #: An ellipsis, because it asks before it does anything -- the same convention the two
-        #: buttons above follow.
+        #: An ellipsis, because it asks before it does anything -- as every button on the row it
+        #: stands in does.
         self.restore = QPushButton("Restore KyprX's defaults…")
         self.restore.clicked.connect(self._restore)
         self.restore.setToolTip("KyprX's defaults cannot be edited — only put back. A copy of "
@@ -189,20 +282,34 @@ class SettingsTab(QWidget):
         self.remove_button.setToolTip("Take back what KyprX keeps and what only it used, then show "
                                       "the command that removes its files. Asks two questions "
                                       "first.")
-        #: Beside the button whose work it undoes, and before it: the way back is what somebody
-        #: looks for after pressing the other one.
+        #: On the row of the changes whose work it undoes, and first on it: the way back is what
+        #: somebody looks for after pressing one of the others.
         self.back = QPushButton("Go back to a copy…")
         self.back.clicked.connect(self._go_back)
         self.back.setToolTip("Put the desk back as it was before an earlier change that wrote a "
                              "great deal at once.")
-        #: The version of those defaults, which `daemon/defaults.py` says is shown here and which
-        #: nothing showed. It is read once, when this page is first painted.
-        self.version = QLabel()
+        #: The version this window runs. Its defaults have a version too (`daemon/defaults.py`),
+        #: which is a number for the code and the tests and means nothing to anybody reading this.
+        self.version = QLabel(f"KyprX {RUNNING or '(version unknown)'}")
         self.version.setEnabled(False)
+        about = QPushButton("About KyprX…")
+        about.setToolTip("The version of each project KyprX is built on, and who made what it "
+                         "works with.")
+        about.clicked.connect(self._about)
+        #: The one door to a new version, beside the version it would replace. Asked only when
+        #: pressed: KyprX never looks by itself (`daemon/update.py`).
+        self.look = QPushButton("Look for a new version")
+        self.look.setToolTip("Ask which version of KyprX is the newest -- KyprX's public "
+                             "repository, or for a clone the branch it follows -- and see how "
+                             "this installation is updated. Asked only when pressed.")
+        self.look.clicked.connect(self._look_for_update)
+        self._looking: QProcess | None = None
+        self._updating: QProcess | None = None
+        self._update_started = 0.0
 
         #: Named for what it does rather than for the mechanism. "Notify" said neither what nor
-        #: when, and all three things the daemon ever announces are failures -- a window that
-        #: refuses a title bar, a wallpaper that did not change, a colour that did not apply.
+        #: when, and everything the daemon ever announces is a failure -- a window that refuses a
+        #: title bar, a wallpaper or its colour that did not go on, a KyprX folder not applied.
         self.notify = QCheckBox("Say when something did not work")
         self.notify.setToolTip("A notification on the desktop, and only when something failed.")
         self.notify.toggled.connect(lambda v: self.c.set_settings(notify=v))
@@ -210,27 +317,9 @@ class SettingsTab(QWidget):
         speaking_column = QVBoxLayout(speaking)
         speaking_column.addWidget(self.notify)
 
-        #: The same door as the one on the Appearance tab, and now the same words on it. Two names
-        #: for one destination is a thing to learn for nothing.
-        decoration_button = QPushButton("Title bar settings…")
-        decoration_button.setToolTip(TITLEBAR_BUTTON_TIP)
-        decoration_button.clicked.connect(open_decoration_settings)
-        #: Kept so the window can close this door during a dry run -- see `DRY_RUN_DOOR_TIP`.
-        self.door = decoration_button
-        decoration_row = QHBoxLayout()
-        decoration_row.setContentsMargins(0, 0, 0, 0)
-        decoration_row.addWidget(decoration_button)
-        decoration_row.addStretch()
-        decoration_holder = QWidget()
-        decoration_holder.setLayout(decoration_row)
-        decoration = Section("The window decoration",
-                             SECTION_HINTS["The window decoration"])
-        decoration_column = QVBoxLayout(decoration)
-        decoration_column.addWidget(decoration_holder)
-
-        #: The KyprX folder, where the backup file used to be: the path, to read and to copy, a
-        #: door to the file manager, and how the folder stands with the desk. What travels is no
-        #: longer a file somebody remembers to export -- it is always there, always current.
+        #: The KyprX folder: the path, to read and to copy, a door to the file manager, and how
+        #: the folder stands with the desk. What travels is no file somebody remembers to export --
+        #: it is always there, always current.
         self.folder_path = QLabel()
         self.folder_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         mono = QFont("monospace")
@@ -251,22 +340,16 @@ class SettingsTab(QWidget):
         #: How the folder stands, in a sentence -- rebuilt on every change the daemon reports.
         self.folder_line = note()
         self.folder_line.setTextFormat(Qt.TextFormat.PlainText)
-        carry = QHBoxLayout()
-        carry.setContentsMargins(0, 0, 0, 0)
-        carry.addWidget(self.back)
-        carry.addWidget(load)
-        carry.addStretch()
         file_box = Section("Your KyprX folder", FOLDER_HINT)
         self.file_box = file_box
         file_column = QVBoxLayout(file_box)
         file_column.addLayout(where)
         file_column.addWidget(self.folder_line)
-        file_column.addLayout(carry)
 
-        #: The five projects KyprX is built on, one line each: installed or not, the version, and
-        #: whether the desktop runs it -- and for each one that is not right, what is wrong and the
-        #: command that puts it right on this system, selectable so it can be copied. The daemon
-        #: keeps the answer; *Check again* is for after installing or updating one.
+        #: A project KyprX is built on that is not right here: what is wrong, and the command that
+        #: puts it right on this system, selectable so it can be copied. Hidden while every one is
+        #: installed and running -- *About KyprX…* lists them all. The daemon keeps the answer;
+        #: *Check again* is for after installing or updating one.
         self.needs_box = Section("What KyprX needs", SECTION_HINTS["What KyprX needs"])
         needs_column = QVBoxLayout(self.needs_box)
         self.needs_label = note()
@@ -274,26 +357,27 @@ class SettingsTab(QWidget):
         self.needs_label.setOpenExternalLinks(True)
         self.needs_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         check_again = QPushButton("Check again")
-        check_again.setToolTip("Look again for the five projects, after installing or updating "
-                               "one.")
+        check_again.setToolTip("Look again for the projects KyprX is built on, after installing "
+                               "or updating one.")
         check_again.clicked.connect(self._check_again)
         needs_row = QHBoxLayout()
         needs_row.setContentsMargins(0, 0, 0, 0)
         needs_row.addWidget(self.needs_label, 1)
         needs_row.addWidget(check_again, 0, Qt.AlignmentFlag.AlignTop)
         needs_column.addLayout(needs_row)
+        self.needs_box.setVisible(False)
 
         #: What is wrong on this machine, one line each, in a box of its own rather than as a
-        #: paragraph of run-on text under everything else. Built empty and filled by `reload`:
-        #: reading the daemon while this page is being constructed would make opening the window a
-        #: read before it is on screen.
+        #: paragraph of run-on text under everything else -- and only while there is something:
+        #: a box saying "nothing to report" on every visit is a box to read for nothing. Built empty
+        #: and filled by `reload`: reading the daemon while this page is being constructed would
+        #: make opening the window a read before it is on screen.
         self.problems = Section("Problems", SECTION_HINTS["Problems"])
         self.problems_column = QVBoxLayout(self.problems)
         self.problem_lines: list[QLabel] = []
         #: The two repairs this app offers -- *Tidy up rule names*, and the button that gives
-        #: title bars back, shown only while it has something to do -- in the box with the faults
-        #: they repair rather than at the bottom of the page next to the button that rewrites
-        #: everything.
+        #: title bars back -- in the box with the faults they repair, each shown only while it has
+        #: something to do.
         self.tidy = tidy
         tidy_row = QHBoxLayout()
         tidy_row.setContentsMargins(0, 0, 0, 0)
@@ -301,47 +385,43 @@ class SettingsTab(QWidget):
         tidy_row.addWidget(self.bars_back)
         tidy_row.addStretch()
         self.problems_column.addLayout(tidy_row)
+        self.problems.setVisible(False)
 
-        #: Last on the page and the only thing on it that is not about this desk: who made what
-        #: KyprX works with, under which licence. The links open in the browser; CREDITS.md opens
-        #: in whatever opens a text file.
-        self.credits = Section("Credits", SECTION_HINTS["Credits"])
-        credits_column = QVBoxLayout(self.credits)
-        credits_label = note(credits_text())
-        credits_label.setTextFormat(Qt.TextFormat.RichText)
-        credits_label.setOpenExternalLinks(True)
-        credits_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        credits_column.addWidget(credits_label)
+        #: Which KyprX this is, and the door to everything about it that is read rather than set.
+        about_row = QHBoxLayout()
+        about_row.addWidget(self.version)
+        about_row.addWidget(about)
+        about_row.addWidget(self.look)
+        about_row.addStretch()
 
-        #: Alone on its row and pushed to the far side: it writes every value this app has an
-        #: opinion about, and putting it next to the buttons that only read a file would be an
-        #: invitation.
-        repairs = QHBoxLayout()
-        repairs.addWidget(self.version)
-        repairs.addStretch()
-        repairs.addWidget(self.take_off_button)
-        repairs.addWidget(self.restore)
-        repairs.addWidget(self.remove_button)
+        #: The changes that write a great deal, on a row of their own at the foot of the page:
+        #: the way back first, then the three that move the desk furthest, in the order they go --
+        #: KyprX's defaults, plain KDE, KyprX gone.
+        big = QHBoxLayout()
+        big.addWidget(self.back)
+        big.addStretch()
+        big.addWidget(self.restore)
+        big.addWidget(self.take_off_button)
+        big.addWidget(self.remove_button)
 
-        #: Side by side, and each taking the height of what is in it and no more. Both of those
-        #: were measured on screen rather than chosen: stacked, with a group box's own `Preferred`
-        #: policy in both directions and a word-wrapped label inside, the two of them took 270 of
-        #: the window's 720 pixels, height the rest of the page needs.
-        settled = QHBoxLayout()
-        for box in (speaking, decoration):
-            box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-            settled.addWidget(box, 1)
-
+        #: Each box takes the height of what is in it and no more. Measured on screen rather than
+        #: chosen: with a group box's own `Preferred` policy in both directions and a word-wrapped
+        #: label inside, two boxes took 270 of the window's 720 pixels, height the rest of the page
+        #: needs.
         layout = QVBoxLayout(self)
-        layout.addLayout(settled)
-        file_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        layout.addWidget(file_box)
-        self.needs_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        layout.addWidget(self.needs_box)
+        for box in (speaking, file_box, self.needs_box):
+            box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            layout.addWidget(box)
         layout.addWidget(self.problems)
-        layout.addWidget(self.credits)
         layout.addStretch()
-        layout.addLayout(repairs)
+        layout.addLayout(about_row)
+        layout.addLayout(big)
+
+    def _about(self) -> None:
+        # From the daemon's memory: it looks again when this window claims the interface and when
+        # *Check again* asks, so opening this costs no look.
+        AboutDialog(self, self.version.text(), needs_text(self.c.requirements()),
+                    credits_text()).exec()
 
     def _restore(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -447,6 +527,73 @@ class SettingsTab(QWidget):
             return
         self.reload()
 
+    def _process(self, argv: list[str], done) -> QProcess:
+        """Not started; `done(process, status)` at the end, or -1 when it could not start."""
+        proc = QProcess(self)
+        proc.setProgram(argv[0])
+        proc.setArguments(argv[1:])
+        proc.finished.connect(lambda code, _status: done(proc, code))
+        proc.errorOccurred.connect(
+            lambda error: done(proc, -1) if error == QProcess.ProcessError.FailedToStart else None)
+        return proc
+
+    def _look_for_update(self) -> None:
+        if self._looking is not None:
+            return
+        self.look.setEnabled(False)
+        self.says.emit("Looking for a new version of KyprX…")
+        self._looking = proc = self._process(check_argv(), self._looked)
+        proc.start()
+
+    def _looked(self, proc, code: int) -> None:
+        if self._looking is not proc:
+            return
+        self._looking = None
+        self.look.setEnabled(True)
+        out = bytes(proc.readAllStandardOutput()).decode("utf-8", "replace")
+        proc.deleteLater()
+        try:
+            answer = json.loads(out) if code == 0 else {}
+        except ValueError:
+            answer = {}
+        if not isinstance(answer, dict):
+            answer = {}
+        state = answer.get("state")
+        if state == "current":
+            said = str(answer.get("detail") or "this is the newest version")
+            self.says.emit(f"{said[:1].upper()}{said[1:]}.")
+        elif state == "newer":
+            box = UpdateDialog(self, answer, dry_run=bool(self.c.dry_run()))
+            if box.exec() == QDialog.DialogCode.Accepted and box.update_now:
+                self._update_now()
+        else:
+            why = answer.get("detail") or "no answer came back"
+            self.says.emit(f"Could not find out whether there is a new version: {why}.")
+
+    def _update_now(self) -> None:
+        if self._updating is not None:
+            return
+        self.look.setEnabled(False)
+        self.says.emit("Updating KyprX… a window opened with the settings key closes when the "
+                       "background service restarts: open it again.")
+        self._update_started = time.time()
+        self._updating = proc = self._process(update_argv(), self._updated)
+        proc.start()
+
+    def _updated(self, proc, code: int) -> None:
+        if self._updating is not proc:
+            return
+        self._updating = None
+        self.look.setEnabled(True)
+        said = bytes(proc.readAllStandardError()).decode("utf-8", "replace")
+        proc.deleteLater()
+        if code == 0:
+            self.says.emit("KyprX is updated. Close this window and open it again, and log out and "
+                           "back in to finish.")
+            return
+        QMessageBox.warning(self, "The update did not go through",
+                            update_failure(self._update_started, said))
+
     def reload(self) -> None:
         # This tab is a live one: `reload` runs on every change the daemon reports while it is
         # open. `setChecked` emits `toggled`, so without the guard each change would write the
@@ -456,13 +603,6 @@ class SettingsTab(QWidget):
         self.notify.setChecked(bool((self.c.settings() or {}).get("notify", False)))
         self.notify.blockSignals(False)
         self._say_folder(self.c.folder())
-        if not self.version.text():
-            # Read once: it changes when this app is updated, not while it is open. The daemon has
-            # sent it since the defaults were declared, and nothing has ever shown it.
-            version = (self.c.groups() or {}).get("kyprx_defaults_version")
-            if version is not None:
-                self.version.setText(f"KyprX {RUNNING or '(version unknown)'} · its "
-                                     f"defaults, version {version}")
         self._say_needs(self.c.requirements())
         d = self.c.diagnostics()
         if not d:
@@ -478,12 +618,21 @@ class SettingsTab(QWidget):
         elif not d.get("script_enabled"):
             found.append(("KyprX cannot see your windows: its part of the compositor is switched "
                           "off.", "The desktop's own settings are where scripts are switched on."))
-        if d.get("missing_actions"):
-            found.append(("One key is not registered yet, so it does nothing.",
-                          "Not registered: " + ", ".join(d["missing_actions"])))
-        if d.get("orphan_overrides"):
-            found.append(("Some per-window settings were written where the decoration cannot see "
-                          "them.", f"Past a gap in the numbering: {d['orphan_overrides']}"))
+        #: What waits for the login (`LOGIN_LINE`): the tiling's step still to take, then the keys
+        #: the registry has not got.
+        waits = []
+        tiling = TILING_WAITS.get(str(d.get("tiling_state") or ""))
+        if tiling:
+            waits.append(tiling)
+        missing = [a for a in d.get("missing_actions") or [] if a not in KEYLESS_ACTIONS]
+        if missing:
+            # Counted, because it is rarely one: a part of the compositor older than the rest of
+            # KyprX lacks every action added since, and the tiling's alone are nineteen.
+            waits.append(("One key does nothing until then: " if len(missing) == 1
+                          else f"{len(missing)} keys do nothing until then: ")
+                         + ", ".join(missing) + ".")
+        if waits:
+            found.append((LOGIN_LINE, " ".join(waits)))
         if d.get("orphan_rules"):
             found.append((f"{len(d['orphan_rules'])} window rule(s) are outside the active list.",
                           "They do nothing until the desktop's own rules dialog is opened."))
@@ -496,31 +645,18 @@ class SettingsTab(QWidget):
                           "hidden, by a group the decoration's own settings left behind.",
                           f"klassyrc [Exceptions], HideTitleBar={stray.get('hide_titlebar') or '?'}: "
                           f"the decoration reads it as its global setting. KyprX removes it by "
-                          f"itself while it is on the desk; the button beside Tidy up rule names "
-                          f"removes it now."))
+                          f"itself while it is on the desk; the button below removes it now."))
+        self.tidy.setVisible(bool(d.get("renamable")))
         self.bars_back.setVisible(stray is not None)
-        self._say_problems(found, d)
+        self._say_problems(found)
 
     def _say_needs(self, needs: list) -> None:
-        """The five projects, as a table: a line each, and under one that is not right, what is
-        wrong and what to do."""
-        words = {"ok": "installed and running", "missing": "not installed",
-                 "not running": "installed, not running", "too old": "too old"}
-        rows = []
-        for n in needs:
-            name = html.escape(str(n.get("name") or ""))
-            url = html.escape(str(n.get("url") or ""))
-            state = str(n.get("state") or "")
-            rows.append(f"<tr><td><a href='{url}'>{name}</a></td>"
-                        f"<td style='padding-left:12px'>{html.escape(str(n.get('version') or ''))}</td>"
-                        f"<td style='padding-left:12px'>{html.escape(words.get(state, state))}</td>"
-                        f"</tr>")
-            if state != "ok":
-                rows.append(f"<tr><td colspan='3' style='{WARNING_STYLE}'>"
-                            f"{html.escape(str(n.get('detail') or ''))}<br>"
-                            f"{html.escape(str(n.get('fix') or ''))}</td></tr>")
-        self.needs_label.setText(f"<table>{''.join(rows)}</table>" if rows
-                                 else "KyprX could not find out what is installed here.")
+        """What KyprX needs, while something is not right: a line for each project that is not,
+        with what is wrong and what to do -- or the sentence that says nothing could be found out.
+        Hidden while every one is installed and running."""
+        wrong = [n for n in needs if n.get("state") != "ok"]
+        self.needs_label.setText(needs_text(wrong))
+        self.needs_box.setVisible(bool(wrong) or not needs)
 
     def _check_again(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -531,7 +667,7 @@ class SettingsTab(QWidget):
         self._say_needs(needs)
         wrong = [str(n.get("name")) for n in needs if n.get("state") != "ok"]
         self.says.emit("Looked again: " + (", ".join(wrong) + " still not right." if wrong
-                                            else "all five are installed and running."))
+                                            else "every one is installed and running."))
         self.looked_again.emit()
 
     def _say_folder(self, status: dict) -> None:
@@ -580,8 +716,9 @@ class SettingsTab(QWidget):
         else:
             self.says.emit("The folder is not there yet: KyprX writes it a moment after it starts.")
 
-    def _say_problems(self, found: list, d: dict) -> None:
-        """One line per thing that is wrong, with the machine's own words behind each one.
+    def _say_problems(self, found: list) -> None:
+        """One line per thing that is wrong, with the machine's own words behind each one, and the
+        box shown only while there is one.
 
         Rebuilt rather than appended to: this runs on every change the daemon reports while the
         page is open, and a box that grows a line each time would be a page that never settles.
@@ -591,63 +728,13 @@ class SettingsTab(QWidget):
             line.setParent(None)
             line.deleteLater()
         self.problem_lines = []
-        for text, detail in found or [("Nothing to report.", "")]:
+        for text, detail in found:
             line = note(text)
             if detail:
                 line.setToolTip(detail)
             self.problem_lines.append(line)
             self.problems_column.insertWidget(len(self.problem_lines) - 1, line)
-        # The counts are not a problem, so they are not a line. They are what the box is about.
-        self.problems.set_hint(
-            f"{SECTION_HINTS['Problems']} It knows about {d.get('overrides', 0)} per-window "
-            f"setting(s) and {d.get('rules', 0)} window rule(s).")
-        self.tidy.setEnabled(bool(d.get("renamable")))
-        if not d.get("renamable"):
-            self.tidy.setToolTip("Every rule already carries KyprX's naming.")
-        else:
-            self.tidy.setToolTip("Give every rule whose only job is forcing a title bar this "
-                                 "app's naming. Rules that also pin an activity or a desktop "
-                                 "keep their names.")
-
-    def _import(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Apply a backup file",
-                                              os.path.expanduser("~"), "JSON (*.json)")
-        if not path:
-            return
-        try:
-            with open(path, encoding="utf-8") as fh:
-                content = fh.read()
-            if not isinstance(json.loads(content), dict):
-                raise ValueError("not an object")
-        except OSError as e:
-            QMessageBox.warning(self, "That file could not be read",
-                                f"{html.escape(path)}: {html.escape(e.strerror or str(e))}.")
-            return
-        except (UnicodeDecodeError, ValueError):
-            # The exception's own words name a line and a column of a file nobody wrote by hand.
-            QMessageBox.warning(self, "That is not a settings file",
-                                "It could not be read. A settings file is one an earlier KyprX "
-                                "wrote, with its <i>Export to a file…</i> button.")
-            return
-        box = QMessageBox(QMessageBox.Icon.Question, "Apply this backup file?",
-                          "This writes over the settings on this machine, and replaces your "
-                          "profiles with the ones in the file. Your wallpaper is left alone. A "
-                          "copy of the desk is kept first.",
-                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
-        box.setDefaultButton(QMessageBox.StandardButton.No)
-        if box.exec() != QMessageBox.StandardButton.Yes:
-            return
-        self.says.emit("Keeping a copy of the desk, then applying the file…")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        QApplication.processEvents()
-        try:
-            done = self.c.import_settings(content)
-        finally:
-            QApplication.restoreOverrideCursor()
-        # On a refusal the client has already put the daemon's reason on the line; a sentence here
-        # would cover it.
-        if done:
-            self.says.emit("Applied. Go back to a copy… undoes it.")
+        self.problems.setVisible(bool(found))
 
     def _remove_stray(self) -> None:
         box = QMessageBox(QMessageBox.Icon.Question, "Give those windows their title bars back?",

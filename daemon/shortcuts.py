@@ -20,16 +20,22 @@ for 6.7 and confirmed on this desk: nothing in the registry says no any more. So
 by asking who holds the keys, `holders`, before binding, and a binding is checked by reading back
 what was stored.
 
-The three lists below are **fixed on purpose**. The component publishes dozens of actions nobody
-binds; what makes a shortcut core is that someone chose it.
+The lists below are **fixed on purpose**. The component publishes dozens of actions nobody binds;
+what makes a shortcut core is that someone chose it.
 
 **The cheatsheet key is in those lists like everything else**, and that is the whole of what it
 took to make it work. Two earlier shapes registered it from this process: a component of this
 app's own, and a desktop entry of its own. Both were accepted by the registry and neither was ever
-grabbed — the key was bound and pressing it did nothing. What the tiling script does instead is
-call `registerShortcut` from inside the compositor, and those keys work. So the cheatsheet does
-that too: `kwin-script/contents/code/main.js` registers it, the action lands in the compositor's
-own component, and from here it is one more row with no special case anywhere.
+grabbed — the key was bound and pressing it did nothing. What a tiling script does instead is
+register its actions from inside the compositor, and those keys work. So
+KyprX's compositor script registers every one of KyprX's actions there, a `ShortcutHandler` each
+(`kwin-script/contents/ui/main.qml`, which passes exactly `ACTION_TEXTS` and `ACTION_DEFAULTS`
+below); the actions land in the compositor's own component, and from here each is one more row
+with no special case anywhere.
+
+**A default is only a default.** Once the registry holds a key for an action, the compositor keeps
+it and ignores the one the script passes, which is what makes an edit on the Shortcuts tab stick
+across a reload of the script.
 """
 
 from __future__ import annotations
@@ -59,8 +65,8 @@ KRUNNER_COMPONENT = "org.kde.krunner.desktop"
 #: reload over it. It is the flag the shortcuts settings module uses.
 NO_AUTOLOADING = 4
 
-#: The cheatsheet action, registered by the compositor script — see `main.js`. Named here so the
-#: list below and the script cannot drift apart.
+#: The cheatsheet action, registered by the compositor script — see `ACTION_TEXTS` below. Named
+#: here so the list below and the script cannot drift apart.
 CHEATSHEET_ACTION = "KyprXCheatsheet"
 
 #: The action that opens this app's own settings window, registered by the same script and for the
@@ -70,8 +76,9 @@ SETTINGS_ACTION = "KyprXSettings"
 #: And the wallpaper picker's, same script, same reason.
 WALLPAPER_ACTION = "KyprXWallpaper"
 
-#: Claims this app made under earlier names, kept only so their keys can be given back. These
-#: spellings are deliberately the old ones — that is the whole point of the list.
+#: Claims this app made under earlier names, or for actions it no longer has, kept only so their
+#: keys can be given back. These spellings are deliberately the old ones — that is the whole point
+#: of the list. None of them may be one of `SCRIPT_ACTIONS`: every start unregisters these.
 #:
 #: Not housekeeping. Up to Plasma 6.6 a combination another component still held was refused to
 #: whoever asked next; from 6.7 it is accepted by both, and the older claim -- registered first -- is
@@ -79,9 +86,14 @@ WALLPAPER_ACTION = "KyprXWallpaper"
 #: fails while looking fine.
 #:
 #: The first four are two abandoned shapes of the cheatsheet key: a component of this app's own,
-#: and a pair of desktop entries. The last two are the app's previous name, and they are the ones
+#: and a pair of desktop entries. The next two are the app's previous name, and they are the ones
 #: that matter on an existing install — the compositor registered them in its own component and
-#: they hold `Meta+/` until somebody asks for it back.
+#: they hold `Meta+/` until somebody asks for it back. The last two are the scratchpad's actions,
+#: which KyprX has no more: the registry keeps an action and its keys after the script stops
+#: registering it (`SCRIPT_ACTIONS`), so on a desk that had them they would go on holding their
+#: keys -- Show Scratchpad's default was Meta+S -- ahead of anything given those keys later.
+#: Spectacle's Launch Spectacle is not handed Meta+Shift+S back: no published version of KyprX
+#: took it.
 LEGACY_CLAIMS = [
     ("cybe-kde", "showCheatsheet"),
     ("cybe-kde.desktop", "Cheatsheet"),
@@ -89,22 +101,41 @@ LEGACY_CLAIMS = [
     ("cybe-kde-cheatsheet.desktop", "_launch"),
     (KWIN_COMPONENT, "CybeKdeCheatsheet"),
     (KWIN_COMPONENT, "CybeKdeInventory"),
+    (KWIN_COMPONENT, "KyprXToggleScratchpadWindow"),
+    (KWIN_COMPONENT, "KyprXShowScratchpad"),
 ]
 
 
-#: The tiling actions with a key bound. Krohnkite's own spelling, typo included:
-#: `KrohnkitegrowWidth` really does start its second word in lower case.
+#: KyprX's tiling actions, registered by the compositor script: everything that moves the focus or
+#: a window inside the arrangement. Left, down, up, right is the order of the keys they sit on by
+#: default, H J K L.
 #:
-#: The two layout keys are last and belong together: everything above them moves a window inside
-#: the arrangement, and those two change the arrangement itself -- which is the order in which the
-#: Tiling tab's *Layouts* numbers mean anything, since that is the cycle these two walk.
-TILING_ACTIONS = [
-    "KrohnkiteFocusUp", "KrohnkiteFocusDown", "KrohnkiteFocusLeft", "KrohnkiteFocusRight",
-    "KrohnkiteShiftUp", "KrohnkiteShiftDown", "KrohnkiteShiftLeft", "KrohnkiteShiftRight",
-    "KrohnkiteGrowHeight", "KrohnkiteShrinkHeight", "KrohnkitegrowWidth", "KrohnkiteShrinkWidth",
-    "KrohnkiteToggleFloat",
-    "KrohnkiteNextLayout", "KrohnkitePreviousLayout",
+#: They are two groups on the cheatsheet and the Shortcuts tab (`GROUPS`), and one list everywhere
+#: else (`TILING_ACTIONS`): the engine treats all sixteen alike. The
+#: split is for the card. Sixteen rows in one group are a column the rest cannot balance: measured
+#: offscreen on a 1920x1080 screen in KDE's default font, the best two columns the card finds with
+#: the sixteen together differ by 130 px, more than three rows of keys, and with them split in two
+#: by 65 (`gui/cheatsheet.py`, `arrange`). The focus and the moves are the keys that go to a
+#: window, the rest the ones that change the arrangement it is in.
+MOVE_ACTIONS = [
+    "KyprXFocusLeft", "KyprXFocusDown", "KyprXFocusUp", "KyprXFocusRight",
+    "KyprXMoveLeft", "KyprXMoveDown", "KyprXMoveUp", "KyprXMoveRight",
 ]
+ARRANGE_ACTIONS = [
+    "KyprXShrinkWidth", "KyprXGrowHeight", "KyprXShrinkHeight", "KyprXGrowWidth",
+    "KyprXToggleFloat", "KyprXSetMaster", "KyprXRotate", "KyprXRotateBack",
+]
+TILING_ACTIONS = MOVE_ACTIONS + ARRANGE_ACTIONS
+
+#: The key that switches automatic tiling on and off. Not a step of the engine's: the engine asks
+#: the daemon to write `autoTiling` the other way (`ToggleAutomaticTiling` on /Windows), and acts
+#: on the answer that write brings, as it does on the Tiling tab's box.
+AUTO_TILING_ACTION = "KyprXToggleAutomaticTiling"
+
+#: And the ones that change the arrangement itself: automatic tiling switched on or off, and the
+#: next and the previous arrangement in the rotation -- with automatic tiling off, the next and the
+#: previous zone layout a drag offers.
+LAYOUT_ACTIONS = [AUTO_TILING_ACTION, "KyprXNextLayout", "KyprXPreviousLayout"]
 
 #: The window-management actions that go with a tiling setup.
 WINDOW_ACTIONS = [
@@ -117,32 +148,91 @@ WINDOW_ACTIONS = [
 #: which is exactly why the component has to travel with it — on its own the name means nothing.
 LAUNCHER_ACTIONS = ["_launch"]
 
-#: This app's own, registered by the compositor script.
+#: This app's own, registered by the compositor script: the three that open one of its windows.
 KYPRX_ACTIONS = [CHEATSHEET_ACTION, SETTINGS_ACTION, WALLPAPER_ACTION]
 
-#: The one the script registers with no key: the daemon invokes it to ask for the window list.
+#: The actions whose key KyprX takes back at every start from any other action that holds it too
+#: (`kyprx_key_clashes`, `claim_kyprx_keys` in `daemon/kyprd_shortcuts.py`): the three that open a
+#: window, and Toggle Automatic Tiling, whose default another program registers on a stock Plasma
+#: 6.7 desk -- Meta+T, KWin's own Edit Tiles. From 6.7 a key two actions share runs the one
+#: registered first, which on a new desk is the other program's, so without this the key would do
+#: nothing. Only the one key is taken: the other action keeps any other key it has.
+CLAIMED_ACTIONS = KYPRX_ACTIONS + [AUTO_TILING_ACTION]
+
+#: The two the script registers with no key. Neither is a shortcut anybody presses: an action is
+#: the only channel a compositor script has for being *called*, and the daemon invokes these by
+#: name -- one to ask for the window list, the other to have the tiling engine read its settings
+#: again after a write (`reload.tell_tiler`).
 INVENTORY_ACTION = "KyprXInventory"
+TILING_ACTION = "KyprXTiling"
 
 #: Every action the compositor script registers. The registry keeps an action, and its keys, after
 #: the script that registered it is gone -- an inactive entry, and a key nobody else can take --
 #: so removing KyprX from a computer unregisters these once the script is unloaded.
-SCRIPT_ACTIONS = [INVENTORY_ACTION] + KYPRX_ACTIONS
+SCRIPT_ACTIONS = ([INVENTORY_ACTION, TILING_ACTION] + KYPRX_ACTIONS + TILING_ACTIONS
+                  + LAYOUT_ACTIONS)
 
-#: Each group is a column on the cheatsheet, and each row carries the component it belongs to.
+#: Each of those as the registry shows it, which is the text the script passes: what the Shortcuts
+#: tab and KDE's own shortcut settings call it.
+ACTION_TEXTS = {
+    INVENTORY_ACTION: "KyprX: re-read the window list",
+    TILING_ACTION: "KyprX: re-read the tiling settings",
+    CHEATSHEET_ACTION: "KyprX: shortcut cheatsheet",
+    WALLPAPER_ACTION: "KyprX: wallpaper picker",
+    SETTINGS_ACTION: "KyprX: settings",
+    "KyprXFocusLeft": "KyprX: Focus Left", "KyprXFocusDown": "KyprX: Focus Down",
+    "KyprXFocusUp": "KyprX: Focus Up", "KyprXFocusRight": "KyprX: Focus Right",
+    "KyprXMoveLeft": "KyprX: Move Left", "KyprXMoveDown": "KyprX: Move Down",
+    "KyprXMoveUp": "KyprX: Move Up", "KyprXMoveRight": "KyprX: Move Right",
+    "KyprXShrinkWidth": "KyprX: Shrink Width", "KyprXGrowHeight": "KyprX: Grow Height",
+    "KyprXShrinkHeight": "KyprX: Shrink Height", "KyprXGrowWidth": "KyprX: Grow Width",
+    "KyprXToggleFloat": "KyprX: Toggle Float", "KyprXSetMaster": "KyprX: Set Master",
+    "KyprXRotate": "KyprX: Rotate", "KyprXRotateBack": "KyprX: Rotate Back",
+    AUTO_TILING_ACTION: "KyprX: Toggle Automatic Tiling",
+    "KyprXNextLayout": "KyprX: Next Layout", "KyprXPreviousLayout": "KyprX: Previous Layout",
+}
+
+#: And the key the script passes for each, as `QKeySequence` reads it -- "" for none. A default
+#: only reaches an action the first time it is registered (see the top of this module), so an
+#: action that holds a key already keeps it when its default here changes. Meta+R is what
+#: end-4/dots-hyprland binds its own wallpaper selector to; the tiling ones put the focus on
+#: Meta+Ctrl, moving a window on Meta+Shift and resizing on both, each over H J K L. Meta+T is
+#: another program's on a stock desk, and taken back from it (`CLAIMED_ACTIONS`).
+ACTION_DEFAULTS = {
+    INVENTORY_ACTION: "", TILING_ACTION: "",
+    CHEATSHEET_ACTION: "Meta+/", WALLPAPER_ACTION: "Meta+R", SETTINGS_ACTION: "Meta+K",
+    "KyprXFocusLeft": "Meta+Ctrl+H", "KyprXFocusDown": "Meta+Ctrl+J",
+    "KyprXFocusUp": "Meta+Ctrl+K", "KyprXFocusRight": "Meta+Ctrl+L",
+    "KyprXMoveLeft": "Meta+Shift+H", "KyprXMoveDown": "Meta+Shift+J",
+    "KyprXMoveUp": "Meta+Shift+K", "KyprXMoveRight": "Meta+Shift+L",
+    "KyprXShrinkWidth": "Meta+Ctrl+Shift+H", "KyprXGrowHeight": "Meta+Ctrl+Shift+J",
+    "KyprXShrinkHeight": "Meta+Ctrl+Shift+K", "KyprXGrowWidth": "Meta+Ctrl+Shift+L",
+    "KyprXToggleFloat": "Meta+F", "KyprXSetMaster": "Meta+Return",
+    "KyprXRotate": "Meta+O", "KyprXRotateBack": "Meta+Shift+O",
+    AUTO_TILING_ACTION: "Meta+T",
+    "KyprXNextLayout": "Meta+\\", "KyprXPreviousLayout": "Meta+|",
+}
+
+#: Each group is a header on the Shortcuts tab and a block on the cheatsheet, in this order, and
+#: each row carries the component it belongs to. The two keyless actions are in none: nobody
+#: presses them. The card stacks the blocks into columns by their measured heights rather than by
+#: name (`gui/cheatsheet.py`, `arrange`), so a group added here needs nothing there; this order is
+#: the one it reads best in, which the card keeps where the heights let it.
 GROUPS = [
-    ("Tiling", [(KWIN_COMPONENT, a) for a in TILING_ACTIONS]),
+    ("Focus and move", [(KWIN_COMPONENT, a) for a in MOVE_ACTIONS]),
+    ("Resize and arrange", [(KWIN_COMPONENT, a) for a in ARRANGE_ACTIONS]),
+    ("Layouts", [(KWIN_COMPONENT, a) for a in LAYOUT_ACTIONS]),
     ("Window management", [(KWIN_COMPONENT, a) for a in WINDOW_ACTIONS]
      + [(KRUNNER_COMPONENT, a) for a in LAUNCHER_ACTIONS]),
     ("KyprX", [(KWIN_COMPONENT, a) for a in KYPRX_ACTIONS]),
 ]
 
-
 def qualified(component: str, action_id: str) -> str:
     """One string naming an action across components, for the places that need a dictionary key.
 
     A bare name means the compositor's component. That is not a shortcut taken to save typing: it
-    is what keeps every settings file written before this existed readable, without a version gate and
-    without a migration.
+    is what keeps every name written before this existed readable -- in a copy of the desk, the
+    KyprX folder, the cheatsheet's choices -- without a version gate and without a migration.
     """
     return action_id if component == KWIN_COMPONENT else f"{component}/{action_id}"
 
@@ -150,7 +240,9 @@ def qualified(component: str, action_id: str) -> str:
 def unqualified(key: str) -> tuple[str, str]:
     """The component and action a `qualified` string names."""
     component, slash, action = key.partition("/")
-    return (component, action) if slash else (KWIN_COMPONENT, key)
+    if not slash:
+        component, action = KWIN_COMPONENT, key
+    return component, action
 
 
 # ---------------------------------------------------------------- keys as words
@@ -397,9 +489,10 @@ def exists(action_id: str, component: str = KWIN_COMPONENT) -> bool:
     """Is this action registered at all?
 
     Asked about the compositor script's own actions, this answers whether the script has been
-    loaded since the action was added to it. A script only re-reads itself when it is unloaded and
-    loaded again -- not when its `Enabled` key is flipped, measured in `daemon/reload.py` -- so an
-    action added to `main.js` does not exist until that happens.
+    loaded since the action was added to it. The compositor keeps what it compiled of a
+    declarative script for the whole session -- unloaded and loaded again, the script runs the
+    code it ran before (the head of `kwin-script/contents/ui/main.qml` has the finding) -- so an
+    action added to the script does not exist until the next login.
     """
     try:
         return action_id in _component_actions(component)
@@ -434,8 +527,8 @@ def holders(sequence: list[int], exclude: tuple[str, str] | None = None) -> list
     The shapes are the registry's, read by introspection and measured on this desk: the argument
     is one sequence, `(ai)`, and the match type wrapped as `(i)` -- 0 is "equal" -- and the answer
     is one `(ssssssaiai)` per holder: its action, its name, its component and that component's
-    name, then the context twice, then keys. Meta+Alt+Right answered KrohnkiteFocusRight, Meta+F
-    answered Window Maximize, and Meta+Alt+Left answered nothing.
+    name, then the context twice, then keys. Meta+F answered Window Maximize, and Meta+Alt+Left
+    answered nothing.
 
     `exclude` is `(component, action)` of the action being bound: holding its own key is not a
     conflict. Sorted, so that the same desk always answers in the same words.
@@ -460,8 +553,8 @@ def set_primary(action_id: str, keys: list[int],
                 component: str = KWIN_COMPONENT) -> list[list[int]]:
     """Replace an action's first key sequence, keeping any others it has.
 
-    What a settings file being imported uses: it carries one sequence per action and means "this is
-    the action's key". Returns what the registry stored. On 6.7 that is whatever was asked --
+    What carrying the cheatsheet's key across from this app's previous name uses
+    (`daemon/migrate.py`): one sequence, meaning "this is the action's key". Returns what the registry stored. On 6.7 that is whatever was asked --
     nothing is refused any more -- and on earlier versions a combination already taken elsewhere
     came back as an empty slot, which is dropped here.
     """
@@ -569,9 +662,9 @@ def _write(iface, ident: list[str], sequences: list[list[int]]) -> list[list[int
 def legacy_claims_held() -> list[tuple[str, str]]:
     """The old claims that are still registered, for a dry run to name. A read.
 
-    Releasing them is done blind on every start, which costs six calls and nothing else; saying
-    so is not blind, and a dry run that announced a release on every start whether or not there
-    was anything left to release was saying something untrue.
+    Releasing them is done blind on every start, which costs a call for each and nothing else;
+    saying so is not blind, and a dry run that announced a release on every start whether or not
+    there was anything left to release was saying something untrue.
     """
     held = []
     for component, action in LEGACY_CLAIMS:
@@ -607,10 +700,10 @@ def unregister_script_actions() -> list[str]:
 
 
 def release_legacy_claims() -> None:
-    """Give back the keys the earlier shapes of this shortcut were holding.
+    """Give back the keys the old claims (`LEGACY_CLAIMS`) were holding.
 
-    Without this the new registration finds the combination taken by something that does nothing
-    with it — which is exactly how the first two attempts failed.
+    Without this a new registration finds the combination taken by something that does nothing
+    with it — which is exactly how the first two attempts at the cheatsheet key failed.
     """
     iface = _iface()
     for component, action in LEGACY_CLAIMS:
@@ -623,23 +716,25 @@ def release_legacy_claims() -> None:
 # ---------------------------------------------------------------- KyprX's own keys
 
 def kyprx_key_clashes() -> list[tuple[list[str], list[int], dict]]:
-    """Every key one of KyprX's own actions holds that another action holds too, as
-    `(the KyprX action's ident, the key, the other holder)`. A read.
+    """Every key one of the actions KyprX takes back (`CLAIMED_ACTIONS`) holds that another action
+    holds too, as `(the KyprX action's ident, the key, the other holder)`. A read.
 
     An action the registry does not have yet is skipped: the compositor script has not been loaded
-    since it was added (see `exists`). Another of KyprX's own three holding the same key is not a
-    clash to settle here -- somebody put it on both, and both are KyprX's.
+    since it was added (see `exists`). Another of those four holding the same key is not a clash
+    to settle here -- somebody put it on both, and both are KyprX's. Any other of KyprX's actions
+    holding it is: one of its tiling keys bound by hand onto Meta+K gives it back to the settings
+    window. KyprX's other actions are never asked about, on their defaults or not.
     """
     known = _component_actions(KWIN_COMPONENT)
     iface = _iface()
     out = []
-    for action in KYPRX_ACTIONS:
+    for action in CLAIMED_ACTIONS:
         ident = known.get(action)
         if ident is None:
             continue
         for sequence in _sequences(iface, ident):
             for holder in holders(sequence, exclude=(KWIN_COMPONENT, action)):
-                if holder["component"] == KWIN_COMPONENT and holder["id"] in KYPRX_ACTIONS:
+                if holder["component"] == KWIN_COMPONENT and holder["id"] in CLAIMED_ACTIONS:
                     continue
                 out.append((ident, sequence, holder))
     return out

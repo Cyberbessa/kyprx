@@ -156,11 +156,17 @@ class Client(QObject):
         return self._ok("SetSwitches", json.dumps(data))
 
     def set_window_lists(self, data: dict) -> bool:
-        """`{"float": {class: bool}, "animate": {class: bool}}` — one call for a whole batch."""
+        """`{"float": {class: bool}, "animate": {class: bool}}` — one call for a whole batch, so
+        the tiler reads its floating classes again once for it and not once per row."""
         return self._ok("SetWindowLists", json.dumps(data))
 
     def wallpapers(self) -> dict:
         return self._json("Wallpapers") or {}
+
+    def screens(self, names: list[str]) -> dict:
+        """The screens these outputs are, each with the wallpaper it shows, and the screen the
+        colour comes from. `names` are the window's own, `QScreen.name()`."""
+        return self._json("Screens", json.dumps({"names": list(names)})) or {}
 
     def set_wallpaper_mode(self, mode: str) -> bool:
         """Put that kind of wallpaper on the activity in use. What the picker lists follows."""
@@ -185,9 +191,11 @@ class Client(QObject):
         """When the video wallpaper pauses: the video plugin's own setting, `"0"` to `"3"`."""
         return self._ok("SetVideoPause", json.dumps({"pause": value}))
 
-    def set_wallpaper(self, target: str) -> bool:
-        """Put this wallpaper on every screen of the activity in use. Nothing else is touched."""
-        return self._ok("SetWallpaper", json.dumps({"target": target}))
+    def set_wallpaper(self, target: str, screen: str = "") -> bool:
+        """Put this wallpaper on the activity in use: on the screen `screen` names -- an output's
+        name, such as `HDMI-A-1` -- or on every screen when it names none or *Set for all screens*
+        is ticked. Nothing else is touched."""
+        return self._ok("SetWallpaper", json.dumps({"target": target, "screen": screen}))
 
     def theme(self) -> dict:
         return self._json("Theme") or {}
@@ -197,9 +205,15 @@ class Client(QObject):
         return self._ok("SetTheme", json.dumps(data))
 
     def groups(self) -> dict:
+        """Every group the settings tabs read, with what each defaults to -- the tiler's zone
+        layouts and arrangements as the daemon reads them among them (`tiling_arrangements`), and
+        the state tiling is in (`tiling_state`)."""
         return self._json("Groups") or {}
 
     def set_groups(self, data: dict) -> bool:
+        """What a tab changed. `{"tiling": {"arrangements": None}}` takes the zone layouts and
+        arrangements away, which puts KyprX's own back; text is the canonical text the window
+        built."""
         return self._ok("SetGroups", json.dumps(data))
 
     def shortcuts(self) -> dict:
@@ -305,7 +319,7 @@ class Client(QObject):
         return self._json("Diagnostics") or {}
 
     def requirements(self, refresh: bool = False) -> list:
-        """The five projects KyprX is built on, each as it stands here. `refresh` looks again."""
+        """The projects KyprX is built on, each as it stands here. `refresh` looks again."""
         return self._json("Requirements", refresh) or []
 
     def remove_stray_exceptions(self) -> bool:
@@ -314,12 +328,6 @@ class Client(QObject):
 
     def normalize(self) -> list:
         return self._json("Normalize") or []
-
-    def export_settings(self) -> str:
-        return self._call("ExportSettings") or ""
-
-    def import_settings(self, text: str) -> bool:
-        return self._ok("ImportSettings", text)
 
     def _answer(self, method: str, *args) -> str:
         """The daemon's refusal as a sentence, or "" when it took the change.

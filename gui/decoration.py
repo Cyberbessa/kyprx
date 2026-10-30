@@ -3,8 +3,8 @@
 The title bar is set in the decoration's own dialog, not here, and what is changed there stays.
 `open_decoration_settings` opens that dialog by whichever door this desktop has -- Klassy's own
 settings app, or its page in System Settings -- and `TitleBarBox` is the Appearance tab's box that
-says so and holds the button. The Settings tab has the same button, and during a dry run the window
-closes both, because the decoration's dialog saves for real.
+says so and holds the button, the one door to that dialog in this window. During a dry run the
+window closes it, because the decoration's dialog saves for real.
 """
 
 from __future__ import annotations

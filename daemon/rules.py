@@ -1,7 +1,8 @@
 """KWin window rules, in `kwinrulesrc`.
 
-File shape: one group per rule, named with a UUID, plus a `[General]` holding `rules=` (the UUID
-list, **in precedence order**) and `count=`.
+File shape: one group per rule, named with a UUID, and a `[General]` group that orders them --
+`Order=` from KWin 6.8, `rules=` with `count=` up to KWin 6.7. `order_of` reads both, and the
+comment above `GENERAL` holds the finding that makes the difference cost rules.
 
 Three decisions, and the third is the one that matters most:
 
@@ -10,7 +11,8 @@ Three decisions, and the third is the one that matters most:
 
 - **Nothing is removed by sweeping.** Only the groups named are touched; a UUID group missing
   from `rules=` is reported by `orphans()` and never deleted. It is inert config someone may
-  still be keeping.
+  still be keeping. From KWin 6.8 there is no such group -- every group is a rule -- and this
+  file never writes a list that would have KWin delete one it applies.
 
 - **This app owns two keys in a rule and nothing else.** A rule can carry any of KWin's eighty-odd
   properties — an activity, a virtual desktop, a size, an opacity, a shortcut — and all of them are
@@ -30,6 +32,172 @@ import re
 import uuid as _uuid
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+#: `[General]`, the one group that is not a rule, and its keys. Two generations of KWin read it
+#: two ways, read in their sources (`RuleBookSettings::usrRead`, `src/rulebooksettings.cpp`, and
+#: `src/rulebooksettingsbase.kcfg`, Plasma/6.7 and Plasma/6.8):
+#:
+#: - **up to KWin 6.7**, `rules=` lists the rule groups in precedence order, `count=` says how
+#:   many, and a group the list does not name is inert;
+#: - **from KWin 6.8** (6.7.90, its beta, on), `Order=` orders them, every group of the file is a
+#:   rule and one `Order` does not name goes first. `rules=` and `count=` are read once more, to
+#:   bring a file across: the first time KWin 6.8 loads a file whose `rules=` is not empty, it
+#:   **deletes every group of the user's file that `rules=` does not name**, takes `rules=` as
+#:   `Order=` and deletes both old keys. So a `rules=` naming only the rules this file could see
+#:   -- none, once KWin 6.8 had taken `rules=` away -- cost every other rule at the next
+#:   reconfigure, and the overlays' rules are put back, through such a list, at every start.
+GENERAL = "General"
+ORDER_KEY = "Order"
+LEGACY_LIST_KEY = "rules"
+LEGACY_COUNT_KEY = "count"
+
+#: The first KWin that keeps the rules in `Order`: 6.7.90, the beta of 6.8.
+ORDERED_SINCE = (6, 7, 90)
+
+#: Whether the compositor running now keeps the rules in `Order`, once the daemon has asked it
+#: (`configure`); None until then, or when it could not be asked, and then the file says.
+_compositor_orders: bool | None = None
+
+
+def configure(kwin_version) -> None:
+    """Say which KWin reads this file: its version as numbers (`reload.kwin_version`), or None
+    when it could not be asked. `kyprd.main` calls it once, before anything is written; a test
+    that calls it calls it again with None when it is done."""
+    global _compositor_orders
+    _compositor_orders = (None if kwin_version is None
+                          else tuple(int(n) for n in kwin_version)[:3] >= ORDERED_SINCE)
+
+
+def ordered(groups: dict) -> bool:
+    """Does the compositor read this file the way KWin 6.8 does?
+
+    A file holding an `Order=` and no `rules=` is read and written in 6.8's shape whatever the
+    daemon was told, because the KWin running is not always the one the daemon asked:
+    `kwin_wayland_wrapper` starts the compositor again after any exit but a clean one, from the
+    binary on disk (`src/helpers/wayland_wrapper/kwin_wrapper.cpp`), which after an update is a
+    newer KWin; and a system rolled back runs an older one over a file a newer one wrote. A
+    `rules=` written beside that `Order=` is what has the next KWin 6.8 delete every rule the list
+    leaves out. Otherwise the running KWin says, once the daemon has asked it, and until then an
+    `Order` key in the file does -- and so do rules the file holds under neither list, which KWin
+    6.8 applies and KWin 6.7 does not: a `rules=` written there would have KWin 6.8 delete every
+    one of them it leaves out."""
+    general = groups.get(GENERAL) or {}
+    if ORDER_KEY in general and not _names(general.get(LEGACY_LIST_KEY)):
+        return True
+    if _compositor_orders is not None:
+        return _compositor_orders
+    if ORDER_KEY in general:
+        return True
+    return (not _names(general.get(LEGACY_LIST_KEY)) and LEGACY_COUNT_KEY not in general
+            and any(_is_rule(groups, name) for name in groups))
+
+
+def _names(raw) -> list[str]:
+    """A list of group names as KWin writes one, comma-separated, each once. A key with no
+    value (`[$d]`) names none."""
+    if not isinstance(raw, str):
+        return []
+    return list(dict.fromkeys(name for name in raw.split(",") if name))
+
+
+def _is_rule(groups: dict, name: str) -> bool:
+    """A group of this file that can be a rule: every one but `[General]` and KConfig's
+    `[$Version]` (KWin 6.8's `isMetaDataGroup`)."""
+    return name in groups and name != GENERAL and not name.startswith("$")
+
+
+def _legacy_form(groups: dict) -> bool:
+    """Is the list the compositor reads next `rules=`? Always up to KWin 6.7. From 6.8 only while
+    `rules=` is not empty and no `Order=` stands beside it: KWin brings such a file across by
+    itself at its next load, keeping exactly what `rules=` names, so a change written there
+    survives that. Beside an `Order=`, a `rules=` is what an older KyprX left, and KWin 6.8 would
+    delete every rule it does not name: the order is `Order`'s then, with what `rules=` names in
+    front, and the next write takes `rules=` away (`write_order`)."""
+    if not ordered(groups):
+        return True
+    general = groups.get(GENERAL) or {}
+    return bool(_names(general.get(LEGACY_LIST_KEY))) and ORDER_KEY not in general
+
+
+def list_key(groups: dict) -> str:
+    """The key of `[General]` the compositor reads the order from next, which is the one
+    `write_order` writes: `rules` while that is the list (`_legacy_form`), otherwise `Order`. The
+    daemon names it as it starts (`kyprd._say_where_the_rules_are_kept`)."""
+    return LEGACY_LIST_KEY if _legacy_form(groups) else ORDER_KEY
+
+
+def order_of(groups: dict) -> list[str]:
+    """The rule groups in the order the compositor applies them, as it will read this file next.
+
+    Up to KWin 6.7: `rules=`, or the groups `1` to `count` when there is a `count` and no
+    `rules=` (its legacy path). From 6.8: the groups no list names first -- KWin puts them ahead
+    of the rest, in an order it does not fix, so alphabetical here -- then what an older KyprX's
+    `rules=` names, then `Order=`. A name with no group in this file is left out: it can be a rule
+    of the system's `kwinrulesrc`, which this module does not read, and `write_order` keeps it
+    where it stands.
+    """
+    general = groups.get(GENERAL) or {}
+    if _legacy_form(groups):
+        listed = _names(general.get(LEGACY_LIST_KEY))
+        if not listed and not ordered(groups):
+            try:
+                count = int(str(general.get(LEGACY_COUNT_KEY, "0")).strip())
+            except ValueError:
+                count = 0
+            listed = [str(n) for n in range(1, count + 1)]
+        return [g for g in listed if _is_rule(groups, g)]
+    named = [g for g in dict.fromkeys(_names(general.get(LEGACY_LIST_KEY))
+                                      + _names(general.get(ORDER_KEY)))
+             if _is_rule(groups, g)]
+    return sorted(g for g in groups if _is_rule(groups, g) and g not in named) + named
+
+
+def write_order(cfg, order: list[str], gone=(), legacy: bool | None = None) -> None:
+    """Write the order where the compositor reads it next: `rules=` and `count=` while that is
+    the list (`_legacy_form`), otherwise `Order=` alone, with `rules=` and `count=` taken out --
+    a `rules=` left beside an `Order=` is what has KWin 6.8 delete every rule it does not name.
+    An `Order=` under KWin 6.7, which does not read it, is left as it is.
+
+    A name the list holds that is no group of this file keeps its place (`_keeping_foreign`);
+    `gone` names the rules the caller has just deleted, which do not. `legacy` is the shape the
+    caller read before it added a group (`create`); None reads it from the file as it is now."""
+    if legacy is None:
+        legacy = _legacy_form(cfg.groups)
+    general = cfg.groups.get(GENERAL) or {}
+    listed = _names(general.get(LEGACY_LIST_KEY if legacy else ORDER_KEY))
+    order = _keeping_foreign(cfg.groups, listed, order, set(gone))
+    if legacy:
+        cfg.set(GENERAL, LEGACY_LIST_KEY, ",".join(order))
+        cfg.set(GENERAL, LEGACY_COUNT_KEY, len(order))
+        return
+    if order:
+        cfg.set(GENERAL, ORDER_KEY, ",".join(order))
+    else:
+        cfg.delete_key(GENERAL, ORDER_KEY)
+    cfg.delete_key(GENERAL, LEGACY_LIST_KEY)
+    cfg.delete_key(GENERAL, LEGACY_COUNT_KEY)
+
+
+def _keeping_foreign(groups: dict, listed: list[str], order: list[str],
+                     gone: set[str]) -> list[str]:
+    """`order`, with each name `listed` holds that is no group of this file put back in front of
+    the name it stood in front of, or at the end when none of those is left.
+
+    Such a name is a rule of the system's `kwinrulesrc`, which KWin reads beneath the user's file
+    and names in the user's `Order=` -- KWin 6.8.1 ships one, `steam`, in `/etc/xdg/kwinrulesrc`,
+    and wrote `Order=steam,…` into an Arch container's file that never held a `[steam]`. Left
+    out, it is put back at the head of the list by KWin 6.8's next load, over somebody's choice
+    of where it goes and ahead of the rule this app has just put first. Up to KWin 6.7 a name with
+    nothing behind it is an empty rule, which the list has always kept."""
+    out = list(order)
+    for i in range(len(listed) - 1, -1, -1):
+        name = listed[i]
+        if name in groups or name in out or name in gone:
+            continue
+        before = next((n for n in listed[i + 1:] if n in out), None)
+        out.insert(out.index(before) if before is not None else len(out), name)
+    return out
+
 
 #: `Description` of the rules this app owns. It is what shows up in KDE's own rules editor.
 PREFIX = "KyprX: "
@@ -79,9 +247,17 @@ _MATCHERS = {"wmclass", "wmclassmatch", "wmclasscomplete", "title", "titlematch"
              "tag", "tagmatch", "hastransientparent", "hastransientparentmatch",
              "Description", "description"}
 
+#: The keys that force a title bar, in both of KWin's spellings: `noborder` and its policy up to
+#: KWin 6.7; the decoration policy from 6.8, which reads the first pair only to turn it into the
+#: second as it loads the file. Taking a title bar back takes all four out.
+TITLEBAR_KEYS = ("noborder", "noborderrule", "decorationpolicy", "decorationpolicyrule")
+
+#: `decorationpolicy` for a decoration the compositor draws (`DecorationPolicy::Server`), as
+#: KWin writes it: the choice's value. Its number, 2, reads the same.
+DECORATION_SERVER = "server"
+
 #: The keys this app writes, per purpose. Everything outside these is somebody else's and is
 #: never written, never deleted, never reordered.
-TITLEBAR_KEYS = ("noborder", "noborderrule")
 PLACEMENT_KEYS = ("placement", "placementrule")
 
 #: The four keys that pin a window's opacity, active and inactive. **This is what "transparency"
@@ -102,19 +278,20 @@ def new_uuid() -> str:
 
 
 def read(cfg) -> list[tuple[str, dict[str, str]]]:
-    """The rules in `[General] rules=` order, each as (uuid, raw entries).
+    """The rules in the order the compositor applies them (`order_of`), each as (uuid, raw
+    entries).
 
     Returning raw entries is deliberate: a rule can carry dozens of keys this app knows nothing
     about — activity, desktop, opacity, size, position — and rewriting it through a typed model
     would drop whatever did not fit.
     """
-    order = [u for u in (cfg.get("General", "rules", "") or "").split(",") if u]
-    return [(u, cfg.groups[u]) for u in order if u in cfg.groups]
+    return [(u, cfg.groups[u]) for u in order_of(cfg.groups)]
 
 
 def orphans(cfg) -> list[str]:
-    """UUID groups absent from `[General] rules=` — inert, and never removed from here."""
-    order = set((cfg.get("General", "rules", "") or "").split(","))
+    """UUID groups the list does not name — inert, and never removed from here, up to KWin 6.7;
+    from 6.8 every group is a rule, so there are none."""
+    order = set(order_of(cfg.groups))
     return sorted(g for g in cfg.groups if UUID_RE.match(g) and g not in order)
 
 
@@ -139,14 +316,38 @@ def policies(entries: dict[str, str]) -> set[str]:
 
 
 def forces_titlebar(entries: dict[str, str]) -> bool:
-    """Does this rule force the window to have a title bar?"""
-    return (entries.get("noborderrule") == str(FORCE)
-            and str(entries.get("noborder", "false")).lower() == "false")
+    """Does this rule force the window to have a title bar? The old pair decides when it is
+    there: KWin 6.8 turns any `noborderrule` but 0 into the decoration policy as it loads, over
+    the policy the rule had. Otherwise the decoration policy decides, whichever KWin the daemon
+    was told runs: only a KWin from 6.8 writes it, and the one running can be newer than the one
+    asked (`ordered` says how). Read the other way, every rule KWin 6.8 brought across would look
+    missing, and one more would be written for its window each time it is looked at."""
+    old = str(entries.get("noborderrule", "0")).strip()
+    if old not in ("", "0"):
+        return (old == str(FORCE)
+                and str(entries.get("noborder", "false")).strip().lower() == "false")
+    return (str(entries.get("decorationpolicyrule", "")).strip() == str(FORCE)
+            and str(entries.get("decorationpolicy", "")).strip().lower()
+            in (DECORATION_SERVER, "2"))
 
 
-def single_purpose(entries: dict[str, str]) -> bool:
+def single_purpose(entries) -> bool:
     """Is forcing the title bar the *only* thing this rule does?"""
-    return policies(entries) == {"noborderrule"}
+    return policies(entries) in ({"noborderrule"}, {"decorationpolicyrule"})
+
+
+def enabled(entries) -> bool:
+    """Is the rule switched on? KDE's rules page can switch one off (`Enabled=false`), and KWin
+    applies none of it then (`RuleBookSettings::rules`). Read as KConfig reads a bool."""
+    value = entries.get("Enabled", "true")
+    return not (isinstance(value, str) and value.strip().lower() in ("false", "no", "off", "0"))
+
+
+def titlebar_policy(groups) -> dict[str, str]:
+    """The keys that force a title bar, spelt the way the compositor reads this file."""
+    if ordered(groups):
+        return {"decorationpolicy": DECORATION_SERVER, "decorationpolicyrule": str(FORCE)}
+    return {"noborder": "false", "noborderrule": str(FORCE)}
 
 
 def adoptable(cfg) -> list[tuple[str, str, str]]:
@@ -207,6 +408,8 @@ def matches(entries: dict[str, str], window_class: str, resource_name: str = "")
 def find_for_class(cfg, window_class: str, resource_name: str = "") -> str | None:
     """UUID of a rule that already forces a title bar for this class, whoever wrote it."""
     for uuid, entries in read(cfg):
+        if not enabled(entries):
+            continue
         if forces_titlebar(entries) and matches(entries, window_class, resource_name):
             return uuid
     return None
@@ -270,7 +473,7 @@ def find_owned(cfg, window_class: str, resource_name: str = "") -> str | None:
 def opacity_for(cfg, window_class: str, resource_name: str = "") -> int | None:
     """The opacity the compositor would force on this window, or None when nothing does.
 
-    It walks the list in `[General] rules=` order and stops at the first rule that sets the key,
+    It walks the list in the compositor's order and stops at the first rule that sets the key,
     because that is what KWin does. Looking only at this app's own rule would be easier and would
     lie: a rule somebody wrote by hand making every window slightly see-through is as real as one
     written here, and the Transparency column has to say so rather than drawing an empty box over
@@ -281,6 +484,8 @@ def opacity_for(cfg, window_class: str, resource_name: str = "") -> int | None:
     So is a rule with no policy at all: the compositor reads that as unused (see `UNUSED`).
     """
     for _, entries in read(cfg):
+        if not enabled(entries):
+            continue
         if "opacityactive" not in entries:
             continue
         if str(entries.get("opacityactiverule", UNUSED)) in (str(UNUSED), str(DONT_AFFECT)):
@@ -317,14 +522,16 @@ def for_class(window_class: str) -> dict[str, str]:
     }
 
 
-def force_titlebar(window_class: str) -> dict[str, str]:
+def force_titlebar(cfg, window_class: str) -> dict[str, str]:
     """A brand-new rule that makes a client-side decorated window accept a server-side decoration.
 
     `noborder=false` with `noborderrule=2` is "No titlebar and frame -> Force -> No": it forces
     the window to **have** a title bar, which is what gives the decoration something to style.
-    Hiding that bar again is the override's job, not this one's.
+    Hiding that bar again is the override's job, not this one's. From KWin 6.8 the same is said
+    as `decorationpolicy=server` with `decorationpolicyrule=2`, and `titlebar_policy` spells it
+    the way the compositor reading this file understands.
     """
-    return {**for_class(window_class), "noborder": "false", "noborderrule": str(FORCE)}
+    return {**for_class(window_class), **titlebar_policy(cfg.groups)}
 
 
 def force_opacity(percent: int) -> dict[str, str]:
@@ -395,10 +602,13 @@ def create(cfg, entries: dict[str, str]) -> str:
     the *only* place that is true.
     """
     uuid = new_uuid()
+    # The shape and the order of the file as it was: written first, the new group would count as a
+    # rule under no list, which `ordered` reads as KWin 6.8's while the compositor was not asked.
+    legacy = _legacy_form(cfg.groups)
+    order = [uuid] + order_of(cfg.groups)
     for key, value in entries.items():
         cfg.set(uuid, key, value)
-    order = [u for u in (cfg.get("General", "rules", "") or "").split(",") if u]
-    _write_order(cfg, [uuid] + order)
+    write_order(cfg, order, legacy=legacy)
     return uuid
 
 
@@ -429,8 +639,8 @@ def apply_policy(cfg, uuid: str, policy: dict[str, str], owned) -> bool:
 def ensure(cfg, description: str, entries: dict[str, str], owned) -> bool:
     """Make sure the rule with this description exists and carries this app's keys.
 
-    Cheap enough to check on every start, which is the point: a rule someone deleted by hand — or
-    lost with a restored backup — comes back on its own rather than staying quietly absent. And
+    Cheap enough to check on every start, which is the point: a rule someone deleted by hand
+    comes back on its own rather than staying quietly absent. And
     when it is still there, only this app's keys are compared and only they are written, so a
     person's additions to it survive the check.
     """
@@ -458,8 +668,7 @@ def release(cfg, uuid: str, owned) -> bool:
     if policies(cfg.groups.get(uuid, {})):
         return False                      # it still does something — somebody else's something
     cfg.delete_group(uuid)
-    order = [u for u in (cfg.get("General", "rules", "") or "").split(",") if u and u != uuid]
-    _write_order(cfg, order)
+    write_order(cfg, order_of(cfg.groups), gone=(uuid,))
     return True
 
 
@@ -481,8 +690,3 @@ def adopt(cfg, uuid: str, window_class: str) -> tuple[str, str] | None:
     new = PREFIX + (window_class if generated else current)
     cfg.set(uuid, "Description", new)
     return (current, new)
-
-
-def _write_order(cfg, order: list[str]) -> None:
-    cfg.set("General", "rules", ",".join(order))
-    cfg.set("General", "count", len(order))

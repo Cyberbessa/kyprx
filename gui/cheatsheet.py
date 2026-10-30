@@ -14,9 +14,18 @@ desktop use them.
 underneath is what makes a label read as a key rather than as a word in a box, and it costs one
 function. Nothing here depends on an icon theme or on a font carrying symbols nobody guarantees —
 the arrows are the only glyphs used, and they exist everywhere.
+
+**The card is packed by arithmetic, not by a table.** Its groups are very different lengths, and
+which of them to stack in which column depends on all of them at once: a table written for one set
+of lengths leaves a hole beside the short columns as soon as a key is added to a group or a group
+is split. So each group is built once and measured (`GroupBlock`), and `arrange` tries every way of
+stacking them for the screen the card opens on -- pure arithmetic on the measurements, which is
+what lets a check hold it to every way there is.
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import (QBrush, QColor, QFont, QFontMetrics, QGuiApplication,
@@ -41,8 +50,9 @@ GLYPHS = {"Up": "↑", "Down": "↓", "Left": "←", "Right": "→",
           "PgUp": "Pg↑", "PgDown": "Pg↓", "Tab": "TAB", "Return": "↵", "Enter": "↵",
           "Backspace": "⌫", "Del": "⌦"}
 
-#: The modifier names, as a set: every one of them is drawn the width of the widest, so the keys
-#: line up in columns down the card instead of each row starting wherever its own text ends.
+#: The modifier names, as a set: every one of them is drawn the width of the widest. Every row of
+#: a column starts its keys at the same place (`Cheatsheet._card`), and this is what keeps them in
+#: line after that: the key after `Meta Ctrl` and the one after `Meta Shift` start at one x too.
 MODIFIER_LABELS = {label for _bit, label in MODIFIERS}
 
 #: Names that arrive on the front of an action's friendly name and say only who registered it.
@@ -52,7 +62,7 @@ MODIFIER_LABELS = {label for _bit, label in MODIFIERS}
 #: registry keeps what the compositor script last registered — so between a rename and the next
 #: time the script runs, the old prefix is still what arrives. Stripping both costs nothing and
 #: is the difference between a tidy card and one showing a raw string.
-NAME_PREFIXES = ("Krohnkite: ", "KyprX: ", "CYBE-KDE: ")
+NAME_PREFIXES = ("KyprX: ", "CYBE-KDE: ")
 
 
 def action_label(name: str) -> str:
@@ -89,10 +99,12 @@ def key_text(keys: list[int]) -> str:
 
 
 class KeyCaps(QWidget):
-    """One action's keys, drawn as keys.
+    """One action's keys, drawn as keys, from the left edge of the widget.
 
-    Takes a list of sequences and separates them with a thin `/`, which is what it is for: the
-    card passes exactly one, but the Shortcuts tab's row label shows everything an action carries.
+    Takes a list of sequences and separates them with a thin `/`. The card passes exactly one, the
+    one the daemon's `show` names; the Shortcuts tab writes an action's keys as text (`key_text`)
+    and draws none of these. Drawing from the left edge is what lets the card line a column up: a
+    widget made as wide as the column's widest starts its first key where every other row does.
     """
 
     def __init__(self, sequences: list[list[int]], scale: float = SCALE, parent=None):
@@ -112,7 +124,7 @@ class KeyCaps(QWidget):
         self.font.setBold(True)
         self._metrics = QFontMetrics(self.font)
         # Tight on the vertical: a key is taller than the line of text it replaces, and with
-        # twenty-five rows a couple of pixels each turns into a card half a screen high.
+        # thirty rows and more a couple of pixels each turns into a card half a screen high.
         self.pad_h = round(9 * scale)
         self.pad_v = round(4 * scale)
         self.gap = round(5 * scale)
@@ -227,15 +239,164 @@ DEFAULT_OUTLINE_STYLE = "WindowOutlineContrast"
 #: two must not drift.
 TITLE = "KyprX shortcuts"
 
-#: How the groups are arranged: one entry per column, naming the groups stacked in it top to
-#: bottom. Two columns and not one per group, because the three groups are three very different
-#: lengths -- the tiling one is five times the last -- and a column per group makes the card as
-#: tall as the longest and as wide as three, with the difference left as a hole in the corner.
-#: Stacked, the two short ones together come to about the length of the long one.
-#:
-#: A group this does not name keeps a column of its own at the end, so a group added to
-#: `daemon/shortcuts.py` appears rather than disappearing.
-COLUMNS = (("Tiling",), ("Window management", "KyprX"))
+#: The card's measures, each multiplied by `SCALE` once and here, because the packer below works
+#: out the size of a card from them before any card is built (`arrange`), and `Cheatsheet._card`
+#: then builds it with the same numbers -- one copy of each, so the two cannot drift apart.
+MARGIN_H, MARGIN_V = round(30 * SCALE), round(24 * SCALE)
+#: Wider between the columns than inside one, so three columns read as three lists rather than as
+#: one wide table with gaps in it.
+COLUMN_GAP = round(48 * SCALE)
+#: One rhythm down a group: the same gap between every two rows, and a bigger one under a group's
+#: name so the name belongs to what is under it.
+ROW_GAP = round(5 * SCALE)
+TITLE_GAP = round(6 * SCALE)
+#: Between two groups sharing a column, and wider than anything inside one: this gap is the only
+#: thing saying where one list ends and the next begins.
+GROUP_GAP = round(22 * SCALE) + ROW_GAP
+#: At least this much between the name and the keys, whatever the widths are: without it the
+#: longest name in a column touches its own shortcut.
+NAME_GAP = round(24 * SCALE)
+
+#: How many columns the card is tried with, fewest first: the first whose card fits the height of
+#: the screen it opens on is the one built (`arrange`). Two keep the card narrow, and on a 1920x1080
+#: screen they fit; a screen with a usable height of 864 pixels -- 1080 at 125 % -- does not have
+#: the room for two once a panel is there, and gets three.
+COLUMN_COUNTS = (2, 3)
+
+
+class Block(NamedTuple):
+    """One group of the card as the packer sees it, measured once from the widgets it is made of.
+
+    `height` is the whole group's, its name over its rows; `title` is the width of that name, and
+    `name` and `keys` the widths of its widest action name and its widest row of keys. The widths
+    are kept apart rather than added up, because a column draws every row's keys as wide as its
+    widest (`column_width`).
+    """
+
+    height: int
+    title: int
+    name: int
+    keys: int
+
+
+def column_height(blocks: list[Block]) -> int:
+    """The height of these groups stacked in one column."""
+    return sum(block.height for block in blocks) + GROUP_GAP * (len(blocks) - 1)
+
+
+def column_width(blocks: list[Block]) -> int:
+    """The width of these groups stacked in one column: the widest name of any of them, the gap,
+    and the widest keys of any of them -- every row's keys are drawn that wide, so a short name in
+    one group sits beside a long key from another -- or the widest group name, when that is more."""
+    return max(max(block.title for block in blocks),
+               max(block.name for block in blocks) + NAME_GAP + max(block.keys for block in blocks))
+
+
+def card_size(blocks: list[Block], columns) -> tuple[int, int]:
+    """The card's width and height with the groups numbered in `columns` stacked so: one tuple of
+    group numbers per column, top to bottom."""
+    stacks = [[blocks[i] for i in column] for column in columns]
+    width = (MARGIN_H * 2 + sum(column_width(stack) for stack in stacks)
+             + COLUMN_GAP * (len(stacks) - 1))
+    return width, MARGIN_V * 2 + max(column_height(stack) for stack in stacks)
+
+
+def arrangements(count: int, n: int):
+    """Every way of stacking `count` groups in `n` columns, none of them empty.
+
+    A column keeps its groups in the order they arrive in, and the columns are in the order of
+    their first group, so each way comes up once: these are the partitions of the groups into `n`
+    sets, of which five groups have 15 in two columns and 25 in three. A group is never split
+    across two columns -- a list that went on at the top of the next one would be read as two.
+    """
+    def place(columns: list[list[int]], group: int):
+        if count - group < n - len(columns):        # too few groups left to fill every column
+            return
+        if group == count:
+            yield tuple(tuple(column) for column in columns)
+            return
+        for column in columns:
+            column.append(group)
+            yield from place(columns, group + 1)
+            column.pop()
+        if len(columns) < n:
+            columns.append([group])
+            yield from place(columns, group + 1)
+            columns.pop()
+
+    yield from place([], 0)
+
+
+def inversions(columns) -> int:
+    """How far the card's reading order -- down the first column, then down the next -- is from
+    the order the groups arrive in: the number of pairs of groups it reads the wrong way round."""
+    order = [group for column in columns for group in column]
+    return sum(1 for i, early in enumerate(order) for late in order[i + 1:] if early > late)
+
+
+def _merit(blocks: list[Block], columns) -> tuple[int, int, int, int]:
+    heights = [column_height([blocks[i] for i in column]) for column in columns]
+    return (max(heights), inversions(columns), max(heights) - min(heights),
+            card_size(blocks, columns)[0])
+
+
+def pack(blocks: list[Block], n: int, room_width: int):
+    """The best way of stacking these groups in `n` columns, as one tuple of group numbers per
+    column. Pure arithmetic on the measurements, no Qt, so a check can hold it to every way there
+    is (`tests/test_cheatsheet_fits.py`).
+
+    Of the ways no wider than `room_width` -- all of them, when none is -- the one that is best by,
+    in this order:
+
+    1. **The shortest tallest column.** It is the card's height, the one thing that has to fit
+       the screen. It is also the least room left empty: in `n` columns the groups and the gaps
+       between them take the same height whichever way they are stacked, so what is left beside
+       the shorter columns is `n` times the tallest less that.
+    2. **The fewest pairs of groups read the wrong way round** (`inversions`). Among cards of one
+       height the one closest to the order the daemon sends -- the Shortcuts tab's -- reads best:
+       the focus keys before the resize keys, the windows' keys before KyprX's own.
+    3. **The smallest difference between the tallest column and the shortest**: of the same empty
+       room, the least of it in one place.
+    4. **The narrowest card.**
+
+    Measured offscreen in KDE's default font with KyprX's and the desktop's default keys: on a
+    1920x1080 screen, two columns of Focus and move over Resize and arrange, and Layouts over
+    Window management over KyprX, every group in the daemon's order, 738 and 803 px tall and 998
+    wide. The width rule is not hypothetical: a 1440x900 screen needs three columns and has no
+    room for the best three, 1484 wide, so it gets Focus and move, then Resize and arrange over
+    Layouts, then Window management over KyprX, 1424 wide.
+    """
+    candidates = list(arrangements(len(blocks), n))
+    fitting = [columns for columns in candidates
+               if card_size(blocks, columns)[0] <= room_width] or candidates
+    return min(fitting, key=lambda columns: _merit(blocks, columns))
+
+
+def arrange(blocks: list[Block], room_width: int, room_height: int):
+    """The card for a screen with this much room: packed in the fewest columns of `COLUMN_COUNTS`
+    whose card fits `room_height`, or in the most when none does. Never more columns than groups.
+
+    Measured offscreen, in the font and with the keys `pack` names: on a 1536x864 screen, the 1080
+    one at 125 %, the room is 820 px and the best two columns make a card 861 tall, so it is three
+    -- Focus and move over Layouts, then Resize and arrange over KyprX, then Window management, a
+    card 596 px tall and 1484 wide. The tallest column decides before the order does there: the
+    way that keeps every group in the daemon's order -- Focus and move alone, then Resize and
+    arrange over Layouts, then Window management over KyprX -- has a column 618 px tall, 80 more
+    than this one's 538, and this one reads two pairs of groups the wrong way round.
+    """
+    if not blocks:
+        return ()
+    columns = ()
+    for n in COLUMN_COUNTS:
+        columns = pack(blocks, min(n, len(blocks)), room_width)
+        if card_size(blocks, columns)[1] <= room_height:
+            break
+    return columns
+
+
+#: The height a Plasma panel takes by default, kept free below the card even when the screen
+#: reports all of its height as available -- which is what a window on Wayland can be told.
+PANEL = 44
 
 
 def _rgb(text) -> QColor | None:
@@ -357,6 +518,75 @@ def card_style(look: dict, name: str = "card") -> str:
             f"border-radius: {look['radius']:g}px; }}")
 
 
+class GroupBlock(QWidget):
+    """One group of the card: its name in bold over one row per action, the action's name on the
+    left and its keys on the right.
+
+    Built once, and measured once (`measured`), before the card knows which column it goes in:
+    which column is worked out from those measurements (`arrange`), and then the block itself is
+    put there. `caps` are its keys, which the card makes as wide as the widest in the column
+    (`align`).
+    """
+
+    def __init__(self, group: str, actions: list[dict], parent=None):
+        super().__init__(parent)
+        self.group = group
+        rows = QVBoxLayout(self)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(ROW_GAP)
+        title = QLabel(group)
+        font = QFont()
+        font.setBold(True)
+        font.setPointSizeF((font.pointSizeF() + 2) * SCALE)
+        title.setFont(font)
+        rows.addWidget(title)
+        rows.addSpacing(TITLE_GAP)
+        names: list[QLabel] = []
+        self.caps: list[KeyCaps] = []
+        self._lines: list[QHBoxLayout] = []
+        for action in actions:
+            line = QHBoxLayout()
+            line.setSpacing(NAME_GAP)
+            name = QLabel(action_label(action["name"]))
+            name_font = QFont()
+            name_font.setPointSizeF(name_font.pointSizeF() * SCALE)
+            name.setFont(name_font)
+            line.addWidget(name)
+            line.addStretch()
+            # One combination per row, not all of them. An action can carry several — KRunner
+            # carries three — and a card that printed every one would be wider and less readable
+            # than the thing it is helping you remember. Which one is shown is chosen on the
+            # Shortcuts tab; `show` is the daemon's answer, resolved.
+            shown = action.get("show") or (action["keys"][0] if action["keys"] else [])
+            caps = KeyCaps([shown] if shown else [])
+            line.addWidget(caps)
+            rows.addLayout(line)
+            names.append(name)
+            self.caps.append(caps)
+            self._lines.append(line)
+        self.measured = Block(
+            height=self.sizeHint().height(), title=title.sizeHint().width(),
+            name=max((name.sizeHint().width() for name in names), default=0),
+            keys=max((caps.sizeHint().width() for caps in self.caps), default=0))
+
+    def align(self, width: int) -> None:
+        """Every row's keys drawn `width` wide, so they start where the rest of the column's do.
+
+        Every layout of the block is told, because none of them hears it otherwise before the
+        window is shown: a widget that has not been shown yet tells no layout its size changed
+        (`QWidget::updateGeometry` stops at a hidden widget), and a layout keeps the size it worked
+        out first until it is told. Left untold, the rows report the widths measured before this,
+        the window is fixed at the size they add up to (`Cheatsheet`), and the columns are
+        squeezed into it: measured offscreen on a 1920x1080 screen, a card 115 px narrower than
+        its columns, with the longest name in it cut off.
+        """
+        for caps in self.caps:
+            caps.setFixedWidth(width)
+        for line in self._lines:
+            line.invalidate()
+        self.layout().invalidate()
+
+
 class Cheatsheet(QWidget):
     """The shortcut list as an overlay, laid out to be read at a glance.
 
@@ -371,75 +601,93 @@ class Cheatsheet(QWidget):
     **It cannot place itself.** A Wayland client has no call for positioning its own top-level, and
     the toolkit discards the coordinates outright. Centring is a window rule the daemon keeps; see
     `daemon/rules.py:overlay_placement`.
+
+    **Its columns come from the screen it opens on**, the way the picker's size does: the screen
+    the daemon names in the `Shortcuts` answer (`screen`), or Qt's primary one when it names none
+    this window knows. Each group is built once (`GroupBlock`) and measured, and `arrange` stacks
+    the groups in the fewest columns whose card fits that screen's height with a panel on it, in
+    the stacking with the shortest tallest column that fits its width (`pack` says how it
+    chooses). `room` stands in for the screen, for a check that has to know the card fits a screen
+    it is not running on.
     """
 
-    def __init__(self, client):
+    def __init__(self, client, room: QSize | None = None):
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle(TITLE)
 
-        card = QWidget()
-        card.setObjectName("card")
-        card.setStyleSheet(card_style(card_look(client, see_through=True)))
-        grid = QHBoxLayout(card)
-        margin_h, margin_v = round(30 * SCALE), round(24 * SCALE)
-        grid.setContentsMargins(margin_h, margin_v, margin_h, margin_v)
-        #: Wider between the columns than inside one, so three columns read as three lists rather
-        #: than as one wide table with gaps in it.
-        grid.setSpacing(round(48 * SCALE))
+        data = client.shortcuts() or {}
+        screen = self._target_screen(str(data.get("screen") or ""))
+        if screen is not None:
+            self.setScreen(screen)
+        self.room = room if room is not None else self._room(screen)
 
         groups: dict[str, list] = {}
-        for action in client.shortcuts().get("actions") or []:
+        for action in data.get("actions") or []:
             groups.setdefault(action["group"], []).append(action)
-
-        named = {group for column in COLUMNS for group in column}
-        arranged = [[group for group in column if group in groups] for column in COLUMNS]
-        arranged += [[group] for group in groups if group not in named]
-
-        for stacked in arranged:
-            if not stacked:
-                continue
-            column = QVBoxLayout()
-            #: One rhythm down the card: the same gap between every two rows, and a bigger one
-            #: under a group's name so the name belongs to what is under it.
-            column.setSpacing(round(5 * SCALE))
-            for index, group in enumerate(stacked):
-                if index:
-                    #: Between two groups sharing a column, and wider than anything inside one:
-                    #: this gap is the only thing saying where one list ends and the next begins.
-                    column.addSpacing(round(22 * SCALE))
-                title = QLabel(group)
-                font = QFont()
-                font.setBold(True)
-                font.setPointSizeF((font.pointSizeF() + 2) * SCALE)
-                title.setFont(font)
-                column.addWidget(title)
-                column.addSpacing(round(6 * SCALE))
-                for action in groups[group]:
-                    line = QHBoxLayout()
-                    #: At least this much between the name and the keys, whatever the widths are:
-                    #: without it the longest name in a column touches its own shortcut.
-                    line.setSpacing(round(24 * SCALE))
-                    name = QLabel(action_label(action["name"]))
-                    name_font = QFont()
-                    name_font.setPointSizeF(name_font.pointSizeF() * SCALE)
-                    name.setFont(name_font)
-                    line.addWidget(name)
-                    line.addStretch()
-                    # One combination per row, not all of them. An action can carry several —
-                    # KRunner carries three — and a card that printed every one would be wider and
-                    # less readable than the thing it is helping you remember. Which one is shown
-                    # is chosen on the Shortcuts tab; `show` is the daemon's answer, resolved.
-                    shown = action.get("show") or (action["keys"][0] if action["keys"] else [])
-                    line.addWidget(KeyCaps([shown] if shown else []))
-                    column.addLayout(line)
-            column.addStretch()
-            grid.addLayout(column)
+        blocks = [GroupBlock(group, actions) for group, actions in groups.items()]
+        chosen = arrange([block.measured for block in blocks],
+                         self.room.width(), self.room.height())
+        stacks = [[blocks[i] for i in column] for column in chosen]
+        #: How many columns the card was built with, which groups are in each, top to bottom, and
+        #: how tall each column is as `arrange` worked it out -- for whoever needs to know what
+        #: fitted, and for the check that holds the built card to that arithmetic.
+        self.columns = len(stacks)
+        self.arranged = [[block.group for block in stack] for stack in stacks]
+        self.heights = [column_height([block.measured for block in stack]) for stack in stacks]
+        card = self._card(stacks, card_style(card_look(client, see_through=True)))
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(card)
         self.setFixedSize(self.sizeHint())
+
+    @staticmethod
+    def _target_screen(name: str):
+        """The `QScreen` the daemon named, or Qt's primary screen -- offscreen, where the one
+        screen has no name, or with no compositor to ask. The picker's rule, `_target_screen`."""
+        for screen in QGuiApplication.screens():
+            if name and screen.name() == name:
+                return screen
+        return QGuiApplication.primaryScreen()
+
+    @staticmethod
+    def _room(screen) -> QSize:
+        """What the card may take of that screen: what it says is available, and never the height
+        a panel takes."""
+        if screen is None:
+            return QSize(1600, 900 - PANEL)
+        available, whole = screen.availableGeometry(), screen.geometry()
+        return QSize(available.width(), min(available.height(), whole.height() - PANEL))
+
+    @staticmethod
+    def _card(stacks: list[list[GroupBlock]], style: str) -> QWidget:
+        """The card itself, with these groups stacked in these columns."""
+        card = QWidget()
+        card.setObjectName("card")
+        card.setStyleSheet(style)
+        grid = QHBoxLayout(card)
+        grid.setContentsMargins(MARGIN_H, MARGIN_V, MARGIN_H, MARGIN_V)
+        grid.setSpacing(COLUMN_GAP)
+        for stack in stacks:
+            column = QVBoxLayout()
+            column.setSpacing(GROUP_GAP)
+            # Every row's keys as wide as the widest in the column, so each row's first key starts
+            # at one x down the whole column, across the groups stacked in it too. The keys follow
+            # a stretch, so a row's keys end at the column's edge; left to its own width, a row
+            # starts its keys wherever its own last key puts its first. Measured in KDE's default
+            # font, the eight resize keys alone are 105, 107, 174 and 243 px wide -- Meta+F,
+            # Meta+Return, Meta+Shift+O, Meta+Ctrl+Shift+H -- which put `Meta` at four places.
+            # Equal modifier widths only line up rows with as many keys as each other
+            # (`MODIFIER_LABELS`).
+            widest = max(block.measured.keys for block in stack)
+            for block in stack:
+                block.align(widest)
+                column.addWidget(block)
+            column.addStretch()
+            grid.addLayout(column)
+        card.ensurePolished()
+        return card
 
     def keyPressEvent(self, event):  # noqa: N802 — Qt's spelling
         if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Space, Qt.Key.Key_Return):
