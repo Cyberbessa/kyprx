@@ -10,9 +10,10 @@ from the application menu.
 
 ## Fedora
 
-KyprX's repository is in COPR, Fedora's service for community packages, for Fedora 43 and 44.
-Enabling it offers to enable the two repositories it depends on as well, for Klassy and Better
-Blur DX; answer yes.
+KyprX's repository is in COPR, Fedora's service for community packages. KyprX installs on Fedora
+44: Better Blur DX's repository no longer builds for Fedora 43, so a new install there stops for
+want of it, and Klassy's has no Fedora 45 yet. Enabling KyprX's repository offers to enable the
+two repositories it depends on as well, for Klassy and Better Blur DX; answer yes.
 
 ```sh
 sudo dnf copr enable cyberbessa/kyprx
@@ -41,26 +42,23 @@ to be added the same way; the
 ## Arch, and systems built on it
 
 The four programs are in the AUR, and KyprX is on its way there. Until it is, each release on
-GitHub carries KyprX's PKGBUILD, and `paru` builds it and installs the four with it. The four
-lines build the package in a temporary folder and delete that folder at the end, so nothing of
-the build is left where you run them; paru keeps its own copies of the four programs it builds
-in `~/.cache/paru/clone/`, as it does for every AUR package:
+GitHub carries KyprX's PKGBUILD, and `paru` builds it and installs the four with it. This one
+line builds the package in a temporary folder and deletes that folder at the end, so nothing of
+the build is left where you run it; paru keeps its own copies of the four programs it builds in
+`~/.cache/paru/clone/`, as it does for every AUR package:
 
 ```sh
-build=$(mktemp -d)
-curl -fL -o "$build/PKGBUILD" https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
-(cd "${build:?}" && paru -Ui)
-rm -rf "$build"
+bash -c 'build=$(mktemp -d) && cd "$build" && curl -fL -o PKGBUILD https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD && paru -Ui; rm -rf "${build:?}"'
 ```
 
-The four lines are for bash and zsh. In fish, the shell CachyOS starts with, type `bash` first,
-paste them there, and type `exit` afterwards.
+Paste it as it is into fish, the shell CachyOS starts with, or into bash or zsh: the three read
+it alike, and it runs in bash whichever one it is pasted into.
 
 With another AUR helper, such as `yay`, install the four with it first -- `klassy`,
 `kwin-effects-better-blur-dx`, `kwin-effects-geometry-change` and
-`plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run the same four lines with
-`makepkg -si` in place of `paru -Ui`. Klassy and Better Blur DX are built on your computer, which
-takes a few minutes.
+`plasma6-wallpapers-smart-video-wallpaper-reborn` -- then run the same line with `makepkg -si` in
+place of `paru -Ui`. Klassy and Better Blur DX are built on your computer, which takes a few
+minutes.
 
 ## Any other system
 
@@ -88,9 +86,9 @@ How a new version arrives depends on how KyprX was installed:
 - **Fedora**: `sudo dnf upgrade --refresh kyprx`. If it finds nothing, try again later: the
   package is built a few minutes after the release.
 - **A Fedora system that updates as a whole**: `rpm-ostree upgrade`, then restart the computer.
-- **Arch**: the same [four lines as the install](#arch-and-systems-built-on-it), which build the
-  new release's package over the installed one; `makepkg -si` in place of `paru -Ui` if that is
-  how KyprX was installed.
+- **Arch**: the same [line as the install](#arch-and-systems-built-on-it), which builds the new
+  release's package over the installed one; `makepkg -si` in place of `paru -Ui` if that is how
+  KyprX was installed.
 - **`install.sh`**: `./install.sh --update`, or **Update now** in the dialog that
   [Look for a new version](settings.md#look-for-a-new-version) opens. On a clone of the
   repository it brings in what the branch it follows has; on a folder unpacked from a release it
@@ -164,9 +162,11 @@ sudo pacman -Rs kyprx klassy kwin-effects-better-blur-dx \
 
 pacman lists everything it will remove, and asks before it removes anything: read the list. It
 takes what you named and whatever was installed only for it, and never a package something else
-still needs, so on a Plasma desktop Plasma itself stays. Tried on a clean Arch installed with
-`paru`, with the same command naming a fifth program besides these four: afterwards KyprX, the five
-and their files were gone. The recipe with four has not been tried that way.
+still needs, so on a Plasma desktop Plasma itself stays. Tried on a clean Arch, in a container,
+with the 0.2.0 release installed by that line, run from fish: the four came in as KyprX's own
+needs, and `sudo pacman -Rs kyprx` took KyprX, the four and their files. The command naming the
+four was tried on a clean Arch while KyprX needed a fifth program, named with them: afterwards
+KyprX, the five and their files were gone.
 
 Two things stay behind, and each is yours to delete or keep:
 

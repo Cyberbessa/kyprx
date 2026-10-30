@@ -39,12 +39,16 @@ LIMIT = 200 * 1024 * 1024
 #: the repository and the tag, less its `v`), a `VERSION` there that says that version, and these
 #: files. A release that misses one cannot be updated to from any version installed before it.
 NEEDED = ("install.sh", "daemon/kyprd.py", "gui/kyprx.py", "kwin-script/metadata.json")
-#: The Arch lines of `docs/user-guide/install.md`, held to it by tests/test_update_check.py.
-ARCH_LINES = ('build=$(mktemp -d)\n'
-              'curl -fL -o "$build/PKGBUILD" '
-              'https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD\n'
-              '(cd "${build:?}" && paru -Ui)\n'
-              'rm -rf "$build"')
+#: The Arch line of `docs/user-guide/install.md` and of the public README, held to both by
+#: tests/test_update_check.py. One line, `bash -c` with the rest in single quotes, because
+#: CachyOS starts fish, and fish ran none of the four bash lines this replaced: it stops at the
+#: first, `Unsupported use of '='`. Inside single quotes fish, bash and zsh read the same text,
+#: so long as it holds no quote and no backslash. Run from each of the three in a clean Arch
+#: container, at the 0.2.0 release, it downloaded the PKGBUILD into a temporary folder and
+#: removed that folder; from fish, for real, it built and installed KyprX and the four.
+ARCH_LINE = ("bash -c 'build=$(mktemp -d) && cd \"$build\" && curl -fL -o PKGBUILD "
+             "https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD "
+             "&& paru -Ui; rm -rf \"${build:?}\"'")
 _VERSION = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -83,8 +87,9 @@ def package_advice(system_name: str) -> tuple[str, str]:
                        "If it finds nothing, try again later: the package is built a few minutes "
                        "after the release."),
         about.FEDORA_ATOMIC: ("rpm-ostree upgrade", "Then restart the computer."),
-        about.ARCH: (ARCH_LINES, "In bash or zsh. Use makepkg -si in place of paru -Ui if that is "
-                                 "how KyprX was installed; nothing is removed first."),
+        about.ARCH: (ARCH_LINE, "One line, the same in fish, bash or zsh. Use makepkg -si in place "
+                                "of paru -Ui if that is how KyprX was installed; nothing is "
+                                "removed first."),
     }.get(system_name, ("update the kyprx package with your system's package manager", ""))
 
 

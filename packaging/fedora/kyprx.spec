@@ -9,7 +9,7 @@
 # KyprX's own COPR (the two specs beside this one).
 
 Name:           kyprx
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -87,6 +87,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Fri Oct 30 2026 cyberbessa <grdz441yj@mozmail.com> - 0.2.1-1
+- The Arch install is one line that fish, bash and zsh read alike
+
 * Fri Oct 30 2026 cyberbessa <grdz441yj@mozmail.com> - 0.2.0-1
 - KyprX tiles the windows itself, keeps everybody's window rules on Plasma 6.8, and sets a wallpaper per screen
 

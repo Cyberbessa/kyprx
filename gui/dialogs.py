@@ -313,9 +313,17 @@ class UpdateDialog(QDialog):
                     "updates it:" if tree else
                     "Your system's package manager updates KyprX. KyprX does not run it for you:")
             layout.addWidget(_plain(lead))
-            self.command = QLabel(str(answer.get("command") or ""))
+            command = str(answer.get("command") or "")
+            self.command = QLabel(command)
             self.command.setTextFormat(Qt.TextFormat.PlainText)
             self.command.setFont(_mono())
+            if len(command) > 80:
+                # Arch's is one line of 170 characters (`ARCH_LINE` in daemon/update.py):
+                # unwrapped, it opened this window 1374 pixels wide, and wrapped to the width the
+                # rest of the window takes, it ran to six lines. Wrapped at a terminal's 80
+                # columns it takes three, and it is still copied as the one line it is.
+                self.command.setWordWrap(True)
+                self.command.setMinimumWidth(self.command.fontMetrics().horizontalAdvance("x" * 80))
             self.command.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             copy = QPushButton("Copy the command")
             copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.command.text()))

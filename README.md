@@ -121,7 +121,7 @@ layouts, window management, and KyprX itself.
 
 ## Install
 
-**Fedora**
+**Fedora 44**
 
 ```sh
 sudo dnf copr enable cyberbessa/kyprx
@@ -131,19 +131,16 @@ sudo dnf install kyprx
 **Arch** and friends — EndeavourOS, CachyOS, Manjaro…
 
 KyprX is on its way to the AUR. Until it is there, each release carries its PKGBUILD, and an AUR
-helper builds it and brings in everything it needs from the AUR. The four lines build the package
-in a temporary folder and delete that folder at the end, so nothing of the build is left where you
-run them; paru keeps its own copies of what it builds from the AUR in `~/.cache/paru/clone/`:
+helper builds it and brings in everything it needs from the AUR. This one line builds the package
+in a temporary folder and deletes that folder at the end, so nothing of the build is left where you
+run it; paru keeps its own copies of what it builds from the AUR in `~/.cache/paru/clone/`:
 
 ```sh
-build=$(mktemp -d)
-curl -fL -o "$build/PKGBUILD" https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD
-(cd "${build:?}" && paru -Ui)
-rm -rf "$build"
+bash -c 'build=$(mktemp -d) && cd "$build" && curl -fL -o PKGBUILD https://github.com/cyberbessa/kyprx/releases/latest/download/PKGBUILD && paru -Ui; rm -rf "${build:?}"'
 ```
 
-The four lines are for bash and zsh. In fish, the shell CachyOS starts with, type `bash` first,
-paste them there, and type `exit` afterwards.
+Paste it as it is into fish, the shell CachyOS starts with, or into bash or zsh: the three read it
+alike, and it runs in bash whichever one it is pasted into.
 
 Everything KyprX is built on comes with it. For Fedora Kinoite and the systems built on it, for
 other distributions, and for updating and removing, see

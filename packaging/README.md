@@ -39,10 +39,12 @@ The project is `cyberbessa/kyprx`, and it is set up like this; `copr-cli`, with 
 copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a terminal.
 
 1. A Fedora account, and in COPR a project named `kyprx`, with the chroots of the Fedora releases
-   where both Klassy and Better Blur DX are built -- `fedora-43` and `fedora-44`, each for `x86_64`
-   and `aarch64`. Klassy's repository has no Fedora 45 yet and Better Blur DX's has no Rawhide, and
-   a chroot where either is missing would offer a KyprX nobody can install. *Follow Fedora
-   branching* is ticked, and *AppStream metadata* is on, so software centres find KyprX.
+   where both Klassy and Better Blur DX are built, each for `x86_64` and `aarch64`: a chroot where
+   either is missing offers a KyprX nobody can install. The project has `fedora-43` and
+   `fedora-44`. Measured at the 0.2.0 release, only Fedora 44 has both: Better Blur DX's COPR
+   builds for Fedora 44 and 45 and no longer for 43, and Klassy's repository has 43 and 44 and no
+   45 yet (KNOWN-ISSUES). *Follow Fedora branching* is ticked, and
+   *AppStream metadata* is on, so software centres find KyprX.
 2. In the project's settings, *Runtime dependencies*: the Klassy and Better Blur DX lines of the
    table above. Measured: the repository file COPR serves carries both as sections of their own,
    enabled, and `dnf copr enable` enables them together with KyprX's.
@@ -89,19 +91,23 @@ else's package, kept by them.
    `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`), committed and pushed. Both commands need an
    Arch system; a container is enough.
 4. On the GitHub release, that `PKGBUILD`, checksum filled in. Until KyprX is in the AUR it is
-   how Arch installs it -- the install guide downloads it into a temporary folder, `paru -Ui`
-   builds KyprX there and brings the four from the AUR, and the folder is deleted afterwards --
-   and the guide points at `releases/latest/download/PKGBUILD`, so a release without it breaks
-   that line. Measured on a clean Arch while the recipe named a fifth package from the AUR:
-   `paru -Ui` installed it with all five, and `makepkg -si` did with the five present. Measured
-   in an Arch container, with `makepkg -d` in place of `paru -Ui`: the guide's four lines built
-   the PKGBUILD of the 0.1.4 release, which names a fifth package, and left nothing in the home
-   folder. The recipe with its four has not been built on Arch, and the four lines have not been
-   run with `paru`. No built package goes beside it: it would carry KyprX's files and none of the
-   four -- Klassy and Better Blur DX are built against one KWin and cannot travel prebuilt -- so
-   it would install only where they already are. The release's notes carry the install guide's
-   four Arch lines as they are, for installing and for updating alike, never a folder of the
-   reader's own to build in.
+   how Arch installs it -- the install guide's one line downloads it into a temporary folder,
+   `paru -Ui` builds KyprX there and brings the four from the AUR, and the folder is deleted
+   afterwards -- and the line points at `releases/latest/download/PKGBUILD`, so a release without
+   it breaks that line. The line is `bash -c` with the rest in single quotes, which fish, bash and
+   zsh read alike (`ARCH_LINE`, in `daemon/update.py`, says why). Measured in a clean Arch
+   container with the published 0.2.0 release, the line run from fish, every question answered
+   with Enter and paru's review of the recipes switched off in its own settings: it built KyprX
+   and the four from the AUR, installed the four as dependencies, and left nothing in the home
+   folder but paru's own `~/.cache/paru/`, and no folder in `/tmp`; `sudo pacman -Rs kyprx` then
+   removed all five. Run from bash and from zsh, with a stand-in for paru that only said where it
+   was run, the line downloaded the PKGBUILD into a temporary folder and removed that folder.
+   `makepkg -si` with the dependencies already present was measured on a clean Arch while the
+   recipe named a fifth package from the AUR, and not with the four. No built package goes beside
+   it: it would carry KyprX's files and none of the four -- Klassy and Better Blur DX are built
+   against one KWin and cannot travel prebuilt -- so it would install only where they already
+   are. The release's notes carry the install guide's Arch line as it is, for installing and for
+   updating alike, never a folder of the reader's own to build in.
 5. The GitHub release is also how an install made with `install.sh` from a release folder finds
    the new version: `daemon/update.py` asks GitHub for the latest release -- by GitHub's
    documentation, the newest that is neither a draft nor a pre-release -- and downloads the
