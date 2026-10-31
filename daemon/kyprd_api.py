@@ -35,7 +35,7 @@ from declared import note_reloads, shipped_defaults, write_declared
 from klassy import KLASSY_GROUPS
 from kwin_config import DECORATION_GROUP, WINDOWS_GROUP
 from kyprd_names import LIST_SWITCHES, MANAGER_IFACE, SCRIPT_PLUGIN
-from state import (Defaults, all_screens, colour_screen, kde_wallpapers, strip_text,
+from state import (Defaults, all_screens, colour_screen, kde_wallpapers, saved_off, strip_text,
                    wallpaper_layout)
 
 if TYPE_CHECKING:
@@ -105,11 +105,31 @@ class Manager(dbus.service.Object):
                            #: there is nothing for a caller to ask for here.
                            "ticked_at_100": list(self.d.config.ticked_at_100),
                            "defaults": asdict(self.d.config.defaults),
+                           #: The switches each window keeps as set by hand, which the Windows
+                           #: tab's column boxes leave alone; read-only, written by the ticks that
+                           #: make it true (`set_switches`).
+                           "kept": dict(self.d.config.kept or {}),
+                           #: Whether KyprX is off the desk, where a column's box is refused.
+                           "off": bool(self.d.state.off or saved_off()),
                            #: The picker's choices, and nothing derived from them. Working
                            #: out which folder that means, and what is in it, is `Wallpapers'`
                            #: job — this one is called to draw a header several times a second.
                            "wallpaper": dict(self.d.config.wallpaper),
                            "waiting": [w.window_class for w in self.d.pending()]})
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
+    def TilingSwitch(self):
+        """Automatic tiling for the strip above the tabs: `TilingPart.tiling_switch`. Written
+        through `SetGroups` with `autoTiling` alone and no `enforce`, so the strip changes that one
+        key and nothing else."""
+        return json.dumps(self.d.tiling_switch())
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
+    def Desktops(self):
+        """The desktops the Tiling tab offers an arrangement for (`TilingPart.desktops_now`):
+        `{"desktops": [{"number", "id", "name"}]}`, or `{"desktops": null}` when the compositor
+        cannot be asked. The arrangement each starts on is `desktopArrangements` in `Groups`."""
+        return json.dumps({"desktops": self.d.desktops_now()})
 
     @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
     def SetSettings(self, payload):
@@ -183,6 +203,22 @@ class Manager(dbus.service.Object):
     def SetSwitches(self, payload):
         """`{class: {switch: bool}}` — several windows' switches in one transaction."""
         r = self.d.set_switches(json.loads(str(payload)))
+        self.changed()
+        return r
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
+    def SetColumn(self, payload):
+        """`{"switch": str, "value": bool}` -- a column's box on the Windows tab: that switch for
+        every window met but those keeping it as set by hand, and for every new window, in one
+        transaction. See `WindowsPart.set_column`."""
+        try:
+            d = json.loads(str(payload))
+        except json.JSONDecodeError as e:
+            return f"error: {e}"
+        if not isinstance(d, dict) or not isinstance(d.get("switch"), str) \
+                or not isinstance(d.get("value"), bool):
+            return "error: expected a switch's name and true or false"
+        r = self.d.set_column(d["switch"], d["value"])
         self.changed()
         return r
 
@@ -398,6 +434,14 @@ class Manager(dbus.service.Object):
                         given["tiling"]["arrangements"])
                 except tiling.ArrangementsError as e:
                     return f"error: {e}"
+        if given["tiling"].get("desktopArrangements") is not None:
+            # Checked before anything is written, and written as its one canonical text; empty,
+            # it takes the key away, which is every desktop on the first in the rotation again.
+            try:
+                given["tiling"]["desktopArrangements"] = tiling.canonical_desktops(
+                    given["tiling"]["desktopArrangements"])
+            except tiling.DesktopsError as e:
+                return f"error: {e}"
 
         def build(tx):
             moved = set()
@@ -415,7 +459,8 @@ class Manager(dbus.service.Object):
                     held = tx.kwin.get(group, key)
                     if source == "tiling" and value is None:
                         tx.kwin.delete_key(group, key)
-                    elif (source == "tiling" and key == "arrangements" and isinstance(held, str)
+                    elif (source == "tiling" and key in ("arrangements", "desktopArrangements")
+                          and isinstance(held, str)
                           and self.d._tiling_value_alike(key, held, value)):
                         # The one value made over before it gets here -- it is canonical by now --
                         # so without this a text spelt by hand, or one in version 1, sent back as
@@ -455,6 +500,31 @@ class Manager(dbus.service.Object):
         """What *Restore defaults* would change, in plain words. Writes nothing; "" when it would
         change nothing."""
         return self.d.restore_defaults(preview=True)
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
+    def LookOffer(self):
+        """`{"due": bool, "changes": str}`: whether the settings window, opening, is to ask about
+        KyprX's look, and what putting it on would change, in plain words (`look_offer`). Writes
+        nothing; `changes` is "" unless due."""
+        return json.dumps(self.d.look_offer())
+
+    @dbus.service.method(MANAGER_IFACE, in_signature="s", out_signature="s")
+    def AnswerLook(self, payload):
+        """`{"take": true}` keeps a copy of the desk and puts KyprX's look on; `{"take": false}`
+        keeps the desk's own. Either is remembered, so the question is not asked again
+        (`answer_look`). "ok", "partial: …" or "error: …". Only putting the look on changes the
+        desk, so only that says so."""
+        try:
+            d = json.loads(str(payload))
+        except json.JSONDecodeError as e:
+            return f"error: {e}"
+        take = d.get("take") if isinstance(d, dict) else None
+        if not isinstance(take, bool):
+            return "error: say take: true or false"
+        answer = self.d.answer_look(take)
+        if take and not answer.startswith("error"):
+            self.changed()
+        return answer
 
     @dbus.service.method(MANAGER_IFACE, in_signature="", out_signature="s")
     def Snapshots(self):

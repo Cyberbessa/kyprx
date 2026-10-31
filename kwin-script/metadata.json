@@ -12,7 +12,7 @@
         "Id": "kyprx",
         "License": "GPL-3.0-or-later",
         "Name": "KyprX",
-        "Version": "0.7"
+        "Version": "0.9"
     },
     "X-Plasma-API": "declarativescript"
 }

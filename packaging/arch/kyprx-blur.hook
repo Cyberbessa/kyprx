@@ -1,0 +1,15 @@
+# KyprX's package installs this as /usr/share/libalpm/hooks/kyprx-blur.hook. After KWin or Better
+# Blur DX is installed or updated, pacman runs kyprx-blur-check, which says so when the blur is
+# built for a KWin other than the one installed -- KWin then refuses to load it, and nothing in the
+# update said why. The AUR package depends on an unversioned kwin, so the update goes through.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = kwin
+Target = kwin-effects-better-blur-dx*
+
+[Action]
+Description = Checking that Better Blur DX is built for the KWin installed...
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/kyprx-blur-check

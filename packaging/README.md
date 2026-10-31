@@ -12,14 +12,19 @@ What a package installs.
 | `packaging/fedora/plasma-smart-video-wallpaper-reborn.spec` | the video plugin at 2.15.0, which KyprX needs and Fedora's own package and its author's repository do not yet carry; under Fedora's name, so a newer one supersedes it |
 | `.copr/Makefile` | how COPR makes a source package from this repository |
 | `packaging/arch/PKGBUILD` | KyprX's AUR package |
+| `packaging/arch/kyprx-blur.hook`, `packaging/arch/kyprx-blur-check` | a pacman hook the AUR package installs, and the script it runs: after KWin or Better Blur DX is installed or updated, it says when the blur is built for another KWin, with the command that builds it again |
 | `packaging/public/README.md` | the public repository's `README.md`: its front page, with the badges and the Ko-fi button |
 | `packaging/public/.github/FUNDING.yml` | what puts the *Sponsor* button, to Ko-fi, on the public repository's page |
 | `packaging/public/screenshots/` | what the public README shows: the settings window's seven tabs as PNGs (`tab-<tab>.png`), and four screen recordings as animated AVIF -- the wallpaper picker, a wallpaper's colour taken by the desktop, transparency and the cheatsheet -- referenced from the README as `screenshots/<name>` |
 
 The four projects KyprX is built on are required by both packages. KyprX tiles the windows
 itself, so no tiling script is among them. Two of them are compiled against one version of KWin,
-and KyprX never builds those: the repositories that carry them rebuild them for each Plasma
-release, which is work that has to follow Plasma's calendar.
+and KyprX never builds those. On Fedora the repositories that carry them rebuild them for each
+Plasma release, which is work that has to follow Plasma's calendar. On Arch the AUR helper on each
+computer builds them, and nothing tells it to build them again after a Plasma update: KyprX's
+**What KyprX needs** box says when that is due, with the command
+([troubleshooting](../docs/troubleshooting.md#the-blur-or-the-title-bars-stopped-after-an-update)),
+and for the blur the AUR package's pacman hook says so as the update that brings the new KWin ends.
 
 ## The repositories KyprX depends on
 

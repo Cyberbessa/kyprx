@@ -1,9 +1,11 @@
 """The questions the window asks before a change that writes a great deal.
 
-`ChangesDialog` asks one -- *Restore defaults*, *Take KyprX off this desk*, *Put my setup back* --
-with the daemon's own list of what would change underneath, in the words a dry run uses, and the
-safe answer as the default. `CopiesDialog` lists the copies of the desk, newest first, and shows
-what going back to the one selected would change. `RemoveDialog` asks the two questions removing
+`ChangesDialog` asks one -- *Restore defaults*, *Take KyprX off this desk*, *Put my setup back*,
+and the first time the window opens on a new install, whether to put KyprX's look on
+(`ask_about_the_look`) -- with the daemon's own list of what would change underneath, in the words
+a dry run uses, and the safe answer as the default. `CopiesDialog` lists the copies of the desk,
+newest first, and shows what going back to the one selected would change. `RemoveDialog` asks the
+two questions removing
 KyprX from this computer needs, with nothing chosen for either, and `RemovedDialog` says what was
 done and the command that finishes it. `UpdateDialog` says a newer KyprX is out and how this
 installation takes it: *Update now* for a working tree, the command to copy for a package. And
@@ -35,10 +37,12 @@ class ChangesDialog(QDialog):
 
     The list is the daemon's own, worked out the way a dry run works it out and written in the same
     words, so what is shown is what would be written rather than a description of the button. The
-    safe answer is the default one, as it was for the plain question this replaces.
+    safe answer is the default one, as it was for the plain question this replaces: Cancel, or
+    `stay` when it is given, which names that same button for a question where not going on is an
+    answer of its own rather than a step back.
     """
 
-    def __init__(self, parent, title: str, question: str, changes: str, go: str):
+    def __init__(self, parent, title: str, question: str, changes: str, go: str, stay: str = ""):
         super().__init__(parent)
         self.setWindowTitle(title)
         layout = QVBoxLayout(self)
@@ -55,10 +59,49 @@ class ChangesDialog(QDialog):
         layout.addWidget(listing, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self.go = buttons.addButton(go, QDialogButtonBox.ButtonRole.AcceptRole)
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setDefault(True)
+        self.stay = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if stay:
+            self.stay.setText(stay)
+        self.stay.setDefault(True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+
+#: The question the settings window asks the first time it opens on an install whose first start
+#: put nothing of KyprX's look on (`MainWindow.offer_the_look`). It names no preset: the daemon's
+#: list under it does, in the words of a dry run.
+LOOK_QUESTION = (
+    "<b>Put KyprX's look on?</b><br>"
+    "KyprX comes with a look of its own: Klassy's global theme, one of KyprX's colour presets, "
+    "KyprX's own panel style, and an amber outline round the active window. None of it is on yet: "
+    "your colours, your global theme and your panel are as you had them, and the window frames "
+    "are Klassy's, drawn in your colours.<br><br>"
+    "Below is exactly what putting it on would change. A copy of the desk is kept first, and "
+    "<i>Go back to a copy…</i>, on the Settings tab, puts back what KyprX writes, the outline among "
+    "it; a global theme and colours that were not KyprX's come back from System Settings, where "
+    "you chose them. Whichever you choose, the Colours box on the Appearance tab changes it later.")
+
+#: Set on the application by the handler `gui/kyprx.py` gives SIGTERM and SIGINT, as it is told to
+#: stop -- a session ending, a script closing it. Quitting closes the question with the rest of the
+#: window, which reads exactly like the close box being pressed, and that is not an answer.
+STOPPING = "kyprxStopping"
+
+
+def ask_about_the_look(parent, changes: str) -> bool | None:
+    """Ask `LOOK_QUESTION`, with what putting the look on would change listed under it. True for
+    *Put KyprX's look on*; False for *Keep my look*, the default -- and Esc and the close box
+    answer it too, the owner's choice; None when no answer came, the program told to stop while it
+    was asked (`STOPPING`), which leaves the question to be asked the next time."""
+    box = ChangesDialog(parent, "KyprX's look", LOOK_QUESTION, changes, "Put KyprX's look on",
+                        stay="Keep my look")
+    answered: list[int] = []
+    box.finished.connect(answered.append)
+    accepted = box.exec() == QDialog.DialogCode.Accepted
+    app = QApplication.instance()
+    if not answered or (app is not None and app.property(STOPPING)):
+        return None
+    return accepted
 
 
 class CopiesDialog(QDialog):

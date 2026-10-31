@@ -29,6 +29,7 @@ import os
 import about
 import effects
 import kconfig
+import reload
 import state
 import tiling
 import writer
@@ -88,6 +89,39 @@ class TilingPart:
         return tiling.state_of(reading["group"], off=reading["off"],
                                script_version=self._script_version,
                                tree_version=installed_script_version() or self._script_version)
+
+    def tiling_switch(self) -> dict:
+        """Automatic tiling as the strip above the tabs shows it: `auto`, whether it is on as the
+        engine reads it (`tiling.value_of`, so a key that is absent reads on); `written`, the text
+        the file holds for it, or None; and `state`, where the tiling stands (`tiling_state_now`),
+        so the strip can grey its box while nothing tiles.
+
+        A method of its own rather than a field of `Settings` or a read of `Groups`, because of
+        what each costs and how often the strip asks: `Settings` is 0.1 ms and read on every change
+        the daemon reports, and this reads `kwinrc` -- 0.45 ms a parse on the owner's desk, timed
+        over 25 -- while `Groups` reads every page's groups and the zone layouts and arrangements
+        besides. One parse, shared by the value and the state."""
+        kwin = kconfig.KConfig(writer.KWINRC)
+        group = dict(kwin.groups.get(effects.TILING_GROUP, {}))
+        written = group.get("autoTiling")
+        return {"auto": bool(tiling.value_of(group, "autoTiling")),
+                "written": written if isinstance(written, str) else None,
+                "state": self.tiling_state_now(kwin)}
+
+    def desktops_now(self) -> list[dict] | None:
+        """The desktops the Tiling tab offers an arrangement for: the compositor's, in its order,
+        each `{"number", "id", "name"}` (`reload.virtual_desktops`), without the ones KyprX made
+        for a window that found every zone taken (`tiling.made_desktops`), which start on the
+        arrangement of the desktop they were made from. None when the compositor cannot be asked.
+
+        A method of its own, read by the Tiling tab alone, rather than a field of `Groups`, which
+        every settings tab reads: this one asks the compositor, and a compositor that does not
+        answer would hold every tab for its timeout."""
+        listed = reload.virtual_desktops()
+        if listed is None:
+            return None
+        made = tiling.made_desktops(listed)
+        return [d for d in listed if d["id"] not in made]
 
     def tiling_on_now(self, kwin=None) -> bool:
         """Whether KyprX's engine is tiling, as `tiling_answer` would say it -- the Windows tab's

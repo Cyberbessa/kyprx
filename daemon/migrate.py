@@ -1,11 +1,12 @@
 """The one-off passes that bring an install up to date, each run once, gated on the version
 stamped in `state.json`: bringing an install made under this app's previous name across (below
 version 3), moving the title bar's opacity keys to the names the decoration reads (below 5),
-moving this app's own two files out of what became the KyprX folder (below 6), and applying
-default settings including Longive theme and 7.5 corner radius (below 7). Versions 4 and 8 have no
-pass of their own: an install below them is only stamped. KyprX's own tiling switch is written by
-the bootstrap of a fresh install and by nothing here for an older one, so there it reads off until
-somebody switches it on.
+moving this app's own two files out of what became the KyprX folder (below 6), and below 7 the
+declared settings and Klassy's window frame on a fresh install -- nothing of KyprX's look, which
+the settings window asks about -- or the 7.5 corner radius on an older one. Versions 4 and 8 have
+no pass of their own: an install below them is only stamped. KyprX's own tiling switch is written
+by the bootstrap of a fresh install and by nothing here for an older one, so there it reads off
+until somebody switches it on.
 
 The first of them is most of this file.
 
@@ -49,6 +50,7 @@ import defaults
 import effects
 import klassy
 import logs
+import requirements
 import rules
 import shortcuts
 import theme
@@ -56,7 +58,8 @@ import writer
 import profiles
 import snapshot
 from kyprd_names import SCRIPT_PLUGIN, SETTINGS_CLASS
-from state import CONFIG_PATH, LEGACY_CONFIG_PATH, STATE_PATH, STATE_VERSION
+from state import (CONFIG_PATH, LEGACY_CONFIG_PATH, LOOK_DUE, LOOK_FOLDER, LOOK_KYPRX, STATE_PATH,
+                   STATE_VERSION)
 
 CONFIG_DIR = os.path.expanduser("~/.config/kyprx")
 STATE_DIR = os.path.expanduser("~/.local/state/kyprx")
@@ -100,10 +103,27 @@ def _state_version() -> int:
         return 0
 
 
-def _stamp_version(log) -> None:
-    """Stamp `STATE_VERSION`, keeping everything else the file holds."""
+def _stored_look() -> str:
+    """The answer about KyprX's look `state.json` holds (`state.LOOKS`), or "" for none."""
+    try:
+        with open(STATE_PATH, encoding="utf-8") as fh:
+            look = json.load(fh).get("look")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return ""
+    return look if isinstance(look, str) else ""
+
+
+def _stamp_version(log, fresh: bool = False) -> None:
+    """Stamp `STATE_VERSION`, keeping everything else the file holds.
+
+    `fresh` is the first start of a new install, whose passes put nothing of KyprX's look on: the
+    question about it is noted as due, for the settings window to ask (`state.LOOK_DUE`). Only
+    where nothing is noted yet -- an answer given while an earlier first start's passes kept
+    failing is the person's, and stands.
+    """
     if writer.dry_run():
-        log(f"would have stamped state.json at version {STATE_VERSION}")
+        log(f"would have stamped state.json at version {STATE_VERSION}"
+            + (", KyprX's look to be offered when the settings window opens" if fresh else ""))
         return
     try:
         with open(STATE_PATH, encoding="utf-8") as fh:
@@ -111,6 +131,8 @@ def _stamp_version(log) -> None:
     except (FileNotFoundError, json.JSONDecodeError):
         data = {"seen": [], "refuses_ssd": []}
     data["version"] = STATE_VERSION
+    if fresh:
+        data.setdefault("look", LOOK_DUE)
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     tmp = STATE_PATH + ".new"
     with open(tmp, "w", encoding="utf-8") as fh:
@@ -417,21 +439,55 @@ def keep_before_passes(log, version: int) -> bool:
     return True
 
 
-def _bootstrap_pass(tx) -> None:
-    """Apply KyprX declared defaults and Longive theme on a fresh install."""
-    declared.note_reloads(tx, declared.write_declared(tx, defaults.SETTINGS))
+def _klassy_installed() -> bool:
+    """Whether Klassy's decoration plugin is in a folder Qt loads plugins from: the frame a first
+    start puts on is named only where KWin can load it, since KWin asked for a decoration it cannot
+    load draws its own instead, and the Settings tab would say Klassy is not running."""
+    return any(os.path.isfile(os.path.join(folder, klassy.DECORATION_PLUGIN_FILE))
+               for folder in requirements.qt_plugin_dirs())
+
+
+def _bootstrap_pass(tx, answered: str = "") -> None:
+    """KyprX's declared settings on a fresh install, and nothing of its look.
+
+    The owner's choice: a first start changes no global theme, colour scheme, Plasma style or accent
+    colour, and draws no amber outline -- every one of those is somebody's look, and the settings
+    window asks before KyprX's goes on (`DefaultsPart.look_offer`). What goes on is behaviour --
+    tiling, focus following the mouse, the blur and the animation -- and Klassy's window frame in
+    the person's own colours, the active outline in their accent (`defaults.first_start`). The
+    frame only when Klassy's plugin is there to load; the reconfigure the declared keys ask for
+    (`note_reloads`) is what has KWin load it.
+
+    Before Klassy first runs, its config is noted as the global theme's in force, whatever theme
+    that is (`klassy.LOOK_AND_FEEL`). Measured in the sandbox's folder and removal scenarios, with
+    Klassy 6.7.3: under a global theme that is not one of Klassy's, Klassy drew the first window,
+    noted that theme itself and loaded nothing, with the note written first or not; with one of
+    Klassy's own in force and the note naming another, it loaded its bundled preset `Klassy` over
+    the whole of `klassyrc`. So the note is what keeps the declared keys written in this same
+    transaction on a desk that wears Klassy's global theme with another frame, and costs nothing
+    elsewhere.
+
+    `answered` is what `state.json` already says about the look. A first start runs again at every
+    start until its passes all go through, and the settings window asks meanwhile, since a file at
+    version 0 reads as due (`State.look`). When that answer put a look on -- *Put KyprX's look on*,
+    *Restore defaults*, a KyprX folder with a preset -- the window outline is the answer's, and the
+    accent written here again would undo it: so the outline's group is left out. Every other
+    declared key is written again, as a retried first start always writes it.
+    """
+    tree = defaults.first_start()
+    if answered in (LOOK_KYPRX, LOOK_FOLDER):
+        del tree["klassy"]["WindowOutlineStyle"]
+    frame = _klassy_installed()
+    if not frame:
+        tree["decoration"][""] = {k: v for k, v in tree["decoration"][""].items()
+                                  if k not in defaults.FIRST_START_DECORATION}
+    declared.note_reloads(tx, declared.write_declared(tx, tree))
     declared.write_declared_colours(tx, defaults.BUTTON_COLOURS)
     if tx.kwin.get(effects.PLUGINS_GROUP, f"{SCRIPT_PLUGIN}Enabled") is None:
         effects.set_plugin_enabled(tx.kwin, SCRIPT_PLUGIN, True)
         tx.reload_kwin = True
-    now = theme.current()
-    wanted = dict(defaults.COLOURS)
-    p = theme.preset(wanted.get("preset", "")) or theme.default_preset(wanted.get("mode", "dark"))
-    if p:
-        steps = list(theme.plan(now, wanted, scheme_written=False))
-        klassy.settle_look_and_feel(tx.klassy, theme.package_after(now, wanted))
-        for description, action, plain in steps:
-            tx.session_write(description, action, plain)
+    if frame:
+        klassy.settle_look_and_feel(tx.klassy, theme.current().get("package", ""))
     # No key is taken from another action here, nor in the pass below. A build runs in dry run as
     # well -- only the commit holds back -- and again on every retry after a conflict, so a call to
     # the shortcut registry from inside one changed the desk under `--dry-run` and said nothing.
@@ -508,11 +564,13 @@ def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
     if version < 7:
         try:
             if version == 0:
-                diff = writer.run(_bootstrap_pass)
+                answered = _stored_look()
+                diff = writer.run(lambda tx: _bootstrap_pass(tx, answered))
                 if diff and writer.dry_run():
-                    log(f"would have applied KyprX defaults on fresh install:\n{diff}")
+                    log(f"would have applied KyprX defaults on fresh install, and nothing of its "
+                        f"look:\n{diff}")
                 elif diff:
-                    log("applied KyprX defaults on fresh install")
+                    log("applied KyprX defaults on fresh install, and nothing of its look")
             else:
                 diff = writer.run(_v7_upgrade_pass)
                 if diff and writer.dry_run():
@@ -523,5 +581,5 @@ def run(log, cheatsheet_class: str, cheatsheet_title: str) -> bool:
             log(f"could not bring settings up to date for version 7: {logs.what(e)}", trouble=True)
             return True
 
-    _stamp_version(log)
+    _stamp_version(log, fresh=version == 0)
     return True

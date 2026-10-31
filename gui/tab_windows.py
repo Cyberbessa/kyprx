@@ -2,7 +2,9 @@
 it.
 
 The rows are the daemon's `table`; ticking a box sends the change a moment later, rows ticked
-together as one batch, because two of the columns (Float and Animate) are memberships of one list
+together as one batch. Three columns carry a box in their header that sets that switch for every
+window at once and for every new one, but for the cells somebody set by hand on their row, which
+are marked (`SwitchHeader`, `Config.kept` in the daemon). Batched because two of the columns (Float and Animate) are memberships of one list
 each -- the tiler's floating classes and the animation's -- and a Float tick moves windows on
 screen: the window floats or rejoins the layout, and the others on its screen make room or close
 the gap. The Opacity column's menu gives one window a number of its own. *Find a window...* asks
@@ -16,13 +18,14 @@ from __future__ import annotations
 import html
 from urllib.parse import quote, unquote
 
-from PySide6.QtCore import SLOT, QEvent, QRectF, QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import SLOT, QEvent, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtDBus import QDBusConnection, QDBusError, QDBusMessage
 from PySide6.QtGui import (QActionGroup, QColor, QFont, QGuiApplication, QIcon, QKeySequence,
-                           QPainter, QPen, QPixmap, QShortcut)
+                           QPainter, QPen, QPixmap, QPolygonF, QShortcut)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QFrame, QHBoxLayout,
                                QHeaderView, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox,
-                               QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                               QPushButton, QStyle, QStyleOptionButton, QStyleOptionHeader,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from client import Client
 
@@ -55,31 +58,48 @@ def copy_icon(ink: QColor, size: int = 14) -> QIcon:
 #: which is what clicking a name looks like it should do.
 MARK_WIDTH = 24
 
-COLUMNS = ["Window class", "Hide title bar", "Outline", "Transparency", "Opacity", "Blur",
-           "Float", "Animate", "Status", "Title"]
+#: No Outline column, as the owner asked: the theme's ring round a window is a matter of the frame,
+#: set on the Appearance tab, and a column of it beside the title bar's read as one more thing to
+#: decide for every application. The switch is still the daemon's -- a new window still gets the
+#: outline, and the KyprX folder still carries each window's -- and nothing here changes it.
+COLUMNS = ["Window class", "Hide title bar", "Transparency", "Opacity", "Blur", "Float",
+           "Animate", "Status", "Title"]
 
 #: One line per column, on the header, where it is permanent and true of every row. The cells keep
 #: only what is true of *their* row -- why this one is greyed, what this one is actually drawn at.
 COLUMN_HINTS = [
     "The application, as the compositor names it. Click the mark to copy it.",
-    "Take the title bar off this window and let the theme draw the rest.",
-    "Draw the theme's thin ring around it. Only while the title bar is hidden.",
-    "Let the desktop show through it. How far through is the next column.",
+    "Take the title bar off this window and let the theme draw the rest. The box here does it for "
+    "every window and every new one, but for a cell set by hand on its row (Ctrl+Space with this "
+    "column selected).",
+    "Let the desktop show through it. How far through is the next column. The box here does it "
+    "for every window and every new one, but for a cell set by hand on its row (Ctrl+Space with "
+    "this column selected).",
     "How solid it is while it is see-through, 100 % being opaque. A dot is the number on the "
     "Appearance tab; click a number to give one window its own.",
-    "Blur whatever is behind it. Only shows through a see-through window.",
+    "Blur whatever is behind it. Only shows through a see-through window. The box here does it "
+    "for every window and every new one, but for a cell set by hand on its row (Ctrl+Space with "
+    "this column selected).",
     "Leave this window where it is put instead of tiling it.",
     "Let it animate when it is moved or resized.",
     "Why KyprX cannot manage this window, when it cannot.",
     "The title of the window that is open now.",
 ]
-(COL_CLASS, COL_TITLEBAR, COL_OUTLINE, COL_TRANSPARENCY, COL_OPACITY, COL_BLUR, COL_FLOAT,
- COL_ANIMATE, COL_STATUS, COL_TITLE) = range(10)
+(COL_CLASS, COL_TITLEBAR, COL_TRANSPARENCY, COL_OPACITY, COL_BLUR, COL_FLOAT, COL_ANIMATE,
+ COL_STATUS, COL_TITLE) = range(9)
 
 #: The columns written per window, through the decoration override, the window rule and the blur
 #: list.
-SWITCH_COLUMNS = {COL_TITLEBAR: "titlebar", COL_OUTLINE: "outline",
-                  COL_TRANSPARENCY: "transparency", COL_BLUR: "blur"}
+SWITCH_COLUMNS = {COL_TITLEBAR: "titlebar", COL_TRANSPARENCY: "transparency", COL_BLUR: "blur"}
+
+#: The columns whose header carries a box: the switch it sets for every window at once and for
+#: every new one (`Client.set_column`), the outline having no column at all. Hide title bar reads
+#: the stored switch the other way round, as its cells do.
+HEADER_BOXES = {COL_TITLEBAR: "titlebar", COL_TRANSPARENCY: "transparency", COL_BLUR: "blur"}
+
+#: What a cell kept as set by hand says, on top of what its column says.
+KEPT_HELP = ("Kept as you set it on this row: the box in the column's header leaves it alone. "
+             "Tick it like the header's box to have it follow the column again.")
 
 #: Transparency sits **before** blur because blur is seen through it: the effect paints a blurred
 #: copy of whatever is behind the window, and on an opaque window nothing of it shows. Reading the
@@ -191,6 +211,97 @@ def dot_icon(ink: QColor, selected_ink: QColor, size: int = 14) -> QIcon:
     return icon
 
 
+def kept_icon(ink: QColor, selected_ink: QColor, size: int = 14) -> QIcon:
+    """A small filled diamond beside a box kept as set by hand. Not the dot: in the Opacity column
+    the dot means the shared value, which is the opposite. Drawn, for the reason `copy_icon` is,
+    and twice, for the reason `dot_icon` is."""
+    icon = QIcon()
+    for colour, mode in ((ink, QIcon.Mode.Normal), (selected_ink, QIcon.Mode.Selected)):
+        pixmap = QPixmap(QSize(size, size))
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+        middle = size / 2
+        painter.drawPolygon(QPolygonF([QPointF(middle, middle - 3.5), QPointF(middle + 3.5, middle),
+                                       QPointF(middle, middle + 3.5), QPointF(middle - 3.5, middle)]))
+        painter.end()
+        icon.addPixmap(pixmap, mode)
+    return icon
+
+
+class SwitchHeader(QHeaderView):
+    """The table's header, with a box drawn at the left of the three columns that have one
+    (`HEADER_BOXES`): a box of the header is not something Qt offers, so the section, its box and
+    its label are drawn here in that order, by the style, and a click on the box -- only on the
+    box, so that the rest of the header goes on doing what a header does -- emits `toggled`."""
+
+    #: A column's box clicked: the column, and whether the box is ticked now.
+    toggled = Signal(int, bool)
+
+    #: The room between the section's edge and the box, and between the box and the label.
+    GAP = 4
+
+    def __init__(self, parent=None):
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.ticked: dict[int, bool] = {column: False for column in HEADER_BOXES}
+        self.live: dict[int, bool] = {column: True for column in HEADER_BOXES}
+
+    def set_box(self, column: int, ticked: bool, live: bool) -> None:
+        """Paint one box. Writes nothing: only a click emits."""
+        self.ticked[column], self.live[column] = bool(ticked), bool(live)
+        self.viewport().update()
+
+    def _indicator(self) -> QSize:
+        return self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator,
+                                           QStyleOptionButton(), self).size()
+
+    def box_rect(self, column: int) -> QRect:
+        """Where the box of `column` is drawn, in the header's own coordinates."""
+        size = self._indicator()
+        left = self.sectionViewportPosition(column) + self.GAP
+        return QRect(left, (self.height() - size.height()) // 2, size.width(), size.height())
+
+    def paintSection(self, painter, rect, index) -> None:  # noqa: N802 -- Qt's spelling
+        if index not in HEADER_BOXES:
+            super().paintSection(painter, rect, index)
+            return
+        painter.save()
+        option = QStyleOptionHeader()
+        self.initStyleOption(option)
+        self.initStyleOptionForIndex(option, index)
+        option.rect = rect
+        self.style().drawControl(QStyle.ControlElement.CE_HeaderSection, option, painter, self)
+        size = self._indicator()
+        box = QStyleOptionButton()
+        box.rect = QRect(rect.left() + self.GAP, rect.top() + (rect.height() - size.height()) // 2,
+                         size.width(), size.height())
+        box.state = (QStyle.StateFlag.State_On if self.ticked[index] else QStyle.StateFlag.State_Off)
+        if self.live[index] and self.isEnabled():
+            box.state |= QStyle.StateFlag.State_Enabled
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_IndicatorCheckBox, box, painter, self)
+        option.rect = rect.adjusted(size.width() + 2 * self.GAP, 0, 0, 0)
+        self.style().drawControl(QStyle.ControlElement.CE_HeaderLabel, option, painter, self)
+        painter.restore()
+
+    def sectionSizeFromContents(self, index) -> QSize:  # noqa: N802 -- Qt's spelling
+        size = super().sectionSizeFromContents(index)
+        if index in HEADER_BOXES:
+            size.setWidth(size.width() + self._indicator().width() + 2 * self.GAP)
+        return size
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 -- Qt's spelling
+        at = event.position().toPoint()
+        column = self.logicalIndexAt(at)
+        if column in HEADER_BOXES and self.box_rect(column).contains(at):
+            if self.live[column]:
+                self.toggled.emit(column, not self.ticked[column])
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 def blank_icon(size: int = 14) -> QIcon:
     """Nothing, the size of `dot_icon`, so a number with no dot lines up with one that has it."""
     pixmap = QPixmap(QSize(size, size))
@@ -229,6 +340,8 @@ class WindowsTab(QWidget):
         self._dot_icon = dot_icon(self.palette().mid().color(),
                                   self.palette().highlightedText().color())
         self._blank_icon = blank_icon()
+        self._kept_icon = kept_icon(self.palette().windowText().color(),
+                                    self.palette().highlightedText().color())
         #: Every row, whatever the filters show, and the two things the Opacity column reads: the
         #: strength on the Appearance tab and the windows with a number of their own.
         self._everything: list[dict] = []
@@ -250,6 +363,11 @@ class WindowsTab(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        #: Installed before the sections are sized, so that `ResizeToContents` asks it, and it
+        #: leaves room for the boxes it draws.
+        self.header = SwitchHeader(self.table)
+        self.table.setHorizontalHeader(self.header)
+        self.header.toggled.connect(self._column_toggled)
         header = self.table.horizontalHeader()
         for i in range(len(COLUMNS) - 1):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
@@ -279,20 +397,22 @@ class WindowsTab(QWidget):
         self.only_open.setChecked(True)
         self.only_open.setToolTip("Hide the windows that are not open right now. Their settings "
                                   "are kept either way.")
-        self.only_open.toggled.connect(self.reload)
+        self.only_open.toggled.connect(self._show)
         self.show_system = QCheckBox("System windows")
         self.show_system.setToolTip("Show the desktop's own windows: the panel, the shell, "
                                     "KyprX's own.")
-        self.show_system.toggled.connect(self.reload)
+        self.show_system.toggled.connect(self._show)
 
         #: Thirty rows is enough that finding one by eye is work. It writes nothing -- it decides
-        #: which of the rows are drawn, and nothing else.
+        #: which of the rows are drawn, and nothing else. The three filters draw from the table
+        #: last read (`_show`), asking the daemon nothing: a keystroke or a tick used to read the
+        #: whole table again and ask the compositor for a new picture.
         self.filter = QLineEdit()
         self.filter.setPlaceholderText("filter")
         self.filter.setToolTip("Show only the windows whose name or title contains this.")
         self.filter.setClearButtonEnabled(True)
         self.filter.setMaximumWidth(220)
-        self.filter.textChanged.connect(self.reload)
+        self.filter.textChanged.connect(self._show)
 
         self.detail = QLabel("—")
         self.detail.setWordWrap(True)
@@ -337,18 +457,22 @@ class WindowsTab(QWidget):
         layout.addWidget(rule)
         layout.addWidget(self.detail)
 
-    def reload(self) -> None:
-        """Repaint the table, and ask the compositor for a fresh picture while we are at it.
+    def reload(self, ask: bool = True) -> None:
+        """Read the table again and repaint it, and with `ask`, ask the compositor for a fresh
+        picture while we are at it.
 
         Refuses while ticks are waiting to be sent: repainting then would draw the daemon's answer
         over boxes somebody has just ticked and is still ticking, and the batch would go out
         against a table that no longer looks like what was asked for.
 
-        The refresh is the point. The daemon's window list only ever changed when the compositor
-        volunteered something, so opening this tab with the daemon already running re-read exactly
-        the same list it had before — however stale. The answer comes back asynchronously and
-        `MainWindow` already re-reads a second later, so this call is what makes that second read
-        worth anything.
+        The refresh is the point of a reload that asks. The daemon's window list only ever changed
+        when the compositor volunteered something, so opening this tab with the daemon already
+        running re-read exactly the same list it had before — however stale. The answer comes back
+        asynchronously, as the daemon's `Changed`, and `MainWindow.on_changed` reads the table again
+        then -- with `ask` false. That answer is the fresh picture, and asking again on it never
+        stopped: measured, the table was read and every row rebuilt 2.5 times a second for as long
+        as the tab was open, which is the floor between two of the compositor's pictures
+        (`MIN_INVENTORY_GAP` in `daemon/kyprd_windows.py`).
         """
         if self._batch.isActive() or self._busy:
             # Refused, and remembered: `flush` runs it again afterwards. It used to be refused and
@@ -357,14 +481,25 @@ class WindowsTab(QWidget):
             self._missed = True
             return
         self._missed = False
-        self.c.refresh()
-        previous = self.selected_class()
-        self._loading = True
+        if ask:
+            self.c.refresh()
         everything = self.c.windows()
         settings = self.c.settings()
         self._everything = everything
         self._strength = int(settings.get("transparency") or 100)
         self._own = {str(k): int(v) for k, v in (settings.get("own_transparency") or {}).items()}
+        self._paint_header(settings, everything)
+        self._show()
+
+    def _show(self) -> None:
+        """The rows the three filters let through, drawn from the table last read. Refused, and
+        remembered, while ticks are waiting to be sent, as `reload` is."""
+        if self._batch.isActive() or self._busy:
+            self._missed = True
+            return
+        previous = self.selected_class()
+        self._loading = True
+        everything = self._everything
         wanted = self.filter.text().strip().casefold()
         self.rows = [r for r in everything
                      if (self.show_system.isChecked() or r["status"] != "system")
@@ -382,6 +517,48 @@ class WindowsTab(QWidget):
             self.table.selectRow(0)
         self._selection()
 
+    def _paint_header(self, settings: dict, everything: list[dict]) -> None:
+        """The column boxes, from what a new window gets (`defaults`). Greyed while KyprX is off
+        the desk, where the daemon refuses them, and Blur's while the Windows tab has no say in
+        the blur, as its cells are. A daemon that sends no defaults -- an older one -- leaves them
+        greyed, since this window cannot tell then what a click would set."""
+        defaults = settings.get("defaults")
+        known = isinstance(defaults, dict)
+        defaults = defaults if known else {}
+        off = bool(settings.get("off"))
+        per_window_blur = all(r.get("blur_per_window", True) for r in everything)
+        for column, name in HEADER_BOXES.items():
+            value = bool(defaults.get(name, True))
+            self.header.set_box(column, (not value) if name == "titlebar" else value,
+                                known and not off and (name != "blur" or per_window_blur))
+
+    def _column_toggled(self, column: int, ticked: bool) -> None:
+        """A column's box: that switch for every window but the cells kept as set by hand, and for
+        every new window. The ticks still waiting go out first, so none of them lands after it
+        and none is lost; then the call, said on the line while it blocks, and the table read
+        again whatever it answered."""
+        if self._loading or self._busy:
+            return
+        name = HEADER_BOXES[column]
+        value = (not ticked) if name == "titlebar" else ticked
+        self.flush()
+        self._busy = True
+        self.copied.emit(f"{COLUMNS[column]} {'on' if ticked else 'off'} for every window but "
+                         f"those set by hand…")
+        self.table.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        taken = False
+        try:
+            taken = self.c.set_column(name, value)
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.table.setEnabled(True)
+            if taken:
+                self.copied.emit("")
+            self._busy = False
+        self.reload()
+
     def _fill(self, i: int, r: dict) -> None:
         name = QTableWidgetItem(r["class"])
         #: The mark is on every row, always. It was tried on the row under the pointer only, and
@@ -395,14 +572,13 @@ class WindowsTab(QWidget):
 
         # The settings window's box is ticked whether or not its class is in the list: `float` is
         # the list alone, and that window floats either way (`FLOAT_LOCKED_HELP`).
-        checks = {COL_TITLEBAR: not r["titlebar"], COL_OUTLINE: r["outline"],
-                  COL_TRANSPARENCY: r["transparency"], COL_BLUR: r["blur"],
+        checks = {COL_TITLEBAR: not r["titlebar"], COL_TRANSPARENCY: r["transparency"],
+                  COL_BLUR: r["blur"],
                   COL_FLOAT: r["float"] or r.get("float_why") == "settings",
                   COL_ANIMATE: r["animate"]}
         for column, checked in checks.items():
             item = QTableWidgetItem()
-            if r.get("overlay") and column in (COL_TITLEBAR, COL_OUTLINE,
-                                               COL_TRANSPARENCY, COL_BLUR):
+            if r.get("overlay") and column in (COL_TITLEBAR, COL_TRANSPARENCY, COL_BLUR):
                 # A dash rather than an empty box, because an empty box is a statement and it
                 # would be the wrong one: these windows have no title bar to hide. They are this
                 # app's own, they are never managed as applications, and the daemon takes that
@@ -417,10 +593,6 @@ class WindowsTab(QWidget):
             item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
                           | Qt.ItemFlag.ItemIsSelectable)
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
-            if column == COL_OUTLINE and r["titlebar"]:
-                item.setFlags(Qt.ItemFlag.ItemIsSelectable)
-                item.setToolTip("The outline follows an override, which only exists while the "
-                                "title bar is hidden")
             if column == COL_TRANSPARENCY:
                 item.setToolTip(TRANSPARENCY_HELP)
             if column == COL_BLUR and not r["blur_per_window"]:
@@ -447,6 +619,9 @@ class WindowsTab(QWidget):
                 elif not running:
                     item.setFlags(Qt.ItemFlag.ItemIsSelectable)
                     item.setToolTip(FLOAT_NOT_RUNNING)
+            if column in HEADER_BOXES and HEADER_BOXES[column] in (r.get("kept") or []):
+                item.setIcon(self._kept_icon)
+                item.setToolTip("\n\n".join(t for t in (KEPT_HELP, item.toolTip()) if t))
             if column == COL_ANIMATE:
                 item.setToolTip(ANIMATE_HELP)
                 if not r.get("geometry_enabled", True):
@@ -665,7 +840,7 @@ class WindowsTab(QWidget):
                 box.blockSignals(False)
                 widened = True
         if widened:
-            self.reload()
+            self._show()
         self.select(window_class)
         row_index = self.table.currentRow()
         if 0 <= row_index < len(self.rows) and self.rows[row_index]["class"] == window_class:
@@ -764,6 +939,16 @@ class WindowsTab(QWidget):
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 -- Qt's spelling
         if watched is self.table.viewport() and event.type() == QEvent.Type.MouseButtonPress:
             self._pressed_at = event.position().toPoint()
+        # The header's box from the keyboard: Ctrl+Space in one of its columns, as the header's
+        # tooltip says. Space alone ticks the cell, as everywhere in a table.
+        if (watched is self.table and event.type() == QEvent.Type.KeyPress
+                and event.key() == Qt.Key.Key_Space
+                and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+                and self.table.currentColumn() in HEADER_BOXES):
+            column = self.table.currentColumn()
+            if self.header.live[column]:
+                self.header.toggled.emit(column, not self.header.ticked[column])
+            return True
         if (watched is self.table and event.type() == QEvent.Type.KeyPress
                 and self.table.currentColumn() == COL_OPACITY
                 and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_F2,

@@ -25,6 +25,7 @@ import state
 import theme
 import writer
 from declared import _SOURCES
+from kwin_config import DECORATION_GROUP
 
 
 class OffDeskPart:
@@ -49,7 +50,8 @@ class OffDeskPart:
         window's own entry, this app's keys, and an entry left with nothing of anybody else's
         goes; the preset that drops the outline goes after them. The windows this app speaks for
         leave the three per-window lists: the blur's, the animation's and the tiling's floating
-        list. The two plugins it switches on are switched off. Then KDE's own Breeze global theme,
+        list. The two plugins it switches on are switched off, and Klassy's window frame is taken
+        back when it is the one on. Then KDE's own Breeze global theme,
         with no colour of this app's, keeping every other choice the global theme would have
         taken (`theme.pure_plan`).
 
@@ -93,6 +95,13 @@ class OffDeskPart:
                 for _, keys in groups.items():
                     for key in keys:
                         tx.kwin.delete_key(_SOURCES[source], key)
+            # Klassy's frame, which a first start puts on whatever the global theme
+            # (`defaults.FIRST_START_DECORATION`): taken back, so KWin's own is drawn. Breeze's
+            # global theme, applied below, names its own frame as well -- but not when it is on
+            # already, which is just the desk of somebody who kept their own look.
+            if tx.kwin.get(DECORATION_GROUP, "library") == klassy.DECORATION:
+                for key in defaults.FIRST_START_DECORATION:
+                    tx.kwin.delete_key(DECORATION_GROUP, key)
             # The tiling's floating list is not among the compositor's parts the folder carries in
             # `kwin.json` (`KWIN_PARTS`): KyprX's engine has a file of its own there. It is one of
             # the three lists all the same, and the Float column's windows leave it with the rest.

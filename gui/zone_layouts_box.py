@@ -35,10 +35,11 @@ from widgets import SECTION_HINTS, Section, Spin, note, warning
 #: more offered than that -- the upgrade from version 1 offers, besides KyprX's own, every layout a
 #: drag offered before (`tiling.upgrade`) -- so the sentence says what the bar has room for, and
 #: not that no more can be offered.
-DRAG_TIP = ("Offer on drag: a window dragged is offered the zones of the zone layout its screen is "
-            "on -- on every drag while automatic tiling is off, and while it is on, for a floating "
-            "window or a tiled one dragged with Shift -- and a bar at the top of the screen offers "
-            "the whole screen and the zone layouts with Offer on drag on, in this order. With "
+DRAG_TIP = ("Offer on drag: a window dragged shows a bar at the top of the screen that offers the "
+            "whole screen and the zone layouts with Offer on drag on, in this order -- on every "
+            "drag while automatic tiling is off, and while it is on, for a floating window or a "
+            "tiled one dragged with Shift. Once the window has been through the bar, or with "
+            "Shift held, it is offered the zones of the zone layout its screen is on. With "
             "automatic tiling off, Next Layout and Previous Layout walk the same list. The bar has "
             "room for twelve, and no more is offered here once twelve are.")
 

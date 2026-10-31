@@ -105,7 +105,31 @@ preset the global theme, the application style and the window decoration stay Kl
 panel wears KyprX's own Plasma style, which takes its colours from the colour scheme
 (KDE Plasma).
 
-KyprX's default: **Dark**, **Longive**, no colour of your own.
+KyprX's default: **Dark**, **Longive**, no colour of your own. *Restore KyprX's defaults…* puts it
+on, and so does **Put KyprX's look on**, below; nothing else does by itself.
+
+### KyprX's look, the first time
+
+KyprX's first start leaves your look as it is: your global theme, your colours, your panel and
+your accent colour. It puts on only Klassy's window frames, drawn in your colours, with the outline
+round the active window in your accent colour ([Installing](install.md)).
+
+The first time the settings window opens after that, it asks whether to put KyprX's look on as well:
+Klassy's global theme, KyprX's default colours, its panel style and an amber outline round the
+active window. The list under the question is exactly what would change.
+
+- **Put KyprX's look on** keeps a copy of the desk first, then puts it on. *Go back to a copy…* on
+  the [Settings](settings.md#go-back-to-a-copy) tab puts back what KyprX writes, the outline among
+  it. A copy holds colours only when they were one of KyprX's presets, so a global theme and
+  colours of your own come back from System Settings, where you chose them.
+- **Keep my look**, the default, changes nothing. Closing the question, or pressing Esc, counts as
+  that.
+
+Either answer is remembered, and the question is not asked again. An update never asks it, and
+neither does a new install whose [KyprX folder](settings.md#your-kyprx-folder) brought a colour
+preset with it: the folder's colours are the answer. After
+[Remove KyprX from this computer…](settings.md#remove-kyprx-from-this-computer), installing KyprX
+again asks again.
 
 ### The orange band
 
@@ -121,6 +145,13 @@ It ends **Picking a mode here puts it back.** Any change in this box applies Kla
 for the mode first when the desktop is not already on it, and that sets all three. When the global
 theme is already Klassy's and only the application style or the decoration is wrong, nothing here
 re-applies it except switching to the other mode and back.
+
+After **Keep my look**, the same findings are said as your own choice rather than as a fault, in
+plain text instead of orange: it starts **You kept your own look**, and ends **Picking a mode or a
+preset here puts KyprX's look on.** That lasts until KyprX's colours go on some other way -- a mode
+or a preset picked here, a profile loaded, **Restore KyprX's defaults…**, a copy of the desk or a
+KyprX folder that wears a preset. From then on the band is orange again whenever something is not
+as KyprX expects.
 
 ### Mode
 

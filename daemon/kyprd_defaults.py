@@ -1,10 +1,14 @@
-"""*Restore KyprX's defaults*: every value `daemon/defaults.py` declares, put back in one go.
+"""*Restore KyprX's defaults*: every value `daemon/defaults.py` declares, put back in one go. And
+the question the settings window asks the first time it opens on an install whose first start put
+nothing of KyprX's look on: put it on, or keep the person's own.
 
 The title bar's settings among them, which no tab writes any more, and this app's own settings and
 colours. `restore_defaults` says what it leaves alone -- windows set by hand, shortcuts, profiles --
 and why its three writes come in the order they do. A preview builds the change and throws it away.
+`look_offer` says whether the question is due and what the look would change; `answer_look` takes
+the answer.
 
-The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`.
+The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, `state`.
 """
 
 from __future__ import annotations
@@ -128,7 +132,85 @@ class DefaultsPart:
             # waited while new windows were being left alone gets the defaults now.
             self.apply_defaults()
         answer = self.set_theme(dict(defaults.COLOURS), from_wallpaper=None)
+        # KyprX's look is on now, and colours that went on have said so already. When they failed
+        # it was still asked for, so the question about it -- still due when this is pressed
+        # before the settings window ever asked, or answered *Keep my look* before -- is answered
+        # by it all the same.
+        self.state.look_went_on()
         if answer.startswith("error"):
             return ("partial: everything went back but the colours, which did not: "
+                    + answer[len("error: "):])
+        return "ok"
+
+    # ------------------------------------------------------------ KyprX's look, the first time
+
+    def _look_build(self, tx) -> None:
+        """The outline half of KyprX's look, which `set_theme` does not write: amber round the
+        active window, as `defaults.SETTINGS` declares it."""
+        note_reloads(tx, write_declared(tx, defaults.LOOK_OUTLINE))
+
+    def look_offer(self) -> dict:
+        """Whether the settings window, opening, asks about KyprX's look -- `due` -- and what
+        putting it on would change, in plain words -- `changes`, "" unless due. Writes nothing.
+
+        Due only on an install whose first start put nothing of the look on and that was not asked
+        since (`state.LOOK_DUE`), and never while KyprX is off the desk, which is KDE's own look
+        on purpose. The words are worked out the way a dry run works them out: the outline's keys
+        on a transaction that is never committed, then `set_theme`'s own preview of the colours --
+        the global theme, the scheme, the panel's style and the accent -- with no line that is
+        only a refusal, as `restore_defaults` filters its preview."""
+        due = self.state.look == state.LOOK_DUE and not self.state.off
+        if not due:
+            return {"due": False, "changes": ""}
+        import explain
+        tx = writer.Transaction()
+        self._look_build(tx)
+        lines = [explain.preview(tx),
+                 self.set_theme(dict(defaults.COLOURS), from_wallpaper=None, preview=True)]
+        return {"due": True,
+                "changes": "\n".join(line for line in lines
+                                     if line and not line.startswith("error"))}
+
+    def answer_look(self, take: bool) -> str:
+        """The answer to the question `look_offer` says is due: "ok", "partial: …" or "error: …".
+        Either answer is remembered in `state.json`, so the question is not asked again.
+
+        **Keep** (`take` false) changes nothing on the desk: the person's own look stays, and the
+        Colours box says so instead of warning about it (`ThemePart.theme`, `kept_own_look`).
+
+        **Take** puts KyprX's look on, in the order `restore_defaults` keeps and for its reasons --
+        a copy of the desk first, and nothing at all without one, so *Go back to a copy…* puts back
+        what KyprX writes (not a global theme or colours of the desk's own, which a copy does not
+        record: KNOWN-ISSUES says so); then the amber outline, in a transaction of its own; then
+        the colours through
+        `set_theme`, with `from_preset` left off so the outline just written stands. A failure in
+        the colours alone answers `partial:`, and the answer is still remembered: the person said
+        yes, and the Colours box is where the colours are put right. Refused while KyprX is off
+        the desk, whose look is KDE's own until *Put my setup back*.
+        """
+        if not take:
+            self.state.look = state.LOOK_OWN
+            self.state.save()
+            self.log("kept the desk's own look: KyprX's was offered, and declined")
+            return "ok"
+        if self.state.off:
+            return "error: KyprX is off this desk; Put my setup back first"
+        if not self.take_snapshot("before putting KyprX's look on"):
+            return "error: a copy of the desk could not be kept first, so nothing was changed"
+        try:
+            diff = writer.run(self._look_build)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"could not put KyprX's outline on: {logs.what(e)}", trouble=True)
+            return f"error: {e}"
+        if writer.dry_run() and diff:
+            self.log("would have written:\n" + diff)
+        answer = self.set_theme(dict(defaults.COLOURS), from_wallpaper=None)
+        # Colours that went on have answered it already (`State.look_went_on`); saved again only
+        # when they did not.
+        if self.state.look != state.LOOK_KYPRX:
+            self.state.look = state.LOOK_KYPRX
+            self.state.save()
+        if answer.startswith("error"):
+            return ("partial: the window outline went on, but the colours did not: "
                     + answer[len("error: "):])
         return "ok"

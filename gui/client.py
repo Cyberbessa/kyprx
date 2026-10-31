@@ -145,6 +145,16 @@ class Client(QObject):
     def settings(self) -> dict:
         return self._json("Settings") or {}
 
+    def desktops(self) -> list[dict] | None:
+        """The desktops the Tiling tab offers an arrangement for, or None when the compositor
+        could not be asked -- or the daemon not."""
+        answer = self._json("Desktops")
+        return answer.get("desktops") if isinstance(answer, dict) else None
+
+    def tiling_switch(self) -> dict:
+        """Automatic tiling as the strip shows it: `auto`, `written` and `state`."""
+        return self._json("TilingSwitch") or {}
+
     def set_settings(self, **fields) -> bool:
         return self._ok("SetSettings", json.dumps(fields))
 
@@ -154,6 +164,11 @@ class Client(QObject):
     def set_switches(self, data: dict) -> bool:
         """`{class: {switch: bool}}` — one call, one transaction, one compositor reload."""
         return self._ok("SetSwitches", json.dumps(data))
+
+    def set_column(self, name: str, value: bool) -> bool:
+        """A column's box: `name` for every window but those keeping it as set by hand, and for
+        every new window -- one call, one transaction."""
+        return self._ok("SetColumn", json.dumps({"switch": name, "value": bool(value)}))
 
     def set_window_lists(self, data: dict) -> bool:
         """`{"float": {class: bool}, "animate": {class: bool}}` — one call for a whole batch, so
@@ -290,6 +305,17 @@ class Client(QObject):
     def restore_preview(self) -> str:
         """What *Restore defaults* would change, in plain words. Writes nothing."""
         return self._call("RestorePreview") or ""
+
+    def look_offer(self) -> dict:
+        """Whether to ask about KyprX's look as the window opens (`due`), and what putting it on
+        would change, in plain words (`changes`). Writes nothing."""
+        return self._json("LookOffer") or {}
+
+    def answer_look(self, take: bool) -> str:
+        """Put KyprX's look on, after a copy of the desk, or keep the desk's own: either way the
+        question is not asked again. "" when it went in, the daemon's sentence otherwise --
+        "partial: …" names what did not."""
+        return self._partial("AnswerLook", json.dumps({"take": bool(take)}))
 
     def snapshots(self) -> dict:
         """Every copy of the desk, newest first, and the folder they live in."""

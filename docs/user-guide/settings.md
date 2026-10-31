@@ -93,7 +93,7 @@ anything new.
 | `windows.json` | One entry per window that differs from what a new window gets, with its columns from the [Windows](windows.md) tab |
 | `decoration.json` | All of the window decoration's own settings, which is more than KyprX's window shows; its per-window settings that are not one window's entry; and the decoration presets those point at |
 | `kwin.json` | The window manager's settings for the window border, focus, the blur and the window animation, and whether each of those two is switched on |
-| `tiling.json` | KyprX's tiling, everything on the [Tiling](tiling.md) tab but Focus: whether it is switched on and tiles automatically, whether names show on screen, where a new window goes and what it does when its arrangement is full, where a new desktop goes, the gaps, the zone layouts and the arrangements, and the windows that float or are never tiled. A window with a row of its own on the Windows tab says whether it floats in `windows.json` instead |
+| `tiling.json` | KyprX's tiling, everything on the [Tiling](tiling.md) tab but Focus: whether it is switched on and tiles automatically, whether names show on screen, where a new window goes and what it does when its arrangement is full, where a new desktop goes, the gaps, the zone layouts and the arrangements, the arrangement each desktop starts on (`desktopArrangements`, by the desktop's name), and the windows that float or are never tiled. A window with a row of its own on the Windows tab says whether it floats in `windows.json` instead |
 | `shortcuts.json` | Every key of every action on the [Shortcuts](shortcuts.md) tab |
 | `colours.json` | The mode, the colour preset, a colour of your own and how far it soaks in |
 | `wallpaper.json` | The wallpaper of every activity, by the activity's name and by the path of each screen's file, when a video pauses, and the wallpaper picker's layout, whether the strip shows its text, whether a wallpaper goes on every screen, video folder and whether KDE's own wallpapers are listed |
@@ -127,13 +127,14 @@ mistake is.
 | `notify` | `true` or `false` | **Say when something did not work**, above |
 | `colour_from_wallpaper` | `true` or `false` | **Colour from the wallpaper**, above the tabs ([The KyprX window](README.md#colour-from-the-wallpaper)) |
 | `opacity` | a whole number from 1 to 100 | **Opacity**, in the Window box of the [Appearance](appearance.md#window) tab |
-| `new_windows` | four switches, each `true` or `false`: `hide_title_bar`, `outline`, `transparency`, `blur` | none: see below |
+| `new_windows` | four switches, each `true` or `false`: `hide_title_bar`, `outline`, `transparency`, `blur` | the boxes in the headers of **Hide title bar**, **Transparency** and **Blur** on the [Windows](windows.md#the-boxes-in-the-column-headers) tab; the outline has none: see below |
 | `cheatsheet_shows` | for an action with several keys, the one the cheatsheet shows, written like `Meta+Space` | **on the card**, on the [Shortcuts](shortcuts.md) tab |
 
-**`new_windows` is the only way to choose what a new window gets.** No control in the window
-changes it. Its four switches are the ticks an application's window gets the first time KyprX
-meets that application: **Hide title bar**, **Outline**, **Transparency** and **Blur**, in that
-order; `hide_title_bar` set to `true` means the title bar is hidden. KyprX's own values, and what
+**`new_windows` is what a new window gets.** Its four switches are the ticks an application's
+window gets the first time KyprX meets that application: the title bar, its outline, transparency
+and blur, in that order; `hide_title_bar` set to `true` means the title bar is hidden. The boxes in
+the column headers of the Windows tab set three of them, and every window already met with them;
+the outline has no control in the window, and this file is the one place to change it. KyprX's own values, and what
 a new window gets in the other columns, are on [Windows](windows.md#what-a-new-window-gets).
 
 Changing them moves no window KyprX has already met: they decide what the *next* new application
@@ -146,7 +147,7 @@ the new values too, because the entries in that file were written against them.
 | Key | Column on the Windows tab | What it holds |
 |---|---|---|
 | `hide_title_bar` | **Hide title bar** | `true` or `false` |
-| `outline` | **Outline** | `true` or `false` |
+| `outline` | none | `true` or `false`: whether the theme draws its thin ring round the window |
 | `transparency` | **Transparency** | `true` or `false` |
 | `opacity` | **Opacity** | the window's own number, a whole number from 1 to 99. Left out, the window takes the shared **Opacity** of the Appearance tab |
 | `blur` | **Blur** | `true` or `false` |
@@ -154,6 +155,7 @@ the new values too, because the entries in that file were written against them.
 | `animate` | **Animate** | `true` or `false` |
 | `draws_own_title_bar` | none | written only for a window whose title bar is hidden: whether the application draws a title bar of its own. It tells a computer that has not met the application yet how to hide its bar. Leave it as KyprX wrote it |
 | `decoration` | none | the window's other settings made in the decoration's own settings, under the decoration's own names |
+| `kept` | the mark beside a box | the switches this window keeps as set by hand, which the boxes in the column headers leave alone: a list of `hide_title_bar`, `transparency` and `blur`. Left out, it keeps none |
 
 A window that is listed is brought to its entry, and a key left out of an entry reads as what a
 new window gets. A window that is not listed is brought to what a new window gets, not floating and
@@ -167,7 +169,7 @@ never adjusts by itself
 | Key | What it holds |
 |---|---|
 | `mode` | `dark` or `light` |
-| `preset` | the colour preset's short name: `klassy-dark`, `longive`, `catppuccin-mocha`, `nord`, `gruvbox-dark`, `dracula`, `solarized-dark`, `monochrome-dark`, `klassy-light`, `catppuccin-latte`, `solarized-light`, `gruvbox-light`, `rose-pine-dawn` or `monochrome-light`. `carl` is read as `longive` |
+| `preset` | the colour preset's short name: `klassy-dark`, `longive`, `catppuccin-mocha`, `nord`, `gruvbox-dark`, `dracula`, `solarized-dark`, `monochrome-dark`, `klassy-light`, `catppuccin-latte`, `solarized-light`, `gruvbox-light`, `rose-pine-dawn` or `monochrome-light`. `carl` is read as `longive`. Empty when the desk wore none of them, and then the colours are left as the desk has them where the folder is applied |
 | `own_colour` | a colour of your own, as three numbers from 0 to 255 separated by commas, such as `255,152,8`; empty for none |
 | `tint` | how far your own colour soaks into the backgrounds, as a fraction: `0.25` is 25 % |
 
@@ -292,7 +294,10 @@ as an earlier KyprX wrote them on one side count as no change
 whole folder is applied. That is what happens when you copy the folder onto a fresh install: the
 next time KyprX's background service starts, the folder goes on before any window is given the
 defaults. The copy of the desk kept before it is never thrown away (see
-[Go back to a copy](#go-back-to-a-copy)).
+[Go back to a copy](#go-back-to-a-copy)). A `colours.json` with a preset puts it on, and the
+settings window then does not ask about KyprX's look; one with an empty preset leaves the colours
+as they are, and the window asks
+([Appearance](appearance.md#kyprxs-look-the-first-time)).
 
 **At the start of a session**, the shortcut registry or the desktop shell can come up after KyprX.
 When what arrived carries keys or a wallpaper, KyprX waits for them for up to a minute, and keeps
@@ -430,7 +435,8 @@ a second or two**, and then one of:
   putting its name on it, goes back to how it was. A rule you wrote in System Settings after the
   copy was taken is not KyprX's, and is left as it is;
 - KyprX's own settings, its profiles, and which windows it has met;
-- the colours;
+- the colours, when they were one of KyprX's presets. Colours that were not -- another global
+  theme, or a colour scheme of your own under Klassy's -- are left as the desk has them now;
 - every key of every action on the Shortcuts tab;
 - the wallpaper of every activity.
 
@@ -444,6 +450,7 @@ MAP has the file-by-file detail.
 | The list says | Kept before |
 |---|---|
 | **before restoring KyprX's defaults** | [Restore KyprX's defaults…](#restore-kyprxs-defaults) |
+| **before putting KyprX's look on** | **Put KyprX's look on**, asked the first time the window opens on a new install ([Appearance](appearance.md#kyprxs-look-the-first-time)) |
 | **before taking KyprX off this desk** | [Take KyprX off this desk…](#take-kyprx-off-this-desk) |
 | **before putting the setup back** | [Put my setup back](#put-my-setup-back) |
 | **before going back to** *copy* | going back to another copy |
@@ -468,15 +475,21 @@ one that is not: the program's name, which links to its page, the version instal
 - **not installed**: without it KyprX has none of what it does;
 - **installed, not running**: the program is there but the desktop is not using it. For Klassy
   and Better Blur DX this is what happens after a Plasma update, until the program is built again
-  for the new Plasma;
+  for the new Plasma and you log out and back in. For Better Blur DX the line also says which KWin
+  it was built for and which one this session runs, and when the two are the same, that building
+  it again does not help, with the command that shows why
+  ([The blur or the title bars stopped after an update](../troubleshooting.md#the-blur-or-the-title-bars-stopped-after-an-update));
 - **too old**: Smart Video Wallpaper Reborn older than 2.15.0.
 
 Under each line, an orange line says what is wrong and gives the command that puts it right on this
-computer, which you can select and copy. **Check again** looks again, after you have installed or
-updated one; the line at the bottom of the window says what it found, and once every one is
-installed and running the box goes. KyprX also looks again every time the window opens. When KyprX
-cannot find out what is installed at all, the box says **KyprX could not find out what is installed
-here.**
+computer: on Arch, for the AUR helper you have -- paru or yay -- or with neither, a line that fetches
+the program from the AUR and builds it with `makepkg`. **Copy the command**, beside it, puts the
+command alone on the clipboard, to paste in a terminal; KyprX never runs it for you. With two
+commands there are two buttons, each named by its program. **Check again** looks again, after you have installed or
+updated one -- after logging back in, for a program built again; the line at the bottom of the
+window says what it found, and once every one is installed and running the box goes. KyprX also
+looks again every time the window opens. When KyprX cannot find out what is installed at all, the
+box says **KyprX could not find out what is installed here.**
 
 The tiling is not among the four: it is KyprX's own, and when it is not running, the band at the
 top of the [Tiling](tiling.md#when-tiling-is-switched-off) tab and the **Problems** box below say
@@ -702,7 +715,8 @@ KyprX's defaults back… the desktop's own tools take a second or two**, then on
 - **That did not go through:** followed by the reason.
 
 Pressed while KyprX is off the desk, it also puts KyprX back on (see
-[Put my setup back](#put-my-setup-back)).
+[Put my setup back](#put-my-setup-back)). Pressed on a new install before the window has asked
+about KyprX's look, it counts as putting the look on, and the question is not asked.
 
 ## Good to know
 
@@ -760,6 +774,6 @@ removes KyprX's files, with **Copy the command**: `sudo dnf remove kyprx` on Fed
 `rpm-ostree uninstall kyprx` and a restart on a Fedora system that updates as a whole,
 `sudo pacman -Rs kyprx` on Arch, or `install.sh --uninstall` from the folder KyprX was installed
 from, which removes nothing until this button has run. KyprX does not run it. Closing the message
-closes the window. Opening KyprX again before the command has run brings it back on, with its look,
-as on a new install.
+closes the window. Opening KyprX again before the command has run brings it back on as on a new
+install: its settings and Klassy's window frames, and the question about its look.
 

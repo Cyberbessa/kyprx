@@ -34,7 +34,9 @@ is not running, the band at the top of the Tiling tab says why
 To see where each answer came from, run `python3 /usr/share/kyprx/daemon/requirements.py --facts`
 (where KyprX was installed as a package) or `python3 daemon/requirements.py --facts` (installed
 with `install.sh`, from the folder it was installed from): one line per project, saying what the
-answer was built on. It changes nothing.
+answer was built on, after a line naming the KWin this session runs. The blur's line names every
+copy of its file, each with the KWin it was built for and, on Arch, the package that installed it.
+It changes nothing.
 
 ### Desktop notifications
 
@@ -260,8 +262,8 @@ the KyprX folder at `~/.config/kyprx/`, which holds your setup.
    one into the tiling, unless it is on every desktop, on an ignored screen or never tiled at all.
    A window only on another activity is laid out on that activity, not on the one you are on.
 4. **Check whether the screen was full.** A window that opens when every zone of the arrangement's
-   last layout is taken goes to a new desktop, or floats, as **When the arrangement is full** on
-   the Tiling tab says ([A new window opened on another desktop](#a-new-window-opened-on-another-desktop)).
+   last layout is taken floats, squeezes in or goes to a new desktop, as **When the arrangement is
+   full** on the Tiling tab says ([A new window opened on another desktop](#a-new-window-opened-on-another-desktop)).
 5. **Check the Problems box** on the Settings tab: KyprX's part of the compositor not installed or
    switched off is the first line it shows
    ([What the Problems box says](#what-the-problems-box-says)).
@@ -270,8 +272,9 @@ the KyprX folder at `~/.config/kyprx/`, which holds your setup.
 
 A window that opens when its screen already has a window in every zone of the arrangement's last
 layout, as a fifth window does on Balanced, goes to a desktop of its own, named after the desktop it
-came from with a number: **Work · 2** for **Work**. That is **When the arrangement is full**, on the
-Tiling tab, at KyprX's default, **Open it on a new desktop**. Every rule of it is in
+came from with a number: **Work · 2** for **Work**, when **When the arrangement is full**, on the
+Tiling tab, is on **Open it on a new desktop**; KyprX's default is **Let it float over the others**.
+Every rule of it is in
 [A window that opens with every zone taken](user-guide/tiling.md#a-window-that-opens-with-every-zone-taken).
 
 - **To find it**, look after your other desktops, or right after the one it came from when **Where
@@ -419,17 +422,49 @@ journalctl --user -u kyprd
 
 ## The blur or the title bars stopped after an update
 
-Klassy and Better Blur DX are compiled for one version of the desktop's window manager, KWin. After
-a Plasma update, until each is built again for the new KWin, the window manager cannot load it: the
-blur goes, or the title bars come back, and **What KyprX needs** says **installed, not running**.
+Klassy and Better Blur DX are compiled for one version of the desktop's window manager, KWin -- the
+exact one, down to the last number: KWin 6.8.2 does not load a Better Blur DX built for 6.8.1.
+After a Plasma update, until each is built again for the new KWin, the window manager cannot load
+it: the blur goes, or the title bars come back, and **What KyprX needs** says
+**installed, not running**. The window manager loads them as the session starts, so a new build
+counts only after logging out and back in.
 
-- On Fedora, their repositories publish a new build for each Plasma release. Update again once
-  they have: `sudo dnf upgrade`, or on a Fedora system that updates as a whole,
-  `rpm-ostree upgrade` and a restart.
-- On Arch, build each one again: the box gives the command.
+For the blur, the box reads the KWin it was built for out of its file and says it beside the KWin
+this session runs. The line under it is one of three:
 
-Nothing in KyprX needs changing. **Check again**, on the Settings tab, confirms it once the new
-build is in.
+- **Built for an older KWin.** Build it again, then log out and back in.
+  - On Arch: `paru -S --rebuild aur/kwin-effects-better-blur-dx`, with the name of the package
+    you have, which the box gives (a `-git` one, for instance). Both parts are needed. A plain
+    `paru -S` builds nothing: paru keeps the package it built in `~/.cache/paru/clone`, says
+    *is up to date -- skipping build*, and installs that old build again. `aur/` builds it from
+    the AUR even where a repository such as Chaotic-AUR offers a ready-made copy under the same
+    name, which `--rebuild` alone would put back as it is. With yay it is
+    `yay -S --rebuild aur/<package>`, and a plain `yay -S` is the same trap: it says *already made
+    -- skipping build*. With neither helper, the box gives a line that clones the package from the
+    AUR into a folder of its own, builds it with `makepkg -si` and removes the folder.
+    Installed from KyprX's package, pacman says so too, as the update that brings the new KWin
+    ends: *KyprX: Better Blur DX is built for KWin 6.8.1, and KWin 6.8.2 is installed now*, with
+    the same command. It says it again after a reinstall that brought the old build back, and
+    nothing once the build matches.
+  - On Fedora, its repository publishes a new build for each Plasma release. Update again once it
+    has: `sudo dnf upgrade`, or on a Fedora system that updates as a whole, `rpm-ostree upgrade`
+    and a restart.
+- **Built for a newer KWin.** KWin was updated and this session still runs the one from before:
+  log out and back in.
+- **Built for this KWin.** Building it again does not help, unless that was just done and the
+  session has not started again since. The window manager's log says why it did not load it:
+
+  ```sh
+  journalctl --user -b | grep better_blur_dx
+  ```
+
+  A line with *Effect unsupported* is the effect refusing to run, as it does without OpenGL.
+
+Where the box cannot tell -- Klassy, whose file names no KWin, or a blur whose file names none --
+it gives the most likely cause, a build for another KWin, with the same command.
+
+Nothing in KyprX needs changing. After logging back in, **Check again**, on the Settings tab,
+confirms it.
 
 ## A video wallpaper looks stuck
 

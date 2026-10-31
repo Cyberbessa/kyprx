@@ -9,7 +9,7 @@
 # KyprX's own COPR (the two specs beside this one).
 
 Name:           kyprx
-Version:        0.2.1
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -87,6 +87,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Sat Oct 31 2026 cyberbessa <grdz441yj@mozmail.com> - 0.3.0-1
+- Column boxes for every window, an arrangement per desktop, no freeze past nine tiled windows, and the look left alone at a first start
+
 * Fri Oct 30 2026 cyberbessa <grdz441yj@mozmail.com> - 0.2.1-1
 - The Arch install is one line that fish, bash and zsh read alike
 

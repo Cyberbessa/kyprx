@@ -150,6 +150,13 @@ class Daemon(ShortcutsPart, ProfilesPart, DefaultsPart, OffDeskPart, CopiesPart,
             self.log(f"ignoring a held tick for {', '.join(stray)}: windows KyprX leaves alone")
             self.config.ticked_at_100 = [c for c in self.config.ticked_at_100 if c not in stray]
         self.state = State()
+        #: The same for the switches kept as set by hand: a column's box never reaches a window
+        #: this app leaves alone, so one kept for it can only have come from a file edited by hand.
+        if self.config.kept:
+            self.config.kept = {c: n for c, n in self.config.kept.items() if self.own_allowed(c)}
+        #: Once, before the first inventory and before any column's box can be clicked: the
+        #: windows set unlike the defaults before the boxes existed, kept as they are.
+        self.seed_kept()
         #: The looks kept under a name. Read once like the two above, written through the same
         #: door, and held to the same promise in dry run -- see `daemon/profiles.py`.
         self.profiles = profiles.Profiles()

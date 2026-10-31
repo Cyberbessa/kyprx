@@ -60,7 +60,11 @@ from __future__ import annotations
 #: arrangement's last layout (`newWindowOverflow`), and where the desktop it then goes to is made
 #: (`newDesktopPosition`): a new desktop, after the last one. Nothing is migrated: absent, both
 #: read as that already (`tiling.DEFAULTS`).
-VERSION = 10
+#: 11: that window floats in the middle of the screen instead (`newWindowOverflow` 1): a desktop
+#: made and removed for it was a stall of the screen each way, and the owner chose floating as
+#: what a desk gets unless somebody picks another. Nothing is migrated: absent, it reads as that
+#: already (`tiling.DEFAULTS`), and a desk that holds 0 keeps it.
+VERSION = 11
 
 #: What a window gets the first time it is seen. `state.Defaults` and `policy.Switches` both take
 #: their field values from here, so there is one place to change and no pair to keep in step.
@@ -131,7 +135,9 @@ OWN = {"paused": False, "notify": True, "auto_colour": False}
 WALLPAPER = {"video_dir": "", "image_dir": "", "layout": "pages", "strip_text": False,
              "all_screens": False, "kde_wallpapers": True}
 
-#: The colours. Longive for dark, and no colour of your own and nothing soaking in.
+#: The colours. Longive for dark, and no colour of your own and nothing soaking in. Part of KyprX's
+#: look, which *Restore defaults* and the answer *Put KyprX's look on* put on (`LOOK_OUTLINE` is the
+#: rest of it). A first start never does: see `first_start`.
 COLOURS = {"mode": "dark", "preset": "longive", "accent": "", "tint": 0.0}
 
 
@@ -391,17 +397,19 @@ SETTINGS: dict[str, dict[str, dict[str, object]]] = {
         #: the tab does too, which is the honest consequence of not having the control.
         #: Absent, it reads as off (`tiling.DEFAULTS`), so writing it is what this does.
         "tiling": "true",
-        #: Windows are tiled as they open. Off is manual tiling: a window goes into a zone when it
-        #: is dragged onto one.
+        #: Windows are tiled as they open. Off is manual tiling: a window goes where it is
+        #: dragged, and into a zone when it is dragged onto one after the bar at the top of the
+        #: screen, or with Shift held.
         "autoTiling": "true",
         "screenGapTop": "10", "screenGapBottom": "10", "screenGapLeft": "10",
         "screenGapRight": "10", "screenGapBetween": "10",
         "floatUtility": "true", "newWindowPosition": "0", "adjustLayoutLive": "true",
         "showOsd": "true",
-        #: A window that opens when every zone of the arrangement's last layout is taken goes to a
-        #: new desktop, made after the last one, so that the desktops a person has keep their
-        #: numbers -- and with them the keys that go to each by its number.
-        "newWindowOverflow": "0", "newDesktopPosition": "0",
+        #: A window that opens when every zone of the arrangement's last layout is taken floats in
+        #: the middle of the screen. Given a new desktop instead, the desktop is made after the
+        #: last one, so that the desktops a person has keep their numbers -- and with them the keys
+        #: that go to each by its number.
+        "newWindowOverflow": "1", "newDesktopPosition": "0",
     }},
     #: Both on. The tiler is not one of these: KyprX's engine runs in KyprX's own compositor
     #: script, which the installer or the first start switches on (`switch_the_script_on` in
@@ -426,11 +434,48 @@ BUTTON_COLOURS = {
     for button in ("Close", "Maximize", "Minimize")
 }
 
+#: The window frame a first start puts on: Klassy's decoration, by the two keys of KWin's own schema
+#: (`kwindecorationsettings.kcfg`, `[org.kde.kdecoration2]`), with the values Klassy's global
+#: themes write there themselves (their `contents/defaults`). Only the frame: the colours it is
+#: drawn in stay the colour scheme's, which a first start leaves as it is.
+FIRST_START_DECORATION = {"library": "org.kde.klassy", "theme": "Klassy"}
+
+#: The rest of KyprX's look beside `COLOURS`: the window outline as `SETTINGS` declares it, amber
+#: round the active window. *Put KyprX's look on* writes it; so does *Restore defaults*, which
+#: writes the whole of `SETTINGS`.
+LOOK_OUTLINE = {"klassy": {"WindowOutlineStyle": dict(SETTINGS["klassy"]["WindowOutlineStyle"])}}
+
+#: The outline's two custom colours, which name the amber: a first start writes neither.
+_AMBER_KEYS = ("WindowOutlineCustomColorActive", "WindowOutlineCustomColorInactive")
+
+
+def first_start() -> dict:
+    """What a first start writes, shaped like `SETTINGS`: every declared setting, and nothing of
+    KyprX's look -- the owner's choice. The look is asked about when the settings window first
+    opens (`DefaultsPart.look_offer`), and nothing goes on before an answer.
+
+    Two differences from `SETTINGS`. The active window's outline follows the person's own accent
+    colour (`WindowOutlineAccentColor`) instead of the amber, and neither amber colour is written.
+    And the frame is Klassy's (`FIRST_START_DECORATION`): the window frame is the one part of the
+    look the owner chose to have on from the first start, in the person's own colours. The global
+    theme, the colour scheme, the panel's style and the accent are not here at all, being no
+    declared setting: they are `COLOURS`, which goes through `set_theme`."""
+    import copy
+    tree = copy.deepcopy(SETTINGS)
+    outline = tree["klassy"]["WindowOutlineStyle"]
+    outline["WindowOutlineStyleActive"] = "WindowOutlineAccentColor"
+    for key in _AMBER_KEYS:
+        outline.pop(key, None)
+    tree["decoration"][""].update(FIRST_START_DECORATION)
+    return tree
+
 #: *Take KyprX off this desk*, which the owner chose to mean **pure KDE**: every key `SETTINGS`
 #: declares deleted, so each program is back on its own default rather than on one of this app's --
 #: the tiling's switch among them, which absent reads as off, so nothing tiles; this app's own keys
 #: taken out of every window rule and decoration override; the two plugins this app switches on
-#: switched off; and KDE's own Breeze global theme for the mode in force (`theme.PURE`). Not the
+#: switched off; Klassy's frame taken back when it is the one on (`FIRST_START_DECORATION`, which a
+#: first start puts on whatever the global theme), so KWin's own is; and KDE's own Breeze global
+#: theme for the mode in force (`theme.PURE`). Not the
 #: desk from before KyprX -- nothing recorded that -- but a consistent one, and one step before
 #: uninstalling. What it does not undo, because it is not this app's: the desktop's own blur
 #: effect, which somebody else may have switched off, and a key taken from another action with

@@ -325,6 +325,8 @@ def _group_lines(group: str, old: dict, new: dict) -> list[str]:
             continue
         if group == effects.TILING_GROUP and key == "arrangements":
             lines.extend(arrangement_lines(before, after))
+        elif group == effects.TILING_GROUP and key == "desktopArrangements":
+            lines.extend(desktop_lines(before, after))
         else:
             lines.append(_key_line(group, key, before, after))
     return lines
@@ -494,6 +496,21 @@ def arrangement_lines(before, after) -> list[str]:
         return [f"the zone layouts and arrangements are written as version {held_now['version']} "
                 f"in place of version {held_was['version']}, with nothing in them changed"]
     return []
+
+
+def desktop_lines(before, after) -> list[str]:
+    """The arrangement chosen for each desktop, one line per desktop whose choice changed, by the
+    arrangement's id -- the name is in the other key, and this one may change alone. None chosen
+    is every desktop on the first arrangement in the rotation."""
+    was = tiling.desktops_of(before if isinstance(before, str) else "")
+    now = tiling.desktops_of(after if isinstance(after, str) else "")
+    lines = []
+    for name in sorted(set(was) | set(now)):
+        if was.get(name) != now.get(name):
+            lines.append(f"the arrangement desktop {name!r} starts on: "
+                         f"{was.get(name, 'the first in the rotation')} → "
+                         f"{now.get(name, 'the first in the rotation')}")
+    return lines
 
 
 # ---------------------------------------------------------------- per file
@@ -850,6 +867,15 @@ def _config_changes(before: dict, after: dict) -> list[str]:
         if def_b.get(key) != def_a.get(key):
             label = DEFAULT_SWITCHES.get(key, f"a new window: {_words(key)}")
             out.append(f"{label}: {_yes(def_b.get(key))} → {_yes(def_a.get(key))}")
+    # None is a file from before the column boxes, which keeps nothing yet.
+    kept_b, kept_a = before.get("kept") or {}, after.get("kept") or {}
+    said = {"titlebar": "the title bar", "transparency": "transparency", "blur": "blur"}
+    for cls in sorted(set(kept_b) | set(kept_a)):
+        if kept_b.get(cls) != kept_a.get(cls):
+            was = ", ".join(said.get(n, _words(n)) for n in kept_b.get(cls, [])) or "nothing"
+            now = ", ".join(said.get(n, _words(n)) for n in kept_a.get(cls, [])) or "nothing"
+            out.append(f"what {cls} keeps as set by hand, which the column boxes leave alone: "
+                       f"{was} → {now}")
     keys_b, keys_a = before.get("cheatsheet_keys") or {}, after.get("cheatsheet_keys") or {}
     if keys_b != keys_a:
         import shortcuts
@@ -906,7 +932,16 @@ def _state_changes(before: dict, after: dict) -> list[str]:
     if before.get("app_version") != after.get("app_version"):
         out.append(_change("the version of KyprX that ran here last", before.get("app_version"),
                            after.get("app_version")))
+    if (before.get("look") or "") != (after.get("look") or ""):
+        out.append(f"KyprX's look: {LOOK_WORDS.get(before.get('look') or '', 'not set')} → "
+                   f"{LOOK_WORDS.get(after.get('look') or '', 'not set')}")
     return out
+
+
+#: Where the question about KyprX's look stands (`state.LOOKS`), in words.
+LOOK_WORDS = {"": "never asked", "due": "to be asked when the settings window opens",
+              "kyprx": "KyprX's put on", "own": "your own kept when asked",
+              "folder": "the KyprX folder's colours put on"}
 
 
 def _profile_changes(before: dict, after: dict) -> list[str]:

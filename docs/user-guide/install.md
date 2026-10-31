@@ -5,8 +5,19 @@ decoration), Better Blur DX (the blur), Geometry Change (the window animation) a
 Wallpaper Reborn (video wallpapers). The packages install them with KyprX. The tiling is KyprX's
 own, so no tiling script is among them. It runs on KDE Plasma 6 in a Wayland session.
 
-Installing changes nothing on your desktop. KyprX switches itself on the first time you open it,
-from the application menu.
+Installing a package changes nothing on your desktop. KyprX switches itself on the first time you
+open it, from the application menu, or while `./install.sh` runs. That first start puts on KyprX's
+settings: its tiling, focus following the mouse, the blur and the window animation, and Klassy's
+window frames, drawn in your own colours, with the outline round the active window in your accent
+colour. Your global theme, your colours, your panel and your accent colour stay as they are.
+
+The first time the settings window opens, it asks whether to put KyprX's look on as well, and
+lists exactly what that would change: Klassy's global theme, one of KyprX's colour presets, its
+panel style and an amber outline round the active window. **Keep my look** is the default, and
+closing the question counts as that. **Put KyprX's look on** keeps a copy of the desk first; going
+back to it puts back what KyprX writes, while a global theme and colours of your own come back from
+System Settings, where you chose them. Either way, the Colours box on the
+[Appearance](appearance.md#kyprxs-look-the-first-time) tab changes it later. An update never asks.
 
 ## Fedora
 
@@ -95,7 +106,8 @@ How a new version arrives depends on how KyprX was installed:
   unpacks the newest release beside the old folder, which stays until you delete it. `--dry-run`
   on either shows what would be done, changing nothing.
 
-Your setup is kept. When a new version keeps its own files in a new shape, KyprX first copies the
+Your setup is kept, your look included: an update never asks about KyprX's look, and changes none
+of it. When a new version keeps its own files in a new shape, KyprX first copies the
 files it will rewrite into your KyprX folder, `~/.config/kyprx/snapshots/`, and the log says
 where.
 
@@ -109,8 +121,13 @@ for the rest of the session, and that part goes on tiling as it did until then.
 **After a Plasma update.** Klassy and Better Blur DX are compiled for one version of KDE's window
 manager. Until each is built again for the new one, the title bars or the blur stop working, and
 KyprX says so on the Settings tab under [What KyprX needs](settings.md#what-kyprx-needs), with what
-to do. On Fedora their repositories publish the new build; on Arch you build it again with the
-command KyprX gives.
+to do. On Fedora their repositories publish the new build. On Arch you build it again with the
+command KyprX gives, `paru -S --rebuild aur/` and the package's name -- `yay -S --rebuild aur/` with
+yay: a plain `paru -S` or `yay -S` installs the helper's earlier build again rather than making a
+new one. For the blur, KyprX's package also says so at the end of the update that brings the new
+KWin, in the update's own output. Either way, log out and back in
+afterwards, because the window manager loads them as the session starts
+([The blur or the title bars stopped after an update](../troubleshooting.md#the-blur-or-the-title-bars-stopped-after-an-update)).
 
 ## Removing
 

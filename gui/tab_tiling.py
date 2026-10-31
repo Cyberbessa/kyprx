@@ -4,7 +4,8 @@ A page of `gui/fields.py`'s `TILING_FIELDS` in the form engine, each setting wit
 mark after its name, and with what the fields cannot say on their own: the zone layouts and the
 arrangements -- one value of the tiler's (`gui/tiling_value.py`), which two boxes edit, the
 Arrangements box (`gui/arrangements_box.py`), folded away while automatic tiling is off, and the
-Zone layouts box (`gui/zone_layouts_box.py`) -- the gaps as one grid, settings that do nothing
+Zone layouts box (`gui/zone_layouts_box.py`) -- the arrangement each desktop starts on
+(`gui/desktops_box.py`), folded away with the Arrangements box, the gaps as one grid, settings that do nothing
 while their switch is off or while a menu is on an answer that does not use them, the focus
 policies the desktop discourages under a tiler, and the band that says when what is set here is
 not in force, or not all of it, and why -- which the daemon decides, in `tiling_state`. It has no
@@ -20,6 +21,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QPushButton, QScrollArea, QWidget
 
 from arrangements_box import ArrangementsBox
+from desktops_box import DesktopsBox
 from fields import FOCUS_DELAY_NOTE, FOCUS_DISCOURAGED, FOCUS_STEALING_NOTE, TILING_FIELDS
 from form import SettingsPage
 from tiling_value import TilingValue
@@ -139,9 +141,14 @@ class TilingPage(SettingsPage):
         #: drag offers, and the gaps are the space around it.
         self.arrangements = ArrangementsBox(self.tiling_value)
         self.zone_layouts = ZoneLayoutsBox(self.tiling_value)
+        #: Under the arrangements, which it chooses among, and above the zone layouts they are made
+        #: of. Its choice is a key of its own, sent with the page's other changes.
+        self.desktops = DesktopsBox(self.tiling_value)
+        self.desktops.changed.connect(self.queue)
         self.arrangements.show_layout.connect(self._show_layout)
         self.after("Automatic tiling", self.arrangements)
-        self.column.insertWidget(self.column.indexOf(self.arrangements) + 1, self.zone_layouts)
+        self.column.insertWidget(self.column.indexOf(self.arrangements) + 1, self.desktops)
+        self.column.insertWidget(self.column.indexOf(self.desktops) + 1, self.zone_layouts)
         self._area = self.findChild(QScrollArea)
 
         #: The band and the way out of it, together. With every change applying by itself there is
@@ -184,6 +191,21 @@ class TilingPage(SettingsPage):
             return
         self._owed = False
         super().load(data)
+
+    def let_go_of_auto(self, _on: bool = False) -> None:
+        """The strip above the tabs just wrote *Automatic tiling*: an edit of this page's own box
+        still waiting would land after it and undo it, so it is dropped. The box is painted from
+        the daemon at the next settle (`follow`)."""
+        self.touched.discard(AUTO)
+
+    def follow(self, data: dict) -> None:
+        """*Automatic tiling* repainted from the daemon, alone, when somebody else wrote it -- the
+        strip above the tabs, or Toggle Automatic Tiling -- and what greys and folds with it. A
+        box somebody is changing here is left as it is (`refresh`)."""
+        if self.tiling_value.busy():
+            return
+        self.refresh(data, [AUTO])
+        self._follow_switches()
 
     def _tab_down(self) -> None:
         """The keyboard's Tab order, down the page as it is drawn: each section and box of the
@@ -245,6 +267,9 @@ class TilingPage(SettingsPage):
         self._warn_on_discouraged()
         self._follow_focus_policy()
         self.tiling_value.load(data)
+        # The desktops are asked of the compositor here, on this tab alone (`Desktops` in the
+        # daemon), and not carried in `Groups`, which every tab reads.
+        self.desktops.load(data, self.c.desktops())
         self._follow_switches()
         state = str(data.get("tiling_state") or "")
         text = BANDS.get(state, "")
@@ -272,6 +297,7 @@ class TilingPage(SettingsPage):
         for dependent, on in live.items():
             self.widgets[dependent].setEnabled(on)
         self.arrangements.set_collapsed(not self.widgets[AUTO].isChecked())
+        self.desktops.set_collapsed(not self.widgets[AUTO].isChecked())
 
     def _gaps_grid(self) -> None:
         """The four screen edges side by side, instead of five rows of one number each.
@@ -319,14 +345,17 @@ class TilingPage(SettingsPage):
                     Qt.ItemDataRole.ToolTipRole)
 
     def extra_changes(self) -> dict:
-        """The zone layouts and arrangements, when they changed: the value decides, against the
-        daemon's reading."""
-        return self.tiling_value.extra_changes()
+        """The zone layouts and arrangements, and the arrangement each desktop starts on, when
+        they changed: each against the daemon's reading, in one `tiling` group."""
+        tiling = {**(self.tiling_value.extra_changes().get("tiling") or {}),
+                  **(self.desktops.extra_changes().get("tiling") or {})}
+        return {"tiling": tiling} if tiling else {}
 
     def _sent(self, payload: dict) -> None:
         """What was sent of the zone layouts and arrangements is what they compare with from now
-        on."""
+        on, and so is the choice of each desktop's."""
         self.tiling_value.sent(payload.get("tiling") or {})
+        self.desktops.sent(payload.get("tiling") or {})
 
     def _said(self) -> str:
         """The fields' words and the boxes', in that order, for the window's line -- as rich text
@@ -335,5 +364,6 @@ class TilingPage(SettingsPage):
         Measured offscreen on a label like the line: `<b>Work</b> & Co` given as it is is drawn
         62 px wide, its tags taken for markup, where it takes 106 as plain text -- and 106 escaped
         this way. The line's own words -- *Dry run* -- are rich text already."""
-        words = ", ".join(words for words in (super()._said(), self.tiling_value.said()) if words)
+        words = ", ".join(words for words in (super()._said(), self.tiling_value.said(),
+                                              self.desktops.said()) if words)
         return f"<span>{html.escape(words, quote=False)}</span>" if words else ""

@@ -9,7 +9,9 @@ tools, in the order `daemon/theme.py` explains, each as a session write;
 gives, which decides whether the window outline follows it. `_step_name` names each of those steps
 for the stopwatch in `daemon/clock.py`.
 
-The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`.
+The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `config`, and
+`state`, for the question about KyprX's look: whether the person kept their own when asked, and
+colours that went on answering it (`State.look_went_on`).
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import theme
 import wallcolour
 import wallpaper
 import writer
+from state import LOOK_KYPRX, LOOK_OWN
 
 
 def _step_name(description: str) -> str:
@@ -108,10 +111,16 @@ class ThemePart:
                          "trouble": theme.available(p), "swatch": theme.swatch(p.scheme)}
                         for p in theme.PRESETS],
             "trouble": theme.invariants(now),
+            #: Whether the person answered *Keep my look* when the settings window asked
+            #: (`DefaultsPart.answer_look`), and no colours of KyprX's went on since
+            #: (`State.look_went_on`). The `trouble` above is then their own choice rather than
+            #: something gone wrong, and the box says so in those words instead of warning.
+            "kept_own_look": self.state.look == LOOK_OWN,
         }
 
     def set_theme(self, payload: dict, trace=None, from_wallpaper: str | None = "",
-                  from_preset: bool = False, preview: bool = False) -> str:
+                  from_preset: bool = False, preview: bool = False,
+                  answers: str = LOOK_KYPRX) -> str:
         """Put this mode, this preset and this colour on the desktop, in that order and no other.
 
         `from_wallpaper` says where the colour came from, and only the window outline reads it: the
@@ -127,6 +136,13 @@ class ThemePart:
 
         `preview` builds the same transaction and returns what it would do in plain words, writing
         nothing -- what the question before *Restore defaults* shows. Empty when nothing would move.
+
+        **Colours that go on answer the question about KyprX's look** (`State.look_went_on`), the
+        way `answers` says: KyprX's look, unless a KyprX folder brought them. Every door to here
+        puts one of KyprX's presets on, so a question still due is moot after it, and a *Keep my
+        look* given before it no longer describes the desk. Here and not at each door, because a
+        door that forgot would leave the Colours box saying a fault on this desk as the person's
+        own choice. A preview, and colours refused or failed, answer nothing.
         """
         mode = str(payload.get("mode") or "")
         if mode not in theme.MODES:
@@ -258,6 +274,7 @@ class ThemePart:
             return f"error: {e}"
         if writer.dry_run() and diff:
             self.log("would have written:\n" + diff)
+        self.state.look_went_on(answers)
         return "ok"
 
     def _colour_came_from_the_wallpaper(self, accent: str, mode: str,

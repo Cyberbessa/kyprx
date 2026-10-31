@@ -430,7 +430,9 @@ def effective(overrides: list[Override], window_class: str, resource_name: str =
 #: next time it reads it -- measured: the compositor's log said `Preset, "Klassy" loaded...` the
 #: moment KDE's Breeze theme was swapped back for Klassy's, and every key this app had put back a
 #: second earlier was gone again, the per-window list renumbered, and the `[Exceptions]` group below
-#: rewritten.
+#: rewritten. The line is Klassy's own `klassy-settings -w`, which the decoration runs, and it ran
+#: only with one of Klassy's global themes in force: under any other, the decoration noted that
+#: theme and loaded nothing (measured in the sandbox; `migrate._bootstrap_pass` has it).
 LOOK_AND_FEEL = ("Global", "LookAndFeelSet")
 
 #: A group the decoration's own settings code leaves behind -- the last per-window override it

@@ -83,6 +83,91 @@ class ArrangementsError(ValueError):
     with, the Tiling tab shows, and the folder's problems list."""
 
 
+class DesktopsError(ValueError):
+    """What is wrong with the arrangement chosen for each desktop, in one plain sentence."""
+
+
+#: What joins a desktop's name to the number of a desktop KyprX made after it, "Room · 2": the
+#: engine's `CHAIN_MARK`, held to it by tests/test_script_contract.py.
+CHAIN_MARK = " \u00b7 "
+
+#: The most desktops the arrangement chosen for each can name: the 25 a compositor allows
+#: (`MAX_DESKTOPS` in engine.mjs) four times over, since names of another machine's desktops,
+#: carried by a KyprX folder both share, stay in it.
+MOST_DESKTOPS = 100
+
+
+def chain_name(name: str) -> tuple[str, int] | None:
+    """A desktop's name read as one KyprX made, `(base, n)` for "<base> · <n>" -- n a whole number
+    from 2, written without a leading zero -- and None for any other name: the engine's
+    `chainName`, which tests/test_script_contract.py holds this to over a table of names."""
+    text = str(name)
+    at = text.rfind(CHAIN_MARK)
+    if at < 0:
+        return None
+    digits = text[at + len(CHAIN_MARK):]
+    if not digits.isascii() or not digits.isdigit() or digits.startswith("0"):
+        return None
+    n = int(digits) if len(digits) <= 16 else None
+    if n is None or n < 2 or n > 2 ** 53:
+        return None
+    return text[:at], n
+
+
+def made_desktops(listed: list[dict]) -> set[str]:
+    """The ids of the desktops KyprX made, by the engine's rule (`markOf`): a chain name whose base
+    is the exact name of another desktop."""
+    names = [(str(d.get("id")), str(d.get("name"))) for d in listed]
+    out = set()
+    for ident, name in names:
+        mark = chain_name(name)
+        if mark and any(other != ident and other_name == mark[0] for other, other_name in names):
+            out.add(ident)
+    return out
+
+
+def desktops_of(raw) -> dict[str, str]:
+    """The arrangement chosen for each desktop as the engine is told it: desktop name to an
+    arrangement's id. Anything that is not such an object -- the key absent, text that is not
+    JSON -- reads as none chosen, and an entry that is not text to text is passed over."""
+    try:
+        value = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+    except (ValueError, RecursionError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {name: ident for name, ident in value.items()
+            if isinstance(name, str) and name and isinstance(ident, str) and _ID.fullmatch(ident)}
+
+
+def canonical_desktops(value) -> str | None:
+    """The one text the arrangement chosen for each desktop is written as: compact JSON, its
+    desktops by name in order. None for an empty one, which takes the key away -- every desktop on
+    the first arrangement in the rotation again. Text is read as JSON first, so the text `Groups`
+    gave sends back as itself. Raises `DesktopsError` for anything else: not an object, a name that
+    is empty or not text, an id that is not an arrangement's kind of id, or more than
+    `MOST_DESKTOPS` desktops."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else {}
+        except (ValueError, RecursionError):
+            raise DesktopsError("The arrangement chosen for each desktop is not JSON.") from None
+    if not isinstance(value, dict):
+        raise DesktopsError("The arrangement chosen for each desktop has to be an object, from "
+                            "a desktop's name to an arrangement's id.")
+    if len(value) > MOST_DESKTOPS:
+        raise DesktopsError(f"An arrangement can be chosen for {MOST_DESKTOPS} desktops at most.")
+    for name, ident in value.items():
+        if not isinstance(name, str) or not name:
+            raise DesktopsError("A desktop is named by text that is not empty.")
+        if not isinstance(ident, str) or not _ID.fullmatch(ident):
+            raise DesktopsError(f"The arrangement chosen for {name!r} is not an arrangement's "
+                                f"id.")
+    if not value:
+        return None
+    return json.dumps(dict(sorted(value.items())), ensure_ascii=False, separators=(",", ":"))
+
+
 # ---------------------------------------------------------------- reading a value
 
 def _whole(value) -> bool:
@@ -719,8 +804,9 @@ _GAPS = {"screenGapTop": "top", "screenGapBottom": "bottom", "screenGapLeft": "l
          "screenGapRight": "right", "screenGapBetween": "between"}
 
 #: Every key of the group and the kind of value it holds: `bool` is true or false, `int` a whole
-#: number in `RANGES`, `choice` one of the numbers in `RANGES`, `list` entries between commas, and
-#: `json` the zone layouts and arrangements' text. A key the group has beyond these means nothing
+#: number in `RANGES`, `choice` one of the numbers in `RANGES`, `list` entries between commas,
+#: `json` the zone layouts and arrangements' text, and `desktops` the arrangement each desktop
+#: starts on, as JSON from a desktop's name to an arrangement's id (`desktops_of`). A key the group has beyond these means nothing
 #: to the engine, and the folder and the copies of the desk carry it as it is.
 #:
 #: How the engine matches a list's entries is the script's, said here because these are the keys it
@@ -734,7 +820,7 @@ KEYS: dict[str, str] = {
     "floatUtility": "bool", "newWindowPosition": "choice", "newWindowOverflow": "choice",
     "newDesktopPosition": "choice", "adjustLayoutLive": "bool", "showOsd": "bool",
     "floatingClass": "list", "floatingTitle": "list", "ignoreClass": "list", "ignoreTitle": "list",
-    "ignoreScreen": "list",
+    "ignoreScreen": "list", "desktopArrangements": "desktops",
 }
 
 #: The numbers each numeric key takes. A gap outside its range is held to the nearer end of it; a
@@ -761,10 +847,10 @@ RANGES: dict[str, tuple[int, int]] = {**{key: (0, 200) for key in _GAPS},
 DEFAULTS: dict[str, str] = {
     "tiling": "false", "autoTiling": "true", "arrangements": canonical(DEFAULT_VALUE),
     **{key: "10" for key in _GAPS},
-    "floatUtility": "true", "newWindowPosition": "0", "newWindowOverflow": "0",
+    "floatUtility": "true", "newWindowPosition": "0", "newWindowOverflow": "1",
     "newDesktopPosition": "0", "adjustLayoutLive": "true", "showOsd": "true",
     "floatingClass": "", "floatingTitle": "", "ignoreClass": "", "ignoreTitle": "",
-    "ignoreScreen": "",
+    "ignoreScreen": "", "desktopArrangements": "",
 }
 
 #: The engine's own list of classes it never tiles is `policy.AUTO_SKIP` -- the windows that are
@@ -802,6 +888,8 @@ def value_of(group: dict, key: str):
         return entries(raw)
     if kind == "json":
         return arrangements_of(group)[0]
+    if kind == "desktops":
+        return desktops_of(raw)
     absent = DEFAULTS[key]
     if kind == "bool":
         word = (raw or "").strip().lower()
@@ -955,6 +1043,11 @@ def resolve(group: dict, *, off: bool) -> dict:
         "slots": {entry["id"]: [""] + [entry["windows"][str(count)]
                                        for count in range(2, len(entry["windows"]) + 2)]
                   for entry in value["arrangements"]},
+        # The arrangement each desktop starts on, by the desktop's name: only the ids that are
+        # arrangements now, so a choice of one deleted since reads as none chosen.
+        "desktops": {name: ident
+                     for name, ident in value_of(group, "desktopArrangements").items()
+                     if any(entry["id"] == ident for entry in value["arrangements"])},
     }
 
 

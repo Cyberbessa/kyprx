@@ -379,17 +379,26 @@ def set_blur(tx, window_class: str, on: bool) -> bool:
 
 
 def apply(tx, window: Window, wanted: Switches,
-          strength: int = defaults.TRANSPARENCY) -> None:
-    """Bring a window to the requested state, in the order that avoids a flash."""
-    set_titlebar(tx, window, wanted.titlebar)
-    if not wanted.titlebar:
-        set_outline(tx, window, wanted.outline)
-    set_transparency(tx, window, wanted.transparency, strength)
+          strength: int = defaults.TRANSPARENCY, only: tuple[str, ...] | None = None) -> None:
+    """Bring a window to the requested state, in the order that avoids a flash.
+
+    `only` names the switches to write, every one of them when None. A column's box on the
+    Windows tab writes its own switch and nothing else (`WindowsPart.set_column`). Measured in the
+    simulation: writing all four for windows that were not open put a forced title bar on 18 of
+    them whose transparency was all that moved -- without the window, `Window.needs_rule` cannot
+    tell an application that decorates itself from one that never needed the rule."""
+    every = only is None
+    if every or "titlebar" in only:
+        set_titlebar(tx, window, wanted.titlebar)
+        if not wanted.titlebar:
+            set_outline(tx, window, wanted.outline)
+    if every or "transparency" in only:
+        set_transparency(tx, window, wanted.transparency, strength)
     #: Blur rides on the transparency, the way the outline rides on the hidden title bar. The
     #: effect paints a blurred copy of what is behind the window and it is seen **through** the
     #: window — so on an opaque one it is work nobody sees. Left unwritten rather than turned off,
     #: which is what lets the tick come back exactly as it was when the transparency does.
-    if wanted.transparency:
+    if wanted.transparency and (every or "transparency" in only or "blur" in only):
         set_blur(tx, window.window_class, wanted.blur)
 
 

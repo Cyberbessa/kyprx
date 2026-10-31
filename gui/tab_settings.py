@@ -347,9 +347,10 @@ class SettingsTab(QWidget):
         file_column.addWidget(self.folder_line)
 
         #: A project KyprX is built on that is not right here: what is wrong, and the command that
-        #: puts it right on this system, selectable so it can be copied. Hidden while every one is
-        #: installed and running -- *About KyprX…* lists them all. The daemon keeps the answer;
-        #: *Check again* is for after installing or updating one.
+        #: puts it right on this system, selectable, and with *Copy the command* beside it -- the
+        #: command is said, never run, as everywhere a package manager is involved (`UpdateDialog`).
+        #: Hidden while every one is installed and running -- *About KyprX…* lists them all. The
+        #: daemon keeps the answer; *Check again* is for after installing or updating one.
         self.needs_box = Section("What KyprX needs", SECTION_HINTS["What KyprX needs"])
         needs_column = QVBoxLayout(self.needs_box)
         self.needs_label = note()
@@ -360,10 +361,19 @@ class SettingsTab(QWidget):
         check_again.setToolTip("Look again for the projects KyprX is built on, after installing "
                                "or updating one.")
         check_again.clicked.connect(self._check_again)
+        #: One *Copy the command* per project that is not right and has a command, under *Check
+        #: again*; rebuilt with the box (`_say_needs`).
+        self.copy_buttons = QVBoxLayout()
+        self.copy_buttons.setContentsMargins(0, 0, 0, 0)
+        side = QVBoxLayout()
+        side.setContentsMargins(0, 0, 0, 0)
+        side.addWidget(check_again)
+        side.addLayout(self.copy_buttons)
+        side.addStretch(1)
         needs_row = QHBoxLayout()
         needs_row.setContentsMargins(0, 0, 0, 0)
         needs_row.addWidget(self.needs_label, 1)
-        needs_row.addWidget(check_again, 0, Qt.AlignmentFlag.AlignTop)
+        needs_row.addLayout(side)
         needs_column.addLayout(needs_row)
         self.needs_box.setVisible(False)
 
@@ -656,7 +666,23 @@ class SettingsTab(QWidget):
         Hidden while every one is installed and running."""
         wrong = [n for n in needs if n.get("state") != "ok"]
         self.needs_label.setText(needs_text(wrong))
+        while self.copy_buttons.count():
+            gone = self.copy_buttons.takeAt(0).widget()
+            if gone is not None:
+                gone.deleteLater()
+        commands = [n for n in wrong if n.get("command")]
+        for n in commands:
+            command = str(n["command"])
+            copy = QPushButton("Copy the command" if len(commands) == 1
+                               else f"Copy the command for {n.get('name')}")
+            copy.setToolTip(command)
+            copy.clicked.connect(lambda _=False, command=command: self._copy_command(command))
+            self.copy_buttons.addWidget(copy)
         self.needs_box.setVisible(bool(wrong) or not needs)
+
+    def _copy_command(self, command: str) -> None:
+        QGuiApplication.clipboard().setText(command)
+        self.says.emit("The command is on the clipboard: paste it in a terminal.")
 
     def _check_again(self) -> None:
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

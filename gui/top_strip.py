@@ -1,11 +1,13 @@
-"""The strip above the tabs: the three things somebody opens this window to do.
+"""The strip above the tabs: the four things somebody opens this window to do.
 
 *Adjust new windows* (whether a window never seen before gets KyprX's defaults), *Colour from the
-wallpaper* (whether each wallpaper chosen hands its colour to the desktop), and which profile the
-desktop is wearing, where choosing another puts it on. The two ticks are this app's own settings,
-written through `SetSettings`; the profile menu puts a kept profile on the desktop through
-`LoadProfile`. Neither goes through the form engine, and a profile is made and kept on the
-Appearance tab.
+wallpaper* (whether each wallpaper chosen hands its colour to the desktop), *Automatic tiling*
+(whether windows are laid out as they open and close), and which profile the desktop is wearing,
+where choosing another puts it on. The first two ticks are this app's own settings, written through
+`SetSettings`; *Automatic tiling* is the tiler's `autoTiling`, the same key as the box of that name
+on the Tiling tab, written through `SetGroups` with that key alone; the profile menu puts a kept
+profile on the desktop through `LoadProfile`. None goes through the form engine, and a profile is
+made and kept on the Appearance tab.
 """
 
 from __future__ import annotations
@@ -25,12 +27,27 @@ from widgets import Choice
 #: look and the tab beside it called it a profile; the same thing with two names is a thing to
 #: learn twice. The file on disk and the daemon's own methods keep `profile` too, which is what
 #: they were always called.
-ADJUST_TIP = ("New windows get KyprX's defaults as they open: no title bar, the outline on, "
-              "see-through and blurred. Unticked, they are listed and left alone until you tick "
-              "it again.")
+ADJUST_TIP = ("New windows get what the boxes in the Windows tab's column headers say as they "
+              "open -- as KyprX comes, no title bar, see-through and blurred, with the theme's "
+              "outline. Unticked, they are listed and left alone until you tick it again.")
 
 AUTO_TIP = ("Every wallpaper you choose hands its colour to the desktop. Loading a profile "
             "switches this off, so that profile stays as it is.")
+
+TILING_TIP = ("Windows are laid out as they open and close. Off, they stay where they are put, "
+              "and a drag offers the zones. The same switch as on the Tiling tab, and as Toggle "
+              "Automatic Tiling.")
+
+#: Why the box is greyed, by the daemon's `tiling_state`: in each of these the tiler is not running,
+#: so the switch would change a setting nothing acts on -- the key refuses in the same states
+#: (`toggle_automatic_tiling`). A part of the compositor from before an update still reads the
+#: switch, so `old-script` leaves the box live, as `on` does.
+TILING_GREYED = {
+    "off": "KyprX's tiling is switched off, so nothing is laid out. The Tiling tab says why.",
+    "off-desk": "KyprX is off this desk, so its tiling waits. Put my setup back brings it back.",
+    "no-script": ("KyprX's part of the compositor is not the one that tiles yet. Log out and back "
+                  "in to start it."),
+}
 
 PROFILE_TIP = ("The profile the desktop is wearing. Choosing another one puts it on, which takes "
                "a second or two.")
@@ -72,6 +89,10 @@ class TopStrip(QWidget):
     #: setting and has to be told directly: its own `load` refuses while a colour change of its is
     #: inside the 500 ms debounce, so the daemon's round trip is not enough to keep it in step.
     auto_changed = Signal(bool)
+    #: *Automatic tiling* was just flicked here. The Tiling tab has a box for the same key, and an
+    #: edit of it still waiting there would land after this one and undo it, so the window has the
+    #: tab let go of that edit and follow (`TilingPage.follow`).
+    tiling_changed = Signal(bool)
 
     #: What the combo shows when the desktop is wearing something that is not on the list — which
     #: is the ordinary state until somebody saves one. Never a destination: the entry is disabled,
@@ -107,6 +128,12 @@ class TopStrip(QWidget):
         self.auto.setToolTip(AUTO_TIP)
         self.auto.toggled.connect(self._auto_toggled)
 
+        #: In both places, as the owner chose: here, where it is one click from any tab, and on the
+        #: Tiling tab beside the settings that only it makes live. Both show the one key.
+        self.tiling = QCheckBox("Automatic tiling")
+        self.tiling.setToolTip(TILING_TIP)
+        self.tiling.toggled.connect(self._tiling_toggled)
+
         self.look = LookBox()
         self.look.setIconSize(QSize(48, 16))   # the strip the profiles table draws, same size
         self.look.setMinimumWidth(170)
@@ -121,6 +148,8 @@ class TopStrip(QWidget):
         row.addWidget(self.adjust)
         row.addSpacing(18)
         row.addWidget(self.auto)
+        row.addSpacing(18)
+        row.addWidget(self.tiling)
         row.addStretch()
         row.addWidget(QLabel("Profile"))
         row.addWidget(self.look)
@@ -166,6 +195,27 @@ class TopStrip(QWidget):
                 widget.blockSignals(False)
         finally:
             self._loading = False
+
+    def set_tiling(self, switch: dict) -> None:
+        """Paint *Automatic tiling* from the daemon's `TilingSwitch`, and grey it while the tiler
+        is not running. An answer that says nothing -- an older daemon, or none -- leaves the box
+        as it is and greys it, since this window cannot tell then what it would change."""
+        if self._busy:
+            return
+        state = str((switch or {}).get("state") or "")
+        known = "auto" in (switch or {})
+        self._loading = True
+        try:
+            if known:
+                self.tiling.blockSignals(True)
+                self.tiling.setChecked(bool(switch["auto"]))
+                self.tiling.blockSignals(False)
+        finally:
+            self._loading = False
+        live = known and state not in TILING_GREYED
+        self.tiling.setEnabled(live)
+        self.tiling.setToolTip(TILING_GREYED.get(state, TILING_TIP) if known else
+                               "The background service did not say how the tiling stands.")
 
     def set_looks(self, data: dict) -> None:
         """The looks, from the daemon's own answer -- the same one the Appearance tab's table
@@ -238,6 +288,16 @@ class TopStrip(QWidget):
             return
         self.c.set_settings(auto_colour=bool(on))
         self.auto_changed.emit(bool(on))
+
+    def _tiling_toggled(self, on: bool) -> None:
+        """`autoTiling` alone, and no `enforce`: the Tiling tab's own writes also switch tiling
+        itself back on (`defaults.ENFORCED`), and this box is a switch that changes nothing but
+        itself. A refusal paints the box back from the daemon."""
+        if self._loading or self._busy:
+            return
+        self.tiling_changed.emit(bool(on))
+        if not self.c.set_groups({"tiling": {"autoTiling": "true" if on else "false"}}):
+            self.set_tiling(self.c.tiling_switch())
 
     def _look_chosen(self, index: int) -> None:
         """Put that look on the desktop.

@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from cheatsheet import Cheatsheet  # noqa: E402
 from client import Client  # noqa: E402
 from decoration import TITLEBAR_BUTTON_TIP  # noqa: E402
-from dialogs import ChangesDialog  # noqa: E402
+from dialogs import STOPPING, ChangesDialog, ask_about_the_look  # noqa: E402
 from fields import EFFECTS_FIELDS  # noqa: E402
 from form import PluginPage, SettingsPage  # noqa: E402
 from picker import open_picker  # noqa: E402
@@ -225,6 +225,10 @@ class MainWindow(QWidget):
         self._looks_pending.setSingleShot(True)
         self._looks_pending.setInterval(250)
         self._looks_pending.timeout.connect(self._paint_looks)
+        #: *Automatic tiling* in the strip, on the same settle: `TilingSwitch` reads `kwinrc` once,
+        #: 0.45 ms a parse on the owner's desk (`TilingPart.tiling_switch`), which is cheap but not
+        #: free, and a login reports dozens of changes back to back.
+        self._looks_pending.timeout.connect(self._paint_tiling)
 
         self.windows = WindowsTab(client)
         self.windows.copied.connect(self._say)
@@ -239,6 +243,7 @@ class MainWindow(QWidget):
                                     "Animate windows as they move and resize",
                                     "Window animation")])
         self.tiling = TilingPage(client)
+        self.strip.tiling_changed.connect(self.tiling.let_go_of_auto)
         self.wallpaper = WallpaperTab(client)
         self.shortcuts = ShortcutsTab(client)
         self.shortcuts.says.connect(self._say)
@@ -459,6 +464,14 @@ class MainWindow(QWidget):
         if self.tabs.currentWidget() is self.appearance:
             self.appearance.profiles.reload(data)
 
+    def _paint_tiling(self) -> None:
+        """*Automatic tiling*, in the strip and -- when the Tiling tab is the one on screen -- in
+        its own box, which the form does not repaint on a change the daemon reports: the strip,
+        and the key, write the same key from outside that page."""
+        self.strip.set_tiling(self.c.tiling_switch())
+        if self.tabs.currentWidget() is self.tiling:
+            self.tiling.follow(self.c.groups())
+
     def _look_loaded(self) -> None:
         """A look went on from the strip, and it wrote three things the Appearance tab has
         controls for — the strength, the corner radius and the outline.
@@ -475,7 +488,12 @@ class MainWindow(QWidget):
         self._header()
         self._looks_pending.start()
         current = self.tabs.currentWidget()
-        if current in self.live_tabs:
+        if current is self.windows:
+            # The table read again, and the compositor not asked for another picture: the change
+            # this follows is often the answer to the Windows tab's own request, and asking again on
+            # every one was a loop (`WindowsTab.reload`).
+            current.reload(ask=False)
+        elif current in self.live_tabs:
             current.reload()
         elif current is self.appearance:
             # The colour box, and through its `reloaded` signal the two things on the form that
@@ -549,6 +567,44 @@ class MainWindow(QWidget):
             self._say("That did not go through: " + answer.removeprefix("error:").strip())
         self.load_current()
 
+    def offer_the_look(self) -> None:
+        """Ask whether to put KyprX's look on, the first time this window opens on an install whose
+        first start put nothing of it on -- the owner's choice: nothing of the look changes on its
+        own. The daemon says whether that is due (`LookOffer`); an install that only updated, or
+        that answered already, never is. Called once, by `main()`, after the window is shown, so
+        the question sits over the window and the overlays never ask.
+
+        Either answer is sent, and remembered by the daemon. No answer -- the program told to stop
+        while it asked -- sends nothing, and the question is asked the next time."""
+        offer = self.c.look_offer()
+        if not offer.get("due"):
+            return
+        take = ask_about_the_look(self, str(offer.get("changes") or ""))
+        if take is None:
+            return
+        if take:
+            self._say("Keeping a copy of the desk, then putting KyprX's look on… the desktop's own "
+                      "tools take a few seconds")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            QApplication.processEvents()
+        try:
+            answer = self.c.answer_look(take)
+        finally:
+            if take:
+                QApplication.restoreOverrideCursor()
+        if answer.startswith("partial"):
+            self._say("Only part of it went in: " + answer.removeprefix("partial:").strip()
+                      + " The Colours box, on the Appearance tab, puts the colours on.")
+        elif answer:
+            self._say("That did not go through: " + answer.removeprefix("error:").strip())
+        elif take:
+            self._say("KyprX's look is on. Your own global theme and colours come back from "
+                      "System Settings, if you want them again.")
+        else:
+            self._say("Your own look stays. The Colours box, on the Appearance tab, puts KyprX's "
+                      "on whenever you want it.")
+        self.load_current()
+
     def load_current(self) -> None:
         """Read everything the visible tab needs. Called when a tab opens, not on a signal."""
         self._header()
@@ -604,8 +660,14 @@ def main() -> int:
     # keys. So the two signals a session and a script send are turned into an ordinary quit. Python
     # only runs a signal handler when it gets control back, so a timer gives it some: a no-op
     # four times a second, which is what the PySide documentation recommends for exactly this.
-    signal.signal(signal.SIGTERM, lambda *_: app.quit())
-    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    # Said on the application before it quits, so that a question quitting closes is not taken for
+    # an answer (`dialogs.STOPPING`).
+    def stop(*_):
+        app.setProperty(STOPPING, True)
+        app.quit()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     ticker = QTimer()
     ticker.timeout.connect(lambda: None)
     ticker.start(250)
@@ -653,6 +715,8 @@ def main() -> int:
     client.on_raise(window, SLOT("raise_window()"))
     client.reclaim_on_restart()
     window.show()
+    # Once the loop runs, so the question has a window on screen to sit over.
+    QTimer.singleShot(0, window.offer_the_look)
     return app.exec()
 
 

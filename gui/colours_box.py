@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QHBoxLayout
                                QPushButton, QRadioButton, QVBoxLayout, QWidget)
 
 from client import Client
-from widgets import SECTION_HINTS, Choice, ColorButton, Section, Spin, warning
+from widgets import SECTION_HINTS, WARNING_STYLE, Choice, ColorButton, Section, Spin, warning
 
 
 # ---------------------------------------------------------------------- the desktop's colours
@@ -357,8 +357,17 @@ class ThemeBox(Section):
             fallback = float(self._data.get("default_tint") or 0.25)
             self.strength.setValue(int(round((tint or fallback) * 100)))
             trouble = [str(t) for t in (self._data.get("trouble") or [])]
-            self.trouble.setText("<b>Not what this app expects.</b> " + "; ".join(trouble)
-                                 + ". Picking a mode here puts it back.")
+            if self._data.get("kept_own_look"):
+                # The same facts, after somebody answered *Keep my look* when the window first
+                # asked: their own choice, said as one, and not in the orange of something wrong.
+                self.trouble.setStyleSheet("")
+                self.trouble.setText("<b>You kept your own look</b>, so this desktop is not "
+                                     "wearing KyprX's: " + "; ".join(trouble)
+                                     + ". Picking a mode or a preset here puts KyprX's look on.")
+            else:
+                self.trouble.setStyleSheet(WARNING_STYLE)
+                self.trouble.setText("<b>Not what this app expects.</b> " + "; ".join(trouble)
+                                     + ". Picking a mode here puts it back.")
             self.trouble.setVisible(bool(trouble))
         finally:
             self._loading = False

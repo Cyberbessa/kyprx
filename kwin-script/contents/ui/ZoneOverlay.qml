@@ -1,5 +1,7 @@
 // One screen's zones, and the selector of zone layouts with the name of one under it, drawn while
-// a window is dragged; and, for a moment, the zones manual tiling's layout keys move a screen to.
+// a window is dragged -- or, with the cursor at the top edge, the area a window let go there is
+// maximized to, as one zone named Maximize; and, for a moment, the zones manual tiling's layout
+// keys move a screen to.
 //
 // Nothing here decides anything: drag.mjs sets every property below, in this window's own
 // coordinates, and this only draws them. One is made per screen by the Instantiator in main.qml,
@@ -33,8 +35,8 @@ Window {
     property int hoveredThumb: -1
     property int currentThumb: -1
     // The name of the zone layout whose zones are shown -- the one under the cursor, when it is on
-    // a thumbnail -- under the selector's row. Shown as text, never as markup: a name is whatever
-    // the person typed.
+    // a thumbnail -- under the selector's row; at the top edge, "Maximize", there or, with no row,
+    // at the top of the area. Shown as text, never as markup: a name is whatever the person typed.
     property string label: ""
 
     readonly property color tint: system.highlight
@@ -113,7 +115,10 @@ Window {
         }
     }
 
-    // The name, on a plate of the thumbnails' own colours, centred under their row.
+    // The name, on a plate of the thumbnails' own colours, centred under their row. With no row --
+    // the top edge of a drag that shows no selector: a tiled window's with automatic tiling, a
+    // window the tiling never takes, a screen kept out of the tiling -- at the top of the zone
+    // under the cursor, which is then the area the window would be maximized to, centred on it.
     Rectangle {
         id: plate
 
@@ -130,11 +135,19 @@ Window {
             return {x: first.x, y: first.y, width: last.x + last.width - first.x,
                     height: first.height};
         }
+        // The zone under the cursor, from the list and the index in one binding, the index held
+        // to the list: drag.mjs sets the two one after the other (`draw`).
+        readonly property var spot: {
+            const list = overlay.zones;
+            const i = overlay.hovered;
+            return i >= 0 && i < list.length ? list[i] : null;
+        }
         readonly property int pad: Math.round(labelText.font.pixelSize * 0.6)
 
-        visible: overlay.label !== "" && row !== null
-        x: row ? Math.round(row.x + (row.width - width) / 2) : 0
-        y: row ? row.y + row.height + Math.round(pad / 2) : 0
+        visible: overlay.label !== "" && (row !== null || spot !== null)
+        x: row ? Math.round(row.x + (row.width - width) / 2)
+           : spot ? Math.round(spot.x + (spot.width - width) / 2) : 0
+        y: row ? row.y + row.height + Math.round(pad / 2) : spot ? spot.y + 2 * pad : 0
         width: Math.ceil(labelText.implicitWidth) + 2 * pad
         height: Math.ceil(labelText.implicitHeight) + pad
         radius: 6

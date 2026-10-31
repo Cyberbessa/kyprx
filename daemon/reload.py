@@ -80,9 +80,13 @@ def effects_known() -> tuple[list[str], list[str]] | None:
     """The effects the compositor can load, and the ones it is running -- or None when it cannot
     be asked, which is no session at all rather than no effects.
 
-    The first list is what the compositor found installed; the second what it has loaded. An
-    effect that is on in `kwinrc` and in the first list but not the second is one the compositor
-    tried and could not run: for a compiled plugin, one built for another version of KWin.
+    The first list is what the compositor found installed, read from each plugin's metadata
+    alone; the second what it has loaded. An effect that is on in `kwinrc` and in the first list
+    but not the second is one the compositor tried and could not run. For a compiled plugin that
+    has three causes, which these lists cannot tell apart: a build for another version of KWin, a
+    library that would not load, or the effect refusing to run, as Better Blur DX does without
+    OpenGL (KWin 6.8's `effectloader.cpp` and the effect's `supported`, read in both sources).
+    `requirements` tells the first apart by the build tag in the plugin's own file.
     """
     try:
         obj = dbus.SessionBus().get_object(KWIN, "/Effects")
@@ -94,20 +98,15 @@ def effects_known() -> tuple[list[str], list[str]] | None:
     return listed, loaded
 
 
-def decoration_running() -> str | None:
-    """The window decoration the compositor is drawing with, or None when it cannot be asked.
-
-    Read from `supportInformation`, the text System Settings' *About this system* copies, whose
-    `Decoration` section names the plugin (`Plugin: org.kde.klassy`) -- the only place the
-    compositor says it. When the configured decoration cannot be loaded, the compositor falls back
-    to its default and this names that instead.
-    """
+def support_information() -> str | None:
+    """The text System Settings' *About this system* copies, or None when the compositor cannot be
+    asked. It says which decoration the compositor draws with (`decoration_in`) and which version
+    of it runs (`version_in`), so a caller that wants both asks once."""
     try:
         obj = dbus.SessionBus().get_object(KWIN, "/KWin")
-        info = str(dbus.Interface(obj, KWIN).supportInformation())
+        return str(dbus.Interface(obj, KWIN).supportInformation())
     except dbus.DBusException:
         return None
-    return decoration_in(info)
 
 
 def kwin_version() -> tuple[int, ...] | None:
@@ -115,12 +114,8 @@ def kwin_version() -> tuple[int, ...] | None:
     cannot be asked. From `supportInformation`, whose first section says `KWin version: 6.8.1`:
     the one running, not the one installed, which an update replaces under a session that goes
     on running the old one."""
-    try:
-        obj = dbus.SessionBus().get_object(KWIN, "/KWin")
-        info = str(dbus.Interface(obj, KWIN).supportInformation())
-    except dbus.DBusException:
-        return None
-    return version_in(info)
+    info = support_information()
+    return None if info is None else version_in(info)
 
 
 def version_in(info: str) -> tuple[int, ...] | None:
@@ -151,8 +146,32 @@ def active_output() -> str:
         return ""
 
 
+def virtual_desktops() -> list[dict] | None:
+    """The compositor's virtual desktops, in its order, each `{"number", "id", "name"}` -- the
+    number counting from 1 -- or None when it cannot be asked.
+
+    Read from `desktops` on `/VirtualDesktopManager`, which answered `a(uss)` on the owner's desk:
+    the position from 0, the desktop's id and its name, for seven desktops (measured with `busctl`;
+    the interface's own introspection says `a(iss)`, so the position goes through `int` either
+    way). A read, so a dry run asks it too (`scripts/buswatch.py` allows `Properties.Get`)."""
+    try:
+        obj = dbus.SessionBus().get_object(KWIN, "/VirtualDesktopManager")
+        props = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+        listed = props.Get("org.kde.KWin.VirtualDesktopManager", "desktops", timeout=2)
+    except dbus.DBusException:
+        return None
+    try:
+        return [{"number": int(position) + 1, "id": str(ident), "name": str(name)}
+                for position, ident, name in listed]
+    except (TypeError, ValueError):
+        return None
+
+
 def decoration_in(info: str) -> str:
-    """The plugin named in the `Decoration` section of the compositor's support information."""
+    """The plugin named in the `Decoration` section of the compositor's support information
+    (`Plugin: org.kde.klassy`) -- the only place the compositor says which decoration it draws
+    with. When the configured decoration cannot be loaded, the compositor falls back to its
+    default, and this names that instead."""
     lines = info.splitlines()
     for i, line in enumerate(lines):
         if line.strip() == "Decoration":

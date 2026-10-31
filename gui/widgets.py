@@ -48,6 +48,8 @@ SECTION_HINTS = {
     "Arrangements": "Which of your zone layouts automatic tiling lays a screen out by for each "
                     "number of windows on it, and which arrangements Next Layout and Previous "
                     "Layout walk through, in order.",
+    "Desktops": "Which arrangement each virtual desktop starts on, at login and whenever you "
+                "choose here. Next Layout moves a screen on from it until you log out.",
     "Zone layouts": "The ways a screen can be divided, which the arrangements are made of. The "
                     "ticked ones are offered when a window is dragged, in this order, and with "
                     "automatic tiling off, Next Layout and Previous Layout walk through them.",

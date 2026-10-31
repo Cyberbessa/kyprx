@@ -108,9 +108,12 @@ it. They are described here in the order the box has them.
 
 **Automatic tiling.** On, KyprX lays the windows out by the screen's arrangement as they open and
 close: a window that opens takes a zone, and when one closes the others close up. Off is manual
-tiling: windows stay where they are put, and dragging one offers the zones to drop it in (see
+tiling: windows stay where they are put, and a window dragged through the bar at the top of the
+screen, or with Shift held, is offered the zones to drop it in (see
 [Dragging a window](#dragging-a-window)). Switched off, every window stays where it is; switched
-back on, every window is laid out again. KyprX's default: on.
+back on, every window is laid out again. KyprX's default: on. The same switch is in the strip
+above the tabs ([Automatic tiling](README.md#automatic-tiling)), one click from any tab; the two
+boxes always show the same.
 
 **Toggle Automatic Tiling**, **Meta+T** unless you changed it on the
 [Shortcuts](shortcuts.md#layouts) tab, switches it from anywhere, for every screen,
@@ -152,13 +155,13 @@ layout is for four. The three answers:
 
 - **Open it on a new desktop.** The window goes to a desktop of its own, made for it, and is tiled
   there (see [A window that opens with every zone taken](#a-window-that-opens-with-every-zone-taken)).
-  KyprX's default.
+  Making that desktop, and removing it once nothing is on it, each stops the screen for a moment.
 - **Let it float over the others.** The window floats in the middle of the screen at three quarters
   of its size, never smaller than it can be, and the tiled windows stay as they are. **Toggle
-  Float** tiles it, and it squeezes in.
+  Float** tiles it, and it squeezes in. KyprX's default.
 - **Squeeze it in by splitting the last zone.** The last zone is split in half along its longer
-  side, the new window taking the second half, and again for each window more (see
-  [Arrangements](#arrangements)).
+  side, the new window taking the second half, and again for each window more, up to nine windows
+  on the screen (see [Arrangements](#arrangements)).
 
 This is for a window that opens: one that comes back to a full screen, from being minimised, from
 floating or from another screen, always squeezes in. Greyed while **Automatic tiling** is off.
@@ -331,8 +334,8 @@ when you press Toggle Float on it. A window you are dragging or resizing, and a 
 full-screen one, is never moved for room nor the one that floats.
 
 While it floats waiting for room, the window counts as one of the screen's windows for **When the
-arrangement is full**. Let go over a zone with the mouse, it stays there, floating, and no longer
-waits. The size keys and a dragged edge start from the lines as you see them, moved for room or
+arrangement is full**. Dragged through the bar at the top of the screen and let go over a zone, it
+stays there, floating, and no longer waits. The size keys and a dragged edge start from the lines as you see them, moved for room or
 not, and a line you move then stays where you put it, with the lines moved for room
 (KNOWN-ISSUES).
 
@@ -361,9 +364,17 @@ An **arrangement** is how automatic tiling divides a screen for each number of w
 screen for one window, and for two windows and more, one of your zone layouts with that many zones
 ([Zone layouts](#zone-layouts)), up to the last one it has. A window that opens when every zone of
 that last layout is taken does what [When the arrangement is full](#automatic-tiling) says: by
-default, it opens on a new desktop. A window that squeezes in, as one that comes back to a full
+default, it floats over the others. A window that squeezes in, as one that comes back to a full
 screen always does, is fitted by cascading from the last layout: the last zone is split in half
 along its longer side, the newest window taking the second half, and again for each window more.
+
+**A screen lays out nine windows at most.** A tenth that joins it -- whatever **When the arrangement
+is full** says, since a window that comes back always squeezes in -- floats in the middle of the
+screen, waiting for room, as a window bigger than its zone does
+([A window bigger than its zone](#a-window-bigger-than-its-zone)), and is tiled again by itself as
+soon as one of the nine goes. Nine is the most an arrangement has layouts for, and the most windows
+whose room KyprX was measured working out quickly: past it, working out the room again at every
+window that opened or closed froze the screen.
 
 Each screen is on one arrangement, and **Next Layout** and **Previous Layout**, the layout keys,
 move the screen in use to the next or the previous one in the rotation while **Automatic tiling**
@@ -446,7 +457,35 @@ same.
 An arrangement has layouts for up to 9 windows. Once it has the one for 9, the plus card, **10
 windows**, adds nothing: it is not greyed, and clicking it says why in the line, as its tooltip
 does. A tenth window that opens does what **When the arrangement is full** says, and one that comes
-back squeezes in.
+back waits for room, floating, as every window past nine on a screen does.
+
+## Desktops
+
+The box under Arrangements shows the desktop's virtual desktops, in the desktop's order, one card
+each: its name, the arrangement it starts on, and that arrangement's last layout drawn above them.
+Click a card for a menu of the arrangements: choose one, and every screen showing that desktop goes
+to it at once, and starts on it from then on, after every login too; **First in the rotation**,
+first in the menu with that arrangement's name beside it, is what a desktop with no choice starts
+on. A card is ringed while its desktop has a choice of its own. The pointer resting on a card says
+what it starts on.
+
+- **Next Layout** and **Previous Layout** still move a screen on from its desktop's arrangement, as
+  far as the next login; the box goes on showing the choice, which is where the desktop starts.
+- **By name.** A desktop is known here by its name, so renaming it in the desktop's settings puts
+  it back on the first in the rotation until you choose again. A choice made for a name this
+  computer does not have -- carried by a KyprX folder another computer shares -- stays, and applies
+  to a desktop given that name.
+- **The desktops KyprX makes** for a window that finds every zone taken are not listed: they start
+  on the arrangement of the desktop they were made from
+  ([A window that opens with every zone taken](#a-window-that-opens-with-every-zone-taken)).
+- **Every screen and every activity** showing a desktop starts on its choice.
+- **An arrangement deleted** under Arrangements leaves the desktops chosen for it on the first in
+  the rotation.
+
+The box folds with **Automatic tiling** off, as Arrangements does, since no window is laid out by
+an arrangement then. When the desktop could not be asked which desktops it has, the box says so and
+lists none. The choice travels in the KyprX folder's `tiling.json`, and **Restore KyprX's
+defaults…** leaves it as it is, as it leaves the arrangements.
 
 ## Zone layouts
 
@@ -652,20 +691,29 @@ either can be changed:
 
 ## Dragging a window
 
-While you drag a window with the mouse, KyprX shows its zones:
+**A window you drag goes where you let it go.** While you drag it, a bar of thumbnails runs across
+the top of the screen under the pointer: **Whole screen** first, one zone that is the whole
+screen, then the zone layouts a drag offers, in the order of the Zone layouts box, the first twelve
+of them, and after them the one the screen is on when it is not among those. Under the bar is the
+name of the zone layout the screen offers, whether **Show names on screen** is on or off. The bar
+shows on every drag with **Automatic tiling** off, and with it on, on the drag of a floating window
+-- KyprX's settings window among them.
 
-- with **Automatic tiling** off, on every drag;
-- with **Automatic tiling** on, on the drag of a floating window, and on the drag of a tiled window
-  only while you hold Shift during the drag.
+**KyprX's zones show once the pointer has been through the bar**, and stay until you let go: drag
+the window up into the bar and back down, and the zones of the zone layout the screen offers are
+drawn over each screen, the zone under the pointer washed in the desktop's highlight colour. A drag
+that starts with the pointer in the bar, above it or beside it -- a maximised window taken anywhere
+on its title bar -- has to go below the bar first and come back up into it, so pulling a maximised
+window down never shows the zones on its own. The zones also show while you hold Shift, for as long
+as you hold it, and, with **Automatic tiling** off, after you press **Next Layout** or **Previous
+Layout** during the drag ([The layout keys](#the-layout-keys)).
 
-The zones are drawn over each screen, those of the zone layout the screen offers, and the zone
-under the pointer is washed in the desktop's highlight colour. Across the top of the screen under
-the pointer runs a bar of thumbnails: **Whole screen** first, one zone that is the whole screen,
-then the zone layouts a drag offers, in the order of the Zone layouts box, the first twelve of
-them, and after them the one the screen is on when it is not among those. Move the pointer over
-one, and its zones are the ones offered, on that screen, from then on. Under the bar is the name of
-the one under the pointer, or of the one whose zones are shown, whether **Show names on screen** is
-on or off. The bar stays as the drag first drew it until you let go.
+**Pass over a thumbnail** once the zones show, and its zones are the ones offered, on that screen;
+the name under the bar is that thumbnail's. The bar stays as the drag first drew it until you let
+go. Let go in one of its zones and that zone layout stays on the screen; let go anywhere else -- on
+the bar, at the top edge, where there are no zones, or with **Esc** -- and the screen goes back to
+the zone layout it had, so that a window dragged up past the bar does not change the zones of every
+later drag.
 
 **Which zone layout a screen offers.** Each screen starts on its arrangement's own: of the zone
 layouts the arrangement uses, the one for the most windows that a drag offers, or the first zone
@@ -676,25 +724,41 @@ in the bar, or with the layout keys, stays on the screen until then. One that is
 drag no longer offers, sends the screen back to its arrangement's own; **Whole screen**, picked,
 stays.
 
-**Let go over a zone**, and the window takes that zone and floats there. A tiled window dragged
-there with Shift leaves the tiling, and the windows it leaves close up; **Toggle Float** puts it
-back. A window is never made smaller than it can be: one whose own minimum size is larger than the
-zone keeps that size, at the zone's corner.
+**Let go over a zone**, and the window takes that zone and floats there. A window is never made
+smaller than it can be: one whose own minimum size is larger than the zone keeps that size, at the
+zone's corner.
 
-**Let go anywhere else**, and a tiled window swaps places with the tiled window under the pointer,
-on this screen or another, or goes back to its own place when there is none — as it does over a
-screen KyprX leaves alone ([Ignored screens](#never-tiled)). A floating window stays where you let
-it go. A window KyprX would tile, dragged
-from an ignored screen and let go on a screen KyprX tiles, joins that screen's layout at the
-end.
+**A tiled window** -- one KyprX laid out with **Automatic tiling** on -- shows no bar and no zones
+unless you hold Shift. Let go over another tiled window, it swaps places with it, on this screen or
+another; let go anywhere else, it goes back to its own place -- as it does over a screen KyprX
+leaves alone ([Ignored screens](#never-tiled)). With Shift held it shows the bar and the zones at
+once, and let go over a zone it leaves the tiling, and the windows it leaves close up; **Toggle
+Float** puts it back. A window KyprX would tile, dragged from an ignored screen and let go on a
+screen KyprX tiles, joins that screen's layout at the end. If **Automatic tiling** is switched off
+while you drag a tiled window, the rest of that drag is one with it off: the bar shows, and the
+zones once the pointer has been through it.
 
 **Esc** during a drag puts the window back where it started, and nothing else happens.
+
+**The top edge maximises.** Drag a window until the pointer touches the top of the screen -- the
+top 5 pixels of the area windows can use, or a panel along the top -- and the whole of that area is
+washed in the highlight colour and named **Maximize**, under the bar or, where no bar shows, at the
+top of the area; let go there and the window is maximised. It does this only while the desktop's
+own setting for it is on: **Maximize: Windows dragged to top edge**, on the Screen Edges page of
+System Settings, which is on unless you switched it off; a change there counts once the desktop
+reads its settings again, which it does when the change is applied. It wins over the bar and the
+zones, for any window that can be maximised: a tiled one keeps its place in the layout, and takes
+it again when you restore it. The desktop's own action for the top edge stays off while KyprX
+tiles, and KyprX does the maximising instead, without the desktop's own animation; the desktop's
+tiling at the side edges stays off too (see below).
 
 **Holding Shift** is read from the desktop itself: no part of the desktop tells KyprX which keys are
 held, but while Shift is held during a drag, KWin draws an outline of one of its own tiles, and
 KyprX hides it and shows its zones instead. Where KWin's own tile layout for the screen is empty,
 KWin draws no outline, and Shift shows nothing
-(KNOWN-ISSUES).
+(KNOWN-ISSUES). To drag with **Meta** and the left button, which
+moves a window by any point of it, hold Meta alone as you press the button and add Shift once the
+window moves: with Meta and Shift both held as the button goes down, the desktop starts no move.
 
 **Dragging the edge of a tiled window** moves the line on that side of its zone, and the windows
 beside it follow, as you drag or when you let go (see
@@ -706,10 +770,12 @@ without Meta held, puts the window and its neighbours back. The size keys on the
 **The desktop's own screen-edge actions are off while KyprX tiles**: the ones that maximise a
 window dragged to the top edge of the screen and tile one dragged to a side edge. They are switched
 off in the compositor's memory only, so System Settings still shows them as you set them, and they
-are back as soon as KyprX's tiling stops.
+are back as soon as KyprX's tiling stops. The top edge's maximise is KyprX's own meanwhile, as
+above.
 
 A window KyprX never tiles (see [Never tiled](#never-tiled)) is dragged the desktop's own way, with
-nothing of KyprX's.
+nothing of KyprX's but the top edge's maximise; held with Shift, it is the desktop's own tiling,
+and the top edge is left to that.
 
 ## The layout keys
 
@@ -725,7 +791,9 @@ tab, act on the screen in use. What they move it along depends on **Automatic ti
   screen is on now are drawn on it for a little over a second, whether **Show names on screen** is
   on or off; with it on, the name card names that zone layout, with **Zones offered when you drag
   a window** under the name. A drag that starts meanwhile takes those zones away and shows its
-  own, and a key pressed while a window is being dragged changes the zones that drag offers.
+  own, and a key pressed while a window is being dragged changes the zones that drag offers and
+  shows them, as passing through the bar does; the zone layout the key moved to stays, wherever
+  you let go.
 
 Both go round: **Next Layout** from the last one to the first, and **Previous Layout** from the
 first to the last. On a screen KyprX's tiling leaves alone they do nothing and show nothing
@@ -780,8 +848,9 @@ there, too, the order of its windows, the lines between them as you last moved t
 of windows, and the zone layout a drag offers there ([Dragging a window](#dragging-a-window)). A
 screen starts on the first arrangement in the rotation, and on that arrangement's own zone layout,
 and a window that opens on a screen is laid out by that screen's arrangement, the others staying
-where they are. On a desktop KyprX made for a window that found every zone taken, the window's
-screen starts on the arrangement and the zone layout of the desktop the window came from instead
+where they are -- unless its desktop has an arrangement of its own under [Desktops](#desktops),
+which it starts on instead. On a desktop KyprX made for a window that found every zone taken, the
+window's screen starts on the arrangement and the zone layout of the desktop the window came from
 ([A window that opens with every zone taken](#a-window-that-opens-with-every-zone-taken)). The
 lines KyprX moves by itself to give a window the room it needs are not kept: they go back once
 that window closes or needs less. Two windows that traded places for room keep the new order
@@ -799,8 +868,8 @@ again. A maximised or full-screen window keeps its place and is not moved, and g
 when it is made ordinary again.
 
 All of this lasts as long as the session. After you log out, or when the compositor restarts,
-every screen starts again on the first arrangement in the rotation
-(KNOWN-ISSUES). The lines you moved for an arrangement are also
+every screen starts again on its desktop's arrangement under [Desktops](#desktops), or on the
+first in the rotation where none is chosen (KNOWN-ISSUES). The lines you moved for an arrangement are also
 forgotten when the layouts it lays a screen out by change, such as another zone layout chosen for
 one of its numbers of windows, a layout added or removed, or a divider moved in a zone layout it
 uses — even when the change comes in while KyprX's tiling is switched off, as when a copy of the

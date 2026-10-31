@@ -58,7 +58,12 @@
 //    object, which changes nothing on disk; a reconfigure reads the person's values back and says
 //    so with `configChanged` (measured), so each `configChanged` takes those fresh values as the
 //    ones to give back and sets them false again. They are given back when the tiling stops and
-//    when the script goes.
+//    when the script goes. The side edges' quick tiling would fight the zones, and the top edge's
+//    maximize draws its preview with the very outline Shift draws (`setElectricBorderMaximizing`
+//    shows the Workspace's outline, read in KWin 6.7's source), which the drag would take for Shift
+//    and hide (drag.mjs). So KyprX maximizes a window let go at the top edge itself, by KWin's own
+//    rule, while the person's value for it -- the one kept to give back -- is on
+//    (`maximizeAtTop`); the side edges stay off.
 // 5. **What the compositor says while it is being called is put off.** `Workspace.createDesktop`
 //    and `removeDesktop` bring `desktopsChanged` before they return (measured in the sandbox's
 //    facts scenario), a switch of desktop brings `currentDesktopChanged` once per screen, and
@@ -109,6 +114,18 @@ export const MOST_BACK = 3;
 // stands has to be still before a move of its own, or a pass of its screen that gives it the same
 // zone, starts a new round (`byItself`, `stillThere`). An estimate, not a measurement.
 export const AGAIN_MS = 10000;
+
+// The most windows a surface lays out at once: a window that joins one with this many tiled waits
+// for room, floating, as one that gives way does, and is tiled again by itself as soon as one of
+// them goes (`planned`). The same as the most layouts an arrangement has (`MAX_WINDOWS` in
+// daemon/tiling.py, held to this by tests/test_script_contract.py), and the largest case the room
+// was measured on: nine windows that each need a whole column's height took 1399 fits, 170 to 200
+// ms in PySide6's QJSEngine, for the pass the ninth joined in (`roomNine`). Past it nothing capped
+// the room's search, which grows with the cube of the windows: squeezing in by splitting the last
+// zone, the owner saw the screen freeze at every window opening or closing past a dozen, the
+// cascade's zones too small for each window's minimum and every pass trying each window's leaving
+// over again.
+export const MOST_TILED = 9;
 
 // The most desktops a script can have. Measured in the sandbox's facts scenario: from one, 24
 // `createDesktop` calls made 24 desktops, and the next was ignored without a word.
@@ -189,7 +206,9 @@ function whole(value, fallback) {
 //
 // The zone layouts come as `pool` (`poolOf`), and with them, through `slots`, each arrangement's
 // own (`homesOf`): `zones` finds a zone layout by its id, and `homes` an arrangement's own by the
-// arrangement's.
+// arrangement's. `desktops` is the arrangement each desktop starts on, by the desktop's name, as
+// the Tiling tab chose it (`startOf`); an answer from before it has none, and every desktop starts
+// on the first arrangement in the rotation, as it did.
 export function settingsOf(answer) {
     const gaps = answer.gaps || {};
     const float = answer.float || {};
@@ -226,7 +245,23 @@ export function settingsOf(answer) {
         zones: zones,
         // `slots` name zone layouts of the answer's pool, and none of one made here.
         homes: homesOf(arrangements, pool, Array.isArray(answer.pool) ? answer.slots : null),
+        desktops: desktopsOf(answer.desktops),
     };
+}
+
+// The arrangement chosen for each desktop, by name, in a Map: an entry that is not text to text is
+// passed over, and so is anything that is not an object.
+function desktopsOf(chosen) {
+    const out = new Map();
+    if (!chosen || typeof chosen !== "object" || Array.isArray(chosen)) {
+        return out;
+    }
+    Object.keys(chosen).forEach(function (name) {
+        if (typeof chosen[name] === "string") {
+            out.set(name, chosen[name]);
+        }
+    });
+    return out;
 }
 
 // The zone layouts, in the pool's order, each `{id, name, drag, tree, text}`: the answer's `pool`,
@@ -405,6 +440,9 @@ export function create(env) {
         auto: function () { return !!state.settings && state.settings.auto; },
         live: function () { return !!state.settings && state.settings.live; },
         gaps: function () { return state.settings.gaps; },
+        // Whether a window let go at the top edge is maximized: the person's own value of the
+        // compositor's top-edge maximize, as the last reconfigure read it (point 4 at the top).
+        maximizeAtTop: function () { return !!state.borders && state.borders.maximize === true; },
         log: log,
         kindOf: kindOf,
         keepsSlot: keepsSlot,
@@ -665,16 +703,56 @@ export function create(env) {
         return state.settings.arrangements.filter(function (a) { return a.cycle !== false; });
     }
 
-    // The surface's arrangement. One whose id is gone -- deleted or renamed away on the Tiling
-    // tab -- falls back to the first in the rotation, and a new surface starts there.
+    // The surface's arrangement. A new surface starts on the one its desktop starts on
+    // (`startOf`), and one whose arrangement is gone -- deleted on the Tiling tab -- goes back to
+    // it.
     function arrangementOf(s) {
         const list = state.settings.arrangements;
         let a = list.find(function (x) { return x.id === s.arrangement; }) || null;
         if (!a) {
-            a = rotation()[0] || list[0];
+            a = startOf(s);
             putOn(s, a);
         }
         return a;
+    }
+
+    // The arrangement a surface's desktop starts on: the one the Tiling tab chose for the
+    // desktop's name -- for one KyprX made, the name of the desktop it was made from
+    // (`baseName`) -- when it is an arrangement of the answer's, and the first in the rotation
+    // otherwise. By name, as the tab chooses it, so that the choice outlives a login, where a
+    // desktop keeps its name; and Next and Previous Layout move a screen on from it until the
+    // next one, as they always did.
+    function startOf(s) {
+        const list = desktopList();
+        const d = list.find(function (x) { return String(x.id) === s.desktop; }) || null;
+        const chosen = d ? state.settings.desktops.get(baseName(d, list)) : undefined;
+        const all = state.settings.arrangements;
+        return all.find(function (x) { return x.id === chosen; }) || rotation()[0] || all[0];
+    }
+
+    // The names of the desktops whose chosen arrangement differs between two answers.
+    function choicesMoved(before, after) {
+        const was = before ? before.desktops : new Map();
+        const names = new Set(Array.from(was.keys()).concat(Array.from(after.desktops.keys())));
+        return Array.from(names).filter(function (name) {
+            return was.get(name) !== after.desktops.get(name);
+        });
+    }
+
+    // Every surface of a desktop whose chosen arrangement changed onto it at once, on every
+    // screen and activity -- those of the desktops KyprX made from it too -- and only those: an
+    // answer that changes something else leaves a screen Next Layout moved where it is.
+    function startAgain(names) {
+        if (!names.length) {
+            return;
+        }
+        const list = desktopList();
+        state.surfaces.forEach(function (s) {
+            const d = list.find(function (x) { return String(x.id) === s.desktop; }) || null;
+            if (d && names.indexOf(baseName(d, list)) >= 0) {
+                putOn(s, startOf(s));
+            }
+        });
     }
 
     // A surface onto an arrangement, and its zone layout with it, to the arrangement's own.
@@ -1169,6 +1247,10 @@ export function create(env) {
     //    that joined the surface last (`joinedOn`); when no one window's leaving does, the newest
     //    of those still short, and the choice is made again among the rest.
     //
+    // Before any of it, past MOST_TILED windows the ones that joined last wait for room without
+    // being tried, so a pass never works out the room of more than MOST_TILED windows, whatever
+    // the setting for a window that finds every zone taken.
+    //
     // A window that keeps its slot, or is in the person's hand, is never traded and never the one
     // that gives way, and stays what it was to the room: tiled, what a held one needs counts all
     // the same -- one that keeps its slot needs nothing of it, since it is not laid out in it --
@@ -1272,6 +1354,13 @@ export function create(env) {
             }
             return true;
         });
+        // Past MOST_TILED, the newest that can move wait, untried (the comment on MOST_TILED).
+        const over = left.filter(function (id) { return known.get(id).movable; })
+            .sort(newestFirst);
+        for (let i = 0; left.length > MOST_TILED && i < over.length; i++) {
+            left = without(left, over[i]);
+            out.push(over[i]);
+        }
         let tried = attempt(s, a, area, left, known);
         for (let guard = 0; guard < list.length && shortOf(tried, known).length; guard++) {
             const order = left.filter(function (id) { return known.get(id).movable; })
@@ -1993,11 +2082,15 @@ export function create(env) {
         // Automatic tiling switched by this answer, from wherever: the name card says it only for
         // Toggle Automatic Tiling's (`autoSaid`).
         const flipped = !!before && before.auto !== settings.auto;
+        // Against the last answer that carried arrangements, as `edited` reads: the daemon's
+        // answer when it could not resolve the settings carries none, and no choice either.
+        const chose = settings.arrangements.length ? choicesMoved(state.made, settings) : [];
         if (settings.arrangements.length) {
             edited(state.made, settings);
             state.made = settings;
         }
         state.settings = settings;
+        startAgain(chose);
         if (!settings.tiling) {
             // The key does nothing while nothing tiles, and a press before the tiling stopped is
             // not one an answer after it is said for.
@@ -2932,17 +3025,25 @@ export function create(env) {
         return cell ? state.records.get(cell.id) || null : null;
     }
 
-    // A window let go after a drag. Over a zone it is put there and floats -- a tiled window that
-    // came by Shift leaves the tiling. Anywhere else a tiled window swaps with the tiled window
-    // under the cursor or goes back to its place, and a floating one stays where it was let go. A
-    // tiled window in no layout where it comes from -- on a screen kept out of the tiling -- has no
-    // place to swap or go back to, so it is counted where it was let go, as a floating one is.
+    // A window let go after a drag. At the top edge (`maximize`) it is maximized -- a tiled window
+    // keeps its place in the layout, on the screen it was let go on, and takes it again when it is
+    // restored (`keepsSlot`). Over a zone it is put there and floats -- a tiled window that came by
+    // Shift leaves the tiling. Anywhere else a tiled window swaps with the tiled window under the
+    // cursor or goes back to its place, and a floating one stays where it was let go. A tiled
+    // window in no layout where it comes from -- on a screen kept out of the tiling -- has no place
+    // to swap or go back to, so it is counted where it was let go, as a floating one is.
     function dropped(rec, drop) {
         if (state.disposed || !state.on || !state.records.has(rec.id)) {
             return;
         }
         untarget(rec);
         const from = rec.key;
+        if (drop.maximize) {
+            rec.w.setMaximize(true, true);
+            settle(rec, false);
+            schedule(from);
+            return;
+        }
         if (drop.zone) {
             rec.w.setMaximize(false, false);
             write(rec, G.atLeast(drop.zone, needsOf(rec)));

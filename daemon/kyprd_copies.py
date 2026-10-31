@@ -134,7 +134,7 @@ class CopiesPart:
                 {"seen": sorted(self.state.seen), "refuses_ssd": sorted(self.state.refuses_ssd)},
                 {"seen": sorted(state_wanted.get("seen") or []),
                  "refuses_ssd": sorted(state_wanted.get("refuses_ssd") or [])}))
-            if colours.get("mode") in theme.MODES:
+            if self._colours_kept(colours):
                 lines.append(self.set_theme(dict(colours), from_wallpaper=None, preview=True))
             lines.extend(self._restore_shortcuts(desk.get("shortcuts"), preview=True))
             lines.extend(self._restore_wallpaper(desk.get("wallpaper"), preview=True))
@@ -163,7 +163,7 @@ class CopiesPart:
             if refused:
                 trouble.append(f"the profiles did not come back: {refused}")
         trouble.extend(self._restore_shortcuts(desk.get("shortcuts")))
-        if colours.get("mode") in theme.MODES:
+        if self._colours_kept(colours):
             answer = self.set_theme(dict(colours), from_wallpaper=None)
             if answer.startswith("error"):
                 trouble.append(f"the colours did not come back: {answer[len('error: '):]}")
@@ -173,6 +173,15 @@ class CopiesPart:
             self.log("put the copy back, except: " + "; ".join(trouble))
             return "partial: " + "; ".join(trouble)
         return "ok"
+
+    @staticmethod
+    def _colours_kept(colours: dict) -> bool:
+        """Whether a copy's colours are ones it can put back: a mode, and a preset of KyprX's. A
+        desk that wore no preset -- another global theme, or a scheme of its own under Klassy's --
+        is recorded with an empty one, and `set_theme` would read that as the mode's default,
+        Longive for dark: KyprX's look, put on by going back to a desk that did not wear it. So
+        those colours are left as the desk has them (KNOWN-ISSUES says what that leaves)."""
+        return colours.get("mode") in theme.MODES and bool(colours.get("preset"))
 
     def _keys_now(self) -> dict[str, list[list[int]]]:
         """Every key of the fixed shortcut list as the desk holds it, by `shortcuts.qualified`

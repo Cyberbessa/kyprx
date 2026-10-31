@@ -1,0 +1,41 @@
+#!/bin/sh
+# kyprx-blur-check [LIBKWIN] [PLUGIN] -- run by pacman after KWin or Better Blur DX is installed or
+# updated (kyprx-blur.hook). Says so when the blur is built for a KWin other than the one now
+# installed, with the command that builds it again; says nothing otherwise.
+#
+# The tag is the interface id KWin holds an effect to when it loads one, which carries the patch
+# number -- org.kde.kwin.EffectPluginFactory6.8.2 in both libkwin.so.6 and better_blur_dx.so, read
+# in an Arch container -- so 6.8.1 to 6.8.2 is enough to stop the blur loading. It is the tag KyprX's
+# daemon reads too (`built_for`, in daemon/requirements.py). The command is the one the daemon
+# gives (`_build_again`), for the AUR helper installed here: a plain `paru -S` or `yay -S` puts the
+# helper's earlier build of the same version back.
+#
+# It reads two files and the package database, and writes nothing. Anything it cannot read says
+# nothing: a hook that fails prints its failure in the middle of somebody's update.
+LIBKWIN=${1:-/usr/lib/libkwin.so.6}
+PLUGIN=${2:-/usr/lib/qt6/plugins/kwin/effects/plugins/better_blur_dx.so}
+
+tag() {  # MAJOR.MINOR.PATCH after the id, as `_TAG` in daemon/requirements.py reads it
+  grep -aoE 'org\.kde\.kwin\.EffectPluginFactory[0-9]+\.[0-9]+\.[0-9]+' "$1" 2>/dev/null |
+    head -n 1 | sed 's/^org\.kde\.kwin\.EffectPluginFactory//'
+}
+
+[ -f "$PLUGIN" ] && [ -f "$LIBKWIN" ] || exit 0
+installed=$(tag "$LIBKWIN")
+built=$(tag "$PLUGIN")
+[ -n "$installed" ] && [ -n "$built" ] && [ "$installed" != "$built" ] || exit 0
+
+package=$(pacman -Qqo "$PLUGIN" 2>/dev/null | head -n 1)
+package=${package:-kwin-effects-better-blur-dx}
+if command -v paru >/dev/null 2>&1; then
+  command="paru -S --rebuild aur/$package"
+elif command -v yay >/dev/null 2>&1; then
+  command="yay -S --rebuild aur/$package"
+else
+  command="bash -c 'build=\$(mktemp -d) && git clone https://aur.archlinux.org/$package.git \"\$build\" && cd \"\$build\" && makepkg -si; rm -rf \"\${build:?}\"'"
+fi
+echo "KyprX: Better Blur DX is built for KWin $built, and KWin $installed is installed now, so KWin"
+echo "       will not load it. Build it again, as yourself rather than as root:"
+echo "       $command"
+echo "       Then log out and back in."
+exit 0

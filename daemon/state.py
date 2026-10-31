@@ -19,8 +19,9 @@ Only what cannot be read back out of a file is stored. About windows, three thin
 
 Beside those, this app's own settings (`Config`: paused, notifications, the colour from the
 wallpaper, the shared strength, what a new window gets, the cheatsheet's chosen keys, the
-picker's folder and layout); and, while KyprX is taken off the desk, which copy of the desk *Put
-my setup back* restores (`State.off`).
+picker's folder and layout); while KyprX is taken off the desk, which copy of the desk *Put
+my setup back* restores (`State.off`); and whether the settings window still has to ask about
+KyprX's look (`State.look`).
 
 Both files are held to the same promise the config files are: **in dry run nothing here is
 written either.** It is not a detail. Marking a class as seen is what stops the defaults being
@@ -61,14 +62,28 @@ LEGACY_CONFIG_PATH = os.path.expanduser("~/.config/kyprx/config.json")
 #:
 #: 5 is the title bar's opacity keys moving to the names the decoration reads -- see
 #: `migrate.rename_title_bar_keys`. 6 is this app's own two files moving out of what became the
-#: KyprX folder -- see `migrate.move_working_copies`. 7 is Longive as default theme, corner radius
-#: 7.5, and image wallpaper directory support. 4 and 8 have no pass: an install below either is
-#: only stamped, and the number stays 8 so that a file stamped 8 reads as up to date.
+#: KyprX folder -- see `migrate.move_working_copies`. 7 is the declared settings on a fresh install
+#: (`migrate._bootstrap_pass`) and corner radius 7.5 on an older one. 4 and 8 have no pass: an
+#: install below either is only stamped, and the number stays 8 so that a file stamped 8 reads as
+#: up to date.
 #:
 #: Only `migrate._stamp_version` ever raises the number. `State.save` writes back the one it read,
 #: which is what lets a pass that failed run again at the next start: saving used to stamp this
 #: constant, so the first window seen after a failed pass marked it done.
 STATE_VERSION = 8
+
+#: Where the question about KyprX's look stands (`State.look`): to be asked when the settings
+#: window opens; answered by putting KyprX's look on, or by keeping the person's own; or answered
+#: by a KyprX folder that arrived carrying a colour preset, which put its colours on. Colours of
+#: KyprX's put on by any door answer it again after a *Keep my look* (`State.look_went_on`). A
+#: first start puts nothing of the look on, the owner's choice, so an install that never had it is
+#: asked once (`DefaultsPart.look_offer`). An install that was already set up when the question
+#: came to exist has no answer and is never asked: it reads as "".
+LOOK_DUE = "due"
+LOOK_KYPRX = "kyprx"
+LOOK_OWN = "own"
+LOOK_FOLDER = "folder"
+LOOKS = (LOOK_DUE, LOOK_KYPRX, LOOK_OWN, LOOK_FOLDER)
 
 #: What the wallpaper picker's choices may be. Neither the mode nor the layout is stored anywhere
 #: else -- which one is on is read from the shell, by `wallpaper.mode_of`, and the layout is
@@ -121,6 +136,29 @@ def own_strengths(listed) -> dict:
         number = own_strength(value)
         if str(window_class).strip() and number is not None:
             out[str(window_class).strip()] = number
+    return out
+
+
+#: The switches the Windows tab's column boxes set for every window at once, and so the ones a window
+#: can keep as set by hand (`Config.kept`). The outline is not among them: the tab has no column
+#: for it.
+KEPT_SWITCHES = ("titlebar", "transparency", "blur")
+
+
+def kept_switches(listed):
+    """The windows that keep switches as set by hand, as read from a file somebody may have edited:
+    a class-to-names mapping, each list holding only names from `KEPT_SWITCHES`, once each, in that
+    order, and a class with none left out. Anything that is not such a mapping -- a file from before
+    the column boxes, which has no key -- is None, which the daemon reads as *not yet looked for*
+    (`WindowsPart.seed_kept`) rather than as no window keeping anything."""
+    if not isinstance(listed, dict):
+        return None
+    out = {}
+    for window_class, names in listed.items():
+        named = {str(n) for n in names} if isinstance(names, list) else set()
+        kept = [n for n in KEPT_SWITCHES if n in named]
+        if str(window_class).strip() and kept:
+            out[str(window_class).strip()] = kept
     return out
 
 
@@ -376,6 +414,18 @@ class Config:
     #: forced 100 and no rule at all look the same, so "this tick was chosen" exists only here.
     ticked_at_100: list = field(default_factory=list)
     defaults: Defaults = field(default_factory=Defaults)
+    #: The switches each window keeps as somebody set them on its row, by window class: the cells a
+    #: column's box on the Windows tab leaves alone when it sets every other window
+    #: (`WindowsPart.set_column`). A row ticked unlike its column's box keeps that switch; ticked
+    #: like it again, it follows the column. Only the three switches the column boxes set
+    #: (`KEPT_SWITCHES`), and only for the windows KyprX manages.
+    #:
+    #: Stored, like `own_transparency` above, because it cannot be read back: a window whose title
+    #: bar shows because somebody showed it reads exactly like one whose title bar shows because
+    #: nothing hid it. None until the daemon has looked once at the windows set unlike the defaults
+    #: before the boxes existed, and kept them (`WindowsPart.seed_kept`) -- so the first click on a
+    #: column cannot undo choices made before it.
+    kept: dict | None = None
     #: Which key combination the cheatsheet shows, for the actions that carry more than one.
     #: Keyed by `shortcuts.qualified`, and the value is the whole sequence rather than a position
     #: in the action's list — a position means nothing the moment the desktop reorders or drops
@@ -457,6 +507,7 @@ class Config:
                    own_transparency=own_strengths(d.get("own_transparency")),
                    ticked_at_100=ticks if strength >= 100 else [],
                    defaults=defaults,
+                   kept=kept_switches(d.get("kept")),
                    cheatsheet_keys=chosen_keys(d.get("cheatsheet_keys")),
                    wallpaper={"video_dir": str(paper.get("video_dir",
                                                           _DEFAULT_WALLPAPER["video_dir"])),
@@ -500,6 +551,13 @@ class State:
         #: defaults before this daemon starts, and a daemon that had forgotten them would write
         #: those defaults out into the folder.
         self.owed_keys: dict[str, list[list[int]]] = owed_of(d.get("owed_keys"))
+        #: Where the question about KyprX's look stands, one of `LOOKS`. The first start stamps it
+        #: due (`migrate._stamp_version`); a file still at version 0 -- missing, a dry run's first
+        #: start, a first start whose passes failed -- reads as due too, since nothing of the look
+        #: went on there either. An install at a version and without the key was set up before
+        #: the question existed, and reads as "", which is never asked.
+        raw = d.get("look")
+        self.look = raw if raw in LOOKS else (LOOK_DUE if self.version == 0 else "")
 
     @staticmethod
     def _names(listed) -> set[str]:
@@ -516,7 +574,22 @@ class State:
             data["app_version"] = self.app_version
         if self.owed_keys:
             data["owed_keys"] = {k: [list(s) for s in v] for k, v in sorted(self.owed_keys.items())}
+        if self.look:
+            data["look"] = self.look
         write_json(STATE_PATH, data)
+
+    def look_went_on(self, how: str = LOOK_KYPRX) -> None:
+        """KyprX's colours went on the desk by a door other than the question -- `how`, one of
+        `LOOKS`: a mode or a preset chosen in the Colours box, a profile, a copy of the desk or a
+        KyprX folder that wore a preset, a wallpaper's colour, *Restore defaults*. A question still
+        due is answered by it, and so is a *Keep my look* given earlier, which no longer describes
+        this desk: the Colours box says its findings as that choice (`ThemePart.theme`,
+        `kept_own_look`), and would go on calling something gone wrong since then a choice. An
+        install never asked, or one whose answer already put a look on, is left as it is. Saved
+        only when it moves."""
+        if self.look in (LOOK_DUE, LOOK_OWN) and how != self.look:
+            self.look = how
+            self.save()
 
     def mark_seen(self, window_class: str) -> bool:
         """Returns True the first time a class is seen."""

@@ -217,7 +217,7 @@ NEW_WINDOW_POSITIONS = [
 #: floating in the middle of the screen; 2 squeezed in, the last zone split in half along its
 #: longer side for it and again for each window more -- the cascade, which a window that comes back
 #: to a full screen, from being minimised, from floating or from another screen, gets whatever this
-#: says. Nought is the tiler's default and KyprX's.
+#: says. One is the tiler's default and KyprX's.
 NEW_WINDOW_OVERFLOW = [
     ("0", "Open it on a new desktop"),
     ("1", "Let it float over the others"),
@@ -266,7 +266,8 @@ TILING_FIELDS = [
     ("Automatic tiling", [
         Field("tiling", "", "autoTiling", "Automatic tiling", "bool",
               hint="Windows are laid out by the arrangement as they open and close. Off, they "
-                   "stay where they are put, and dragging one offers the zones to drop it in. "
+                   "stay where they are put, and a window dragged through the bar at the top of "
+                   "the screen, or with Shift held, is offered the zones to drop it in. "
                    "Toggle Automatic Tiling, Meta+T unless you changed it, switches it too."),
         Field("tiling", "", "showOsd", "Show names on screen", "bool",
               hint="A card in the middle of the screen that names what Next Layout or Previous "

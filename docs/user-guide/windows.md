@@ -51,10 +51,44 @@ whatever the case. It changes nothing else, and its clear button empties it.
 
 ## The table
 
-The table has ten columns, in this order: **Window class**, the seven settings **Hide title bar**,
-**Outline**, **Transparency**, **Opacity**, **Blur**, **Float** and **Animate**, then **Status**
-and **Title**. Hover a column's header for a one-line reminder of what it does. Hover a greyed box
-to see why it is greyed on that row.
+The table has nine columns, in this order: **Window class**, the six settings **Hide title bar**,
+**Transparency**, **Opacity**, **Blur**, **Float** and **Animate**, then **Status** and **Title**.
+Hover a column's header for a one-line reminder of what it does. Hover a greyed box to see why it
+is greyed on that row.
+
+### The boxes in the column headers
+
+**Hide title bar**, **Transparency** and **Blur** each have a box in their header, before the
+column's name. It shows what a new window gets, and clicking it -- the box, not the name beside it
+-- changes that column for every window at once and for every window that opens from now on:
+
+- every application KyprX has met and looks after gets the new tick at once, open or not, and
+  nothing else changes, in the column or in any other -- Blur's box reaches the see-through
+  windows, since the blur of an opaque one is not seen and is left for when it is see-through
+  again;
+- a new application gets it when it first opens, while **Adjust new windows** above the tabs is
+  ticked (see [What a new window gets](#what-a-new-window-gets));
+- a cell you set by hand on its row stays as you set it (below).
+
+With a cell of one of those columns selected, **Ctrl+Space** does what clicking its header's box
+does; **Space** alone ticks the cell, as everywhere in the table. While the box goes out the table
+is greyed and the line at the bottom of the window says so.
+
+**A cell you set by hand.** Tick a row's box so that it differs from its header's box -- the title
+bar shown for one application while the header hides it everywhere else, say -- and that cell is
+kept as you set it: a small diamond appears beside its box, its tooltip says so, and the header's
+box never changes it again, whichever way it is clicked. Tick the cell like the header's box again
+and the diamond goes: the cell follows its column from then on. The applications you had set
+unlike KyprX's defaults before these boxes existed are kept the same way, from the first time
+this KyprX starts, so the first click on a header leaves them where they are.
+
+The boxes are greyed while KyprX is off this desk, and Blur's while **Which windows** on the
+[Effects](effects.md) tab is **Every window** or **No window**, or **Blur windows** there is
+switched off, as the column's cells are. **Restore KyprX's defaults…** puts the boxes back to
+KyprX's own values and leaves the cells you set by hand as they are. KyprX's own overlays and the
+windows under
+[Windows that never get the defaults by themselves](#windows-that-never-get-the-defaults-by-themselves)
+are never reached by a header's box.
 
 ### Window class
 
@@ -95,17 +129,6 @@ Unticking it gives the title bar back and takes back what KyprX did for it:
 - When an entry that covers other windows too still hides the bar, KyprX gives this window an
   entry of its own that shows it, and leaves the shared entry alone.
 - **Transparency**, **Opacity** and **Blur** are not changed.
-
-### Outline
-
-Ticked, the theme draws its thin ring around the window. KyprX's default for a new window: ticked.
-
-Unticking it points the window's entry in Klassy's list at a preset called **KyprX No Outline**,
-which turns the outline off and changes nothing else. KyprX creates that preset when it is first
-needed.
-
-Greyed while **Hide title bar** is unticked. The outline setting lives in the same Klassy entry
-that hides the title bar, and KyprX sets it only while the bar is hidden.
 
 ### Transparency
 
@@ -245,7 +268,7 @@ Architecture.
 The shortcut cheatsheet and the wallpaper picker are windows of KyprX's own. They have rows while
 they are open and **System windows** is ticked.
 
-On those rows, **Hide title bar**, **Outline**, **Transparency**, **Opacity** and **Blur** show a
+On those rows, **Hide title bar**, **Transparency**, **Opacity** and **Blur** show a
 grey dash instead of a box. An empty box would say the window has a title bar, and it has none:
 these windows have no frame on purpose, and KyprX never manages them like an application. **Float**
 is locked: the overlays have to float, and KyprX puts them back in its tiling's list of floating
@@ -298,8 +321,7 @@ It happens only while **Adjust new windows**, above the tabs, is ticked
 
 | Column | What a new window gets |
 |---|---|
-| **Hide title bar** | ticked |
-| **Outline** | ticked |
+| **Hide title bar** | ticked, with the theme's thin ring round the window, its outline |
 | **Transparency** | ticked, at the Appearance tab's **Opacity** number (92 % unless you changed it) |
 | **Blur** | ticked |
 | **Float** | nothing: left as the tiling's list already says |
@@ -309,8 +331,10 @@ It happens only while **Adjust new windows**, above the tabs, is ticked
 each of those lists is one list for every window: writing them then would have KyprX's tiling, and
 for the animation's list the whole compositor, read its settings again for nothing.
 
-No control in the window changes these defaults. The one place to change them is `new_windows` in
-the `settings.json` file of the KyprX folder (see [Settings](settings.md), and
+The boxes in the headers of **Hide title bar**, **Transparency** and **Blur** change these
+defaults, and every window met with them ([The boxes in the column headers](#the-boxes-in-the-column-headers)).
+The outline has no control in the window: the one place to change it is `new_windows` in the
+`settings.json` file of the KyprX folder (see [Settings](settings.md), and
 KNOWN-ISSUES for when an edit
 there is taken). **Restore KyprX's defaults…** on the Settings tab puts back the ones above.
 

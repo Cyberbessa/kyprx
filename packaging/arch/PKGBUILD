@@ -2,12 +2,16 @@
 #
 # KyprX for Arch and everything built on it. The four projects KyprX is built on are required, and
 # all four are in the AUR, so an AUR helper installs them with it; the tiling is KyprX's own, so no
-# tiling script is among them. Two of them are compiled against one version of KWin: after a
-# Plasma update they are built again by installing them again. packaging/README.md says how a
-# release reaches the AUR.
+# tiling script is among them. Two of them are compiled against one version of Plasma, and their
+# AUR packages depend on it unversioned -- Better Blur DX on kwin, Klassy on kdecoration -- so a
+# Plasma update leaves them built for the Plasma before it: they have to be built again with
+# `paru -S --rebuild aur/<package>` -- a plain install puts paru's earlier build of the same version
+# back -- and the session started again. For the blur, whose file names the KWin it was built for,
+# the pacman hook installed below says so as the update ends (kyprx-blur.hook). packaging/README.md
+# says how a release reaches the AUR.
 
 pkgname=kyprx
-pkgver=0.2.1
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="KDE-Native Hyprland Experience"
 arch=('any')
@@ -29,4 +33,6 @@ package() {
   python -m compileall -q -d /usr/share/kyprx "$pkgdir/usr/share/kyprx"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 LICENSES/* -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 packaging/arch/kyprx-blur.hook "$pkgdir/usr/share/libalpm/hooks/kyprx-blur.hook"
+  install -Dm755 packaging/arch/kyprx-blur-check "$pkgdir/usr/share/libalpm/scripts/kyprx-blur-check"
 }

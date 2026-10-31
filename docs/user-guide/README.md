@@ -1,6 +1,6 @@
 # The KyprX window
 
-This page is about the window as a whole: how to open it, the strip of three controls above the
+This page is about the window as a whole: how to open it, the strip of four controls above the
 tabs, when a change is written, the line along the bottom, the coloured bands that can appear
 across the top, and how to close it. Each tab has a page of its own, listed under
 [The tabs](#the-tabs).
@@ -9,7 +9,8 @@ From top to bottom the window has:
 
 1. a band across the top, only when there is something to say (see
    [The bands across the top](#the-bands-across-the-top));
-2. the strip with **Adjust new windows**, **Colour from the wallpaper** and **Profile**;
+2. the strip with **Adjust new windows**, **Colour from the wallpaper**, **Automatic tiling** and
+   **Profile**;
 3. the seven tabs;
 4. the line at the bottom, where the window says what it has just done.
 
@@ -17,7 +18,9 @@ From top to bottom the window has:
 
 - **Meta+K** opens it. That is the key KyprX starts with; the [Shortcuts](shortcuts.md) tab can
   change it. After installing a package, open KyprX from the application menu the first time: that
-  is what switches it on, and the key works from then on ([Installing](install.md)).
+  is what switches it on, and the key works from then on ([Installing](install.md)). The first
+  time the window opens on a new install, it asks whether to put KyprX's look on, or keep yours
+  ([Appearance](appearance.md#kyprxs-look-the-first-time)).
 - **The application menu** has it as **KyprX**, filed under Settings. Right-click the entry for two
   more actions: **Show the shortcut cheatsheet** (see [Shortcuts](shortcuts.md)) and **Pick a
   wallpaper** (see [Wallpaper](wallpaper.md)). From a terminal, `kyprx --cheatsheet` and
@@ -56,7 +59,7 @@ If a box titled **KyprX is not running** appears instead of the window, see
 Hold the pointer over a tab's name for a one-line description of it.
 
 - [Windows](windows.md): one row per application, and which of KyprX's treatments each one gets:
-  title bar, outline, transparency and its own opacity, blur, floating, animation.
+  title bar, transparency and its own opacity, blur, floating, animation.
 - [Appearance](appearance.md): saved profiles, the desktop's colours, the window frame (opacity,
   corner radius, outline), and the way to the title bar's own settings.
 - [Effects](effects.md): the blur behind see-through windows, and the animation when a window
@@ -79,13 +82,14 @@ what the setting does.
 
 ## Above the tabs
 
-The strip above the tabs stays the same whichever tab is open. Its three controls are written the
+The strip above the tabs stays the same whichever tab is open. Its four controls are written the
 moment you use them.
 
 ### Adjust new windows
 
 Ticked, every new window gets KyprX's defaults as it opens. [Windows](windows.md) lists what those
-defaults are. A window counts as new the first time KyprX sees its application. After that, KyprX
+defaults are; the boxes in the headers of its title bar, transparency and blur columns change
+them. A window counts as new the first time KyprX sees its application. After that, KyprX
 does not apply its defaults to it again: its row on the Windows tab decides.
 
 Unticked, new windows are left alone. They are still listed on the Windows tab, and the line at the
@@ -110,6 +114,22 @@ What the colour does to the desktop, and how to choose a colour of your own inst
 [Appearance](appearance.md).
 
 KyprX's default: unticked.
+
+### Automatic tiling
+
+Ticked, KyprX lays the windows out by the screen's arrangement as they open and close; unticked,
+windows stay where they are put, and a drag offers the zones. It is the same switch as
+**Automatic tiling** on the [Tiling](tiling.md#automatic-tiling) tab and as **Toggle Automatic
+Tiling**, **Meta+T**: changing any of the three changes the others, and the two boxes always show
+the same.
+
+It changes that one setting and nothing else: it does not switch KyprX's tiling back on when
+something switched it off, as a change on the Tiling tab does. It is greyed, with the reason when
+the pointer rests on it, while KyprX's tiling is switched off, while KyprX is off this desk, and
+while KyprX's part of the compositor is not the one that tiles yet; the band at the top of the
+Tiling tab says the same.
+
+KyprX's default: ticked.
 
 ### Profile
 

@@ -46,6 +46,11 @@ def tiling_key_carried(key: str) -> bool:
     return not tiling.part_problems({key: ""})
 
 
+#: The switches a window keeps as set by hand (`Config.kept`), as `windows.json` names them: by the
+#: folder's own words for the columns, the title bar's the way round its column reads.
+KEPT_WORDS = {"titlebar": "hide_title_bar", "transparency": "transparency", "blur": "blur"}
+
+
 class DeskPart:
     """The desk described as the folder's parts, and applied from them."""
 
@@ -149,10 +154,13 @@ class DeskPart:
                    "blur": bool(switches.blur) if per_window_blur else default["blur"],
                    "float": window_class in floating, "animate": window_class not in excluded}
             own = self.config.own_transparency.get(window_class)
-            if row == default and own is None and window_class not in extras:
+            kept = [KEPT_WORDS[n] for n in self.kept_of(window_class)]
+            if row == default and own is None and window_class not in extras and not kept:
                 continue
             if own is not None:
                 row["opacity"] = int(own)
+            if kept:
+                row["kept"] = kept
             if row["hide_title_bar"]:
                 row["draws_own_title_bar"] = (w.needs_rule() if w else rules.find_managed(
                     tx.rules, window_class) is not None)
@@ -330,6 +338,10 @@ class DeskPart:
                          f"{cls}: {key} has to be true or false")
                 need("opacity" not in row or own_strength(row["opacity"]) is not None,
                      folder.FILES["windows"], f"{cls}: opacity has to be a whole number from 1 to 99")
+                need("kept" not in row or (isinstance(row["kept"], list) and all(
+                    n in KEPT_WORDS.values() for n in row["kept"])), folder.FILES["windows"],
+                     f"{cls}: kept has to be a list of "
+                     f"{', '.join(KEPT_WORDS.values())}")
         d = areas.get("decoration")
         if d is not None:
             need(isinstance(d.get("settings", {}), dict) and isinstance(d.get("overrides", []), list)
@@ -358,8 +370,12 @@ class DeskPart:
                         out.append(f"{folder.FILES['shortcuts']}: {action}: {e}")
         col = areas.get("colours")
         if col is not None:
-            need(col.get("mode") in theme.MODES, folder.FILES["colours"],
-                 f"mode has to be one of {', '.join(theme.MODES)}")
+            # No mode and no preset is a desk that wore no global theme of Klassy's and no preset
+            # of KyprX's -- what `describe` writes for somebody who kept their own look -- and it
+            # is applied as leaving the colours alone (`apply_areas`). Refused, it made the whole
+            # folder of such a desk one that could not be applied, here or anywhere else.
+            need(col.get("mode") in theme.MODES or not (col.get("mode") or col.get("preset")),
+                 folder.FILES["colours"], f"mode has to be one of {', '.join(theme.MODES)}")
             need(not col.get("own_colour") or theme.is_colour(str(col["own_colour"])),
                  folder.FILES["colours"], "own_colour is not a colour")
         w = areas.get("wallpaper")
@@ -525,6 +541,12 @@ class DeskPart:
                  for k, v in (s.get("cheatsheet_shows") or {}).items()})
         if rows_part is not None:
             wanted_config.own_transparency = {k: v for k, v in own.items() if self.own_allowed(k)}
+            # The switches each window keeps as set by hand travel with its row: the rows were
+            # written against them, and a column's box on this desk has to leave the same ones.
+            words = {w: n for n, w in KEPT_WORDS.items()}
+            wanted_config.kept = state.kept_switches(
+                {cls: [words[w] for w in row.get("kept", []) if w in words]
+                 for cls, row in rows.items() if self.own_allowed(cls)})
         paper = target.get("wallpaper")
         if paper is not None and isinstance(paper.get("picker"), dict):
             picker = paper["picker"]
@@ -570,7 +592,7 @@ class DeskPart:
             if target.get("shortcuts") is not None:
                 lines.extend(self._restore_shortcuts(self._keys_of(target["shortcuts"]),
                                                      preview=True))
-            if target.get("colours") is not None:
+            if target.get("colours") is not None and self._colours_of(target["colours"])["preset"]:
                 lines.append(self.set_theme(self._colours_of(target["colours"]),
                                             from_wallpaper=None, preview=True))
             if paper is not None:
@@ -605,11 +627,21 @@ class DeskPart:
             trouble.extend(self._restore_shortcuts(self._keys_of(target["shortcuts"])))
         if target.get("colours") is not None:
             colours = self._colours_of(target["colours"])
-            if colours["preset"] and theme.preset(colours["preset"]) is None:
+            if not colours["preset"]:
+                # A desk that wore no preset of KyprX's describes its colours with an empty one,
+                # and they are left as they are, without a word: the same desk's own description
+                # applied back must change nothing. `set_theme` reads an empty preset as the mode's
+                # default -- Longive, for dark -- which is how a KyprX folder kept through a
+                # removal and found again by the next install put KyprX's look on by itself.
+                pass
+            elif theme.preset(colours["preset"]) is None:
                 trouble.append(f"the colours were left as they are: this machine has no preset "
                                f"called {colours['preset']}")
             else:
-                answer = self.set_theme(colours, from_wallpaper=None)
+                # The folder puts a look on, chosen on the desk it came from, so the question the
+                # settings window would have asked is answered by it -- or a *Keep my look* given
+                # here before is (`State.look_went_on`), once the colours have gone on.
+                answer = self.set_theme(colours, from_wallpaper=None, answers=state.LOOK_FOLDER)
                 if answer.startswith("error"):
                     trouble.append(f"the colours did not go in: {answer[len('error: '):]}")
         if paper is not None:
@@ -801,6 +833,12 @@ class DeskPart:
             try:
                 return tiling.alike(tiling.parse(now), tiling.parse(wanted))
             except tiling.ArrangementsError:
+                return False
+        if kind == "desktops":
+            # Two objects with the same desktops on the same arrangements, however spelt.
+            try:
+                return tiling.canonical_desktops(now) == tiling.canonical_desktops(wanted)
+            except tiling.DesktopsError:
                 return False
         return False
 

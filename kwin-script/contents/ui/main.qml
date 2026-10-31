@@ -64,7 +64,7 @@ Item {
 
     // SCRIPT_VERSION: what this script says it is when it asks for the tiling settings. It has to
     // equal `KPlugin.Version` in ../../metadata.json (tests/test_script_contract.py).
-    readonly property string scriptVersion: "0.7"
+    readonly property string scriptVersion: "0.9"
 
     property var env: null
     property var engine: null

@@ -18,7 +18,7 @@ The daemon's state it reads or writes, all of it created in `Daemon.__init__`: `
 from __future__ import annotations
 
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import dbus
 from gi.repository import GLib
@@ -27,9 +27,11 @@ import effects
 import logs
 import policy
 import shortcuts
+import state
 import tiling
 import writer
 from kyprd_names import LIST_SWITCHES, OVERLAY_CLASSES, SWITCHES
+from state import KEPT_SWITCHES
 
 
 #: How long to wait between the notice and the picture. Covers a late class and a decoration
@@ -229,10 +231,116 @@ class WindowsPart:
             self.state.mark_seen(w.window_class)
         self.state.save()
 
+    # ------------------------------------------------------------ what a row keeps as set by hand
+
+    def seed_kept(self) -> None:
+        """The windows set by hand before the column boxes existed, kept as they are: once, when
+        `Config.kept` has never been looked for (None). Every switch of the three the boxes set
+        (`KEPT_SWITCHES`) that differs from what a new window gets is taken for somebody's choice,
+        which it almost always is -- a window that got the defaults reads exactly as them -- and
+        the first click on a column then leaves it where it is rather than undoing it. The blur
+        only while the Windows tab decides it (`effects.blur_is_per_window`): otherwise every
+        window reads the effect's own answer, and none of it is a choice of the window's.
+
+        Read from the files for every class met, by its class alone, as the KyprX folder's rows
+        are (`DeskPart._window_rows`). Changes nothing on the desk; the settings file is saved,
+        and in a dry run is said instead."""
+        if self.config.kept is not None or not self.migrated:
+            return
+        tx = writer.Transaction()
+        per_window_blur = effects.blur_is_per_window(tx.kwin)
+        defaults = asdict(self.config.defaults)
+        kept = {}
+        for window_class in sorted(self.state.seen):
+            if not self.own_allowed(window_class):
+                continue
+            switches, _ = self.switches_of(tx, window_class)
+            names = [n for n in KEPT_SWITCHES
+                     if (n != "blur" or per_window_blur)
+                     and getattr(switches, n) != defaults[n]]
+            if names:
+                kept[window_class] = names
+        self.config.kept = kept
+        self.config.save()
+        if kept:
+            self.log(f"kept as set by hand, which the column boxes leave alone: "
+                     f"{', '.join(sorted(kept))}")
+
+    def kept_of(self, window_class: str) -> list[str]:
+        """The switches this window keeps as set by hand (`Config.kept`)."""
+        return list((self.config.kept or {}).get(window_class, []))
+
+    def _remember_kept(self, before: dict, after: dict) -> None:
+        """What a row's tick leaves kept: each of the three column switches it really moved is kept
+        when it now differs from what a new window gets, and follows the column again when it is
+        the same. `before` and `after` are `{class: Switches}` either side of the write. Only for
+        the windows KyprX manages: the column boxes never reach the others, so they have nothing
+        to keep."""
+        defaults = asdict(self.config.defaults)
+        kept = {c: list(n) for c, n in (self.config.kept or {}).items()}
+        for window_class, now in after.items():
+            if not self.own_allowed(window_class):
+                continue
+            was = before[window_class]
+            names = set(kept.get(window_class, []))
+            for name in KEPT_SWITCHES:
+                if getattr(was, name) == getattr(now, name):
+                    continue
+                (names.add if getattr(now, name) != defaults[name] else names.discard)(name)
+            if names:
+                kept[window_class] = [n for n in KEPT_SWITCHES if n in names]
+            else:
+                kept.pop(window_class, None)
+        if kept != (self.config.kept or {}):
+            self.config.kept = kept
+            self.config.save()
+
+    def set_column(self, name: str, value: bool) -> str:
+        """A column's box on the Windows tab: `name` set to `value` for every window KyprX manages
+        and has met, but for those that keep that switch as set by hand (`Config.kept`), in one
+        transaction (`set_switches`), and from then on for every new window (`Config.defaults`).
+
+        Refused for a switch with no column -- the outline among them -- while KyprX is off the
+        desk, where it would put KyprX's rules back on every window, and for the blur while the
+        Windows tab has no say in it (`effects.blur_is_per_window`). A write refused leaves what a
+        new window gets as it was. Nothing it writes is kept as set by hand: it is the column.
+
+        Only the windows the switch would move are written, and only that switch of theirs
+        (`policy.apply`'s `only`): a window already at `value` is left alone, and so is the blur of
+        an opaque one, which `policy.apply` leaves unwritten since nobody sees it."""
+        if name not in KEPT_SWITCHES:
+            return f"error: {name} has no column to set it for every window"
+        if self.state.off or state.saved_off():
+            return "error: KyprX is off this desk"
+        reading = writer.Transaction()
+        if name == "blur" and not effects.blur_is_per_window(reading.kwin):
+            return "error: the blur is set for every window or for none on the Effects tab"
+        open_now = self.by_class()
+        targets = []
+        for window_class in sorted(self.state.seen):
+            if not self.own_allowed(window_class) or name in self.kept_of(window_class):
+                continue
+            window = open_now.get(window_class)
+            now, _ = self.switches_of(reading, window_class,
+                                      window.resource_name if window else "")
+            if getattr(now, name) != bool(value) and (name != "blur" or now.transparency):
+                targets.append(window_class)
+        if targets:
+            answer = self.set_switches({c: {name: bool(value)} for c in targets}, remember=False,
+                                       only=(name,))
+            if answer != "ok":
+                return answer
+        self.config.defaults = replace(self.config.defaults, **{name: bool(value)})
+        self.config.save()
+        self.log(f"{name} {'on' if value else 'off'} for every window but those kept as set by "
+                 f"hand ({len(targets)} set), and for every new one")
+        return "ok"
+
     def set_switch(self, window_class: str, name: str, value: bool) -> str:
         return self.set_switches({window_class: {name: value}})
 
-    def set_switches(self, wanted: dict) -> str:
+    def set_switches(self, wanted: dict, remember: bool = True,
+                     only: tuple[str, ...] | None = None) -> str:
         """`{class: {switch: bool}}`, applied in one transaction.
 
         One transaction for however many rows moved, rather than one each. Every write here ends
@@ -244,14 +352,20 @@ class WindowsPart:
         it. The reading goes through `switches_of`, so a tick held at 100 % is read as the tick it
         is rather than deduced away -- otherwise re-applying such a row would read it unticked and
         write it unticked, and the tick would be gone.
+
+        With `remember`, a row's tick that moves one of the three column switches is kept as set by
+        hand, or follows the column again (`_remember_kept`); a column's own write passes False,
+        and `only`, the one switch it writes (`policy.apply`).
         """
         reading = writer.Transaction()
         open_now = self.by_class()
         rows = []
         touched: dict = {}
+        before: dict = {}
         for window_class, changes in wanted.items():
             window = open_now.get(window_class) or policy.Window(window_class=window_class)
             current, _ = self.switches_of(reading, window_class, window.resource_name)
+            before[window_class] = replace(current)
             for name, value in changes.items():
                 if name not in SWITCHES:
                     return f"error: unknown switch {name}"
@@ -263,7 +377,7 @@ class WindowsPart:
 
         def build(tx):
             for window, switches in rows:
-                policy.apply(tx, window, switches, self.strength_for(window.window_class))
+                policy.apply(tx, window, switches, self.strength_for(window.window_class), only)
             nonlocal held
             if self.at_full():
                 # At 100 the tick a row writes reads like no tick at all, so what the rows end at
@@ -286,6 +400,8 @@ class WindowsPart:
                 self.log("would have written:\n" + diff)
         if held is not None:
             self.keep_ticks(held)
+        if remember:
+            self._remember_kept(before, {w.window_class: s for w, s in rows})
         for window_class in wanted:
             self.state.mark_seen(window_class)
         self.state.save()
@@ -466,6 +582,8 @@ class WindowsPart:
                 "outline": switches.outline,
                 "transparency": switches.transparency,
                 "blur": switches.blur,
+                #: The switches this row keeps as set by hand, which a column's box leaves alone.
+                "kept": self.kept_of(window_class),
                 #: What this window is actually drawn at, and the strength a tick would use.
                 #: Both, because they are two different facts: the first can come from a rule
                 #: somebody wrote by hand, the second is this app's own number -- the window's

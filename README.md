@@ -54,10 +54,10 @@ you make it.
   no snapping. KyprX tiles the windows itself, and focus, swapping and resizing are each a key
   away.
 - **Layouts you draw.** Split a zone, take one away, set its share in percent — or start from the
-  zone layouts KyprX comes with. An arrangement picks one for each number of windows, and a key
-  flips between arrangements. Prefer to place windows yourself? Manual mode shows the zones as you
-  drag a window, with the layouts you choose in a bar along the top, and drops the window into the
-  zone under the pointer.
+  zone layouts KyprX comes with. An arrangement picks one for each number of windows, each desktop
+  starts on the one you choose for it, and a key flips between arrangements. Prefer to place windows yourself? In manual mode a window goes where
+  you drag it; take it through the bar of layouts along the top, and the zones show and it drops
+  into the one under the pointer. Drag it to the top edge and it is maximized, as KDE does.
 - **Windows that float when they should.** Dialogs float by themselves, any app or title can be
   told to float or never to be tiled, and a key floats the window in front of you.
 - **No title bars, all the style.** Clean frames with an accent outline, transparency and blur —
@@ -102,11 +102,11 @@ layouts, window management, and KyprX itself.
 
 <table>
   <tr>
-    <td width="50%"><img src="screenshots/tab-windows.png" alt="The Windows tab"><br><b>Windows</b> — every app on a row of its own: title bar, outline, transparency, blur, floating and animation.</td>
+    <td width="50%"><img src="screenshots/tab-windows.png" alt="The Windows tab"><br><b>Windows</b> — every app on a row of its own: title bar, transparency, blur, floating and animation, and a box in a column's header to set it for every app at once.</td>
     <td width="50%"><img src="screenshots/tab-appearance.png" alt="The Appearance tab"><br><b>Appearance</b> — profiles, colour presets, a colour of your own or the wallpaper's, and the windows' opacity, corners and outline.</td>
   </tr>
   <tr>
-    <td><img src="screenshots/tab-tiling.png" alt="The Tiling tab"><br><b>Tiling</b> — focus, automatic or manual tiling, your arrangements, the zone layouts they pick from and the split builder that draws them, the gaps, where a new window goes, and the windows never tiled.</td>
+    <td><img src="screenshots/tab-tiling.png" alt="The Tiling tab"><br><b>Tiling</b> — focus, automatic or manual tiling, your arrangements, the one each desktop starts on, the zone layouts they pick from and the split builder that draws them, the gaps, where a new window goes, and the windows never tiled.</td>
     <td><img src="screenshots/tab-effects.png" alt="The Effects tab"><br><b>Effects</b> — the blur behind windows, menus and panels, and the animation as windows move.</td>
   </tr>
   <tr>
@@ -146,8 +146,9 @@ Everything KyprX is built on comes with it. For Fedora Kinoite and the systems b
 other distributions, and for updating and removing, see
 [Installing, updating and removing KyprX](docs/user-guide/install.md).
 
-Then open **KyprX** from your application menu: the first launch is what switches it on. From
-then on, three keys are all you need:
+Then open **KyprX** from your application menu: the first launch is what switches it on. It leaves
+your colours and global theme as they are, and asks whether to put KyprX's look on. From then on,
+three keys are all you need:
 
 | Key | What it does |
 |---|---|
