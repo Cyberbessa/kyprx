@@ -11,7 +11,7 @@
 # says how a release reaches the AUR.
 
 pkgname=kyprx
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="KDE-Native Hyprland Experience"
 arch=('any')

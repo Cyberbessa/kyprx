@@ -391,8 +391,8 @@ class WindowsTab(QWidget):
         copy = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), self.table)
         copy.activated.connect(self._copy_selected)
 
-        # Both filters the same way round, so ticking either shows more rather than one showing
-        # more and the other fewer.
+        # The two boxes work in opposite directions: only unticking "Only open windows" and
+        # ticking "System windows" widen the list, as `reveal`'s widening below relies on.
         self.only_open = QCheckBox("Only open windows")
         self.only_open.setChecked(True)
         self.only_open.setToolTip("Hide the windows that are not open right now. Their settings "

@@ -9,7 +9,7 @@
 # KyprX's own COPR (the two specs beside this one).
 
 Name:           kyprx
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        KDE-Native Hyprland Experience
 
@@ -87,6 +87,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/org.cyberbessa.KyprX.
 %{_metainfodir}/org.cyberbessa.KyprX.metainfo.xml
 
 %changelog
+* Wed Nov 18 2026 cyberbessa <grdz441yj@mozmail.com> - 0.3.1-1
+- Installs on Fedora 45, and the pages say how a system update stopped at a missing repository goes on
+
 * Sat Oct 31 2026 cyberbessa <grdz441yj@mozmail.com> - 0.3.0-1
 - Column boxes for every window, an arrangement per desktop, no freeze past nine tiled windows, and the look left alone at a first start
 

@@ -34,7 +34,7 @@ same ones are added the same way.
 
 | Project | Repository | Where it comes from |
 |---|---|---|
-| Klassy | `https://download.opensuse.org/repositories/home:/paulmcauley/Fedora_$releasever/` | its author's own repository, on the openSUSE build service |
+| Klassy | `copr://errornointernet/klassy` | a COPR that builds each Klassy release from its author's code, for Fedora 43, 44, 45 and Rawhide, on `x86_64` and `aarch64`; its author's own repository, on the openSUSE build service, has no Fedora 45 (KNOWN-ISSUES) |
 | Better Blur DX | `copr://infinality/kwin-effects-better-blur-dx` | a COPR that rebuilds it for each Plasma release |
 | Geometry Change, the video plugin | KyprX's own COPR | the two specs here |
 
@@ -45,11 +45,14 @@ copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a 
 
 1. A Fedora account, and in COPR a project named `kyprx`, with the chroots of the Fedora releases
    where both Klassy and Better Blur DX are built, each for `x86_64` and `aarch64`: a chroot where
-   either is missing offers a KyprX nobody can install. The project has `fedora-43` and
-   `fedora-44`. Measured at the 0.2.0 release, only Fedora 44 has both: Better Blur DX's COPR
-   builds for Fedora 44 and 45 and no longer for 43, and Klassy's repository has 43 and 44 and no
-   45 yet (KNOWN-ISSUES). *Follow Fedora branching* is ticked, and
-   *AppStream metadata* is on, so software centres find KyprX.
+   either is missing offers a KyprX nobody can install. The project has `fedora-43`, `fedora-44`
+   and `fedora-45`. Measured when Fedora 45 was added, Fedora 44 and 45 have both: Better Blur
+   DX's COPR builds for Fedora 44 and 45 and no longer for 43, and Klassy's for 43, 44, 45 and
+   Rawhide (KNOWN-ISSUES). *AppStream metadata* is on, so
+   software centres find KyprX. *Follow Fedora branching* is ticked and added nothing for Fedora
+   45: COPR makes a new release's chroots out of a project's Rawhide ones, and this project has
+   none, because Better Blur DX's COPR has none. Each release is added by hand
+   ([A new Fedora release](#a-new-fedora-release)).
 2. In the project's settings, *Runtime dependencies*: the Klassy and Better Blur DX lines of the
    table above. Measured: the repository file COPR serves carries both as sections of their own,
    enabled, and `dnf copr enable` enables them together with KyprX's.
@@ -67,6 +70,46 @@ copr.fedorainfracloud.org/api saved as `~/.config/copr`, does every step from a 
    `copr-cli new-webhook-secret kyprx` makes a new secret -- it asks for a yes first, and prints
    `Generated new token:` -- and the webhook on GitHub has to be given it. The two others are
    rebuilt by hand, when their spec changes.
+
+## A new Fedora release
+
+A new Fedora release is added to KyprX's COPR by hand, once Klassy's and Better Blur DX's
+repositories both build for it, and before the systems that update as a whole move to it:
+`rpm-ostree` stops their whole update at a repository that answers 404 for the release
+(KNOWN-ISSUES). Below, `N` is the release.
+
+1. Both repositories answer for it on both architectures, every line starting with `200`:
+
+   ```sh
+   for r in infinality/kwin-effects-better-blur-dx errornointernet/klassy; do
+     for a in x86_64 aarch64; do
+       curl -sL -o /dev/null -w "%{http_code} $r $a\n" \
+         "https://download.copr.fedorainfracloud.org/results/$r/fedora-N-$a/repodata/repomd.xml"
+     done
+   done
+   ```
+
+2. The three specs build in a `fedora:N` container the way COPR builds them: `make srpm` with
+   `.copr/Makefile`, then `dnf builddep` and `rpmbuild --rebuild` of the source package. A spec
+   that stops there is fixed here, with its `Release` raised, and reaches COPR only with a release
+   of KyprX, since COPR builds from the public repository. Measured when Fedora 45 was added: its
+   Plasma asks for KConfig at build time, which the video plugin's spec had not named.
+3. In the project's settings, `fedora-N-x86_64` and `fedora-N-aarch64` ticked beside the chroots
+   already there. With `copr-cli modify`, every chroot the project keeps is named, not only the
+   two new ones.
+4. The three packages built in the two new chroots alone -- *Rebuild* on each package's page, or:
+
+   ```sh
+   for p in kwin-effects-geometry-change plasma-smart-video-wallpaper-reborn kyprx; do
+     copr-cli build-package cyberbessa/kyprx --name "$p" -r fedora-N-x86_64 -r fedora-N-aarch64
+   done
+   ```
+
+   When a spec was fixed, the release that carries it goes out between steps 3 and 4: its push
+   builds `kyprx` in every chroot, the new ones included, and step 4 is left with the other two.
+5. The check of step 1 for `cyberbessa/kyprx` starts with `200` on both lines, and the
+   repository file for the release answers too:
+   `https://copr.fedorainfracloud.org/coprs/cyberbessa/kyprx/repo/fedora-N/cyberbessa-kyprx-fedora-N.repo`.
 
 ## Once: the AUR package
 

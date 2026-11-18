@@ -9,7 +9,7 @@
 
 Name:           plasma-smart-video-wallpaper-reborn
 Version:        2.15.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Plasma 6 wallpaper plugin to play videos on the desktop
 
 License:        GPL-2.0-or-later
@@ -23,8 +23,10 @@ BuildRequires:  gettext
 BuildRequires:  cmake(KF6I18n)
 BuildRequires:  cmake(Plasma)
 # Asked for by Plasma's own CMake configuration, and not pulled in by it (measured: the build
-# stops without it).
+# stops without each). KConfig since the Plasma 6.8 of Fedora 45, whose PlasmaConfig.cmake asks
+# for KF6Config and whose libplasma-devel does not require it.
 BuildRequires:  cmake(KF6CoreAddons)
+BuildRequires:  cmake(KF6Config)
 Requires:       plasma-workspace
 Requires:       qt6-qtmultimedia
 
@@ -50,5 +52,8 @@ chmod 0755 %{buildroot}%{_datadir}/plasma/wallpapers/%{plugin}/contents/ui/tools
 %{_datadir}/locale/*/LC_MESSAGES/*.mo
 
 %changelog
+* Wed Nov 18 2026 cyberbessa <grdz441yj@mozmail.com> - 2.15.0-2
+- Builds on Fedora 45, whose Plasma asks for KConfig at build time.
+
 * Fri Sep 25 2026 cyberbessa <grdz441yj@mozmail.com> - 2.15.0-1
 - Built for KyprX, which needs 2.15.0 or newer, without the optional compiled part.

@@ -121,7 +121,7 @@ layouts, window management, and KyprX itself.
 
 ## Install
 
-**Fedora 44**
+**Fedora 44 and 45**
 
 ```sh
 sudo dnf copr enable cyberbessa/kyprx
